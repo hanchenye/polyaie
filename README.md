@@ -39,8 +39,8 @@ $ ninja check-polyaie
 
 ### 4. Try PolyAIE
 ```sh
-polyaie-opt test/2mm.pre.kern.plmr.ca.lt.mlir \
-    -polyaie-affine-preprocess="top-func-name=kernel_2mm"\
-    -affine-super-vectorize="virtual-vector-size=8"\
-    -canonicalize
+polyaie-opt -polyaie-affine-preprocess="top-func-name=kernel_2mm" \
+    test/2mm.pre.kern.plmr.ca.lt.mlir | \
+    scalehls-opt -simplify-affine-if -canonicalize | \
+    polyaie-opt -polyaie-convert-to-aie
 ```
