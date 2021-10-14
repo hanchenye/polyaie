@@ -1,7 +1,7 @@
 // RUN: polyaie-opt %s -polyaie-affine-preprocess="top-func-name=kernel_2mm" | FileCheck %s
 
 // CHECK-LABEL: func @kernel_2mm(
-// CHECK-SAME: %arg0: memref<f64>, %arg1: memref<f64>, %arg2: memref<40x50xf64>, %arg3: memref<40x70xf64>, %arg4: memref<70x50xf64>, %arg5: memref<50x80xf64>, %arg6: memref<40x80xf64>) {
+// CHECK-SAME: %arg0: memref<f64>, %arg1: memref<f64>, %arg2: memref<40x50xf64>, %arg3: memref<40x70xf64>, %arg4: memref<70x50xf64>, %arg5: memref<50x80xf64>, %arg6: memref<40x80xf64>) attributes {scop.top_function} {
 
 #map0 = affine_map<()[s0] -> (s0 * 32)>
 #map1 = affine_map<()[s0] -> (40, s0 * 32 + 32)>

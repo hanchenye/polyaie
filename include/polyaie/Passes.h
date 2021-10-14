@@ -21,6 +21,7 @@ namespace mlir {
 namespace polyaie {
 
 std::unique_ptr<Pass> createAffinePreprocessPass();
+std::unique_ptr<Pass> createConvertToAIEPass();
 
 void registerPolyAIEPasses();
 

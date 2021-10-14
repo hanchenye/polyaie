@@ -1,6 +1,7 @@
 add_mlir_library(MLIRPolyAIEPasses
-  Passes.cpp
   AffinePreprocess.cpp
+  ConvertToAIE.cpp
+  Passes.cpp
 
   DEPENDS
   MLIRPolyAIEPassesIncGen

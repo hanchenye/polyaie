@@ -13,7 +13,7 @@ def AffinePreprocess : Pass<"polyaie-affine-preprocess", "ModuleOp"> {
   let summary = "Preprocess the affine-level IR";
   let description = [{
     Erase contant arguments, unroll all loops and duplicate all sub-functions in
-    the top function, and bufferize all scalar tos single-element memrefs.
+    the top function, and bufferize all scalars to single-element memrefs.
   }];
 
   let options = [
@@ -26,6 +26,21 @@ def AffinePreprocess : Pass<"polyaie-affine-preprocess", "ModuleOp"> {
   let dependentDialects = [
     "mlir::AffineDialect", "mlir::StandardOpsDialect",
     "mlir::memref::MemRefDialect", "mlir::vector::VectorDialect"
+  ];
+}
+
+def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
+  let summary = "Convert to the logical-level IR of AIE";
+  let description = [{
+    Create logical-level locks and flows for the memory dependencies.
+  }];
+
+  let constructor = "mlir::polyaie::createConvertToAIEPass()";
+
+  let dependentDialects = [
+    "mlir::AffineDialect", "mlir::StandardOpsDialect",
+    "mlir::memref::MemRefDialect", "mlir::vector::VectorDialect",
+    "xilinx::AIE::AIEDialect"
   ];
 }
 

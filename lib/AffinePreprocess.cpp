@@ -24,8 +24,10 @@ struct AffinePreprocess : public AffinePreprocessBase<AffinePreprocess> {
 
 static FuncOp getTopFunc(ModuleOp mod, StringRef topFuncName) {
   for (auto func : mod.getOps<FuncOp>())
-    if (func.getName() == topFuncName)
+    if (func.getName() == topFuncName) {
+      func->setAttr("scop.top_function", UnitAttr::get(mod.getContext()));
       return func;
+    }
 
   emitError(mod.getLoc(), "failed to find top function " + topFuncName);
   return nullptr;
