@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef POLYAIE_CONVERSION_PASSES_H
-#define POLYAIE_CONVERSION_PASSES_H
+#ifndef POLYAIE_PASSES_H
+#define POLYAIE_PASSES_H
 
 #include "aie/AIEDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -19,14 +19,14 @@ class Pass;
 namespace mlir {
 namespace polyaie {
 
-std::unique_ptr<Pass> createConvertAffineToAIEPass();
+std::unique_ptr<Pass> createAffinePreprocessPass();
 
-void registerConversionPasses();
+void registerPolyAIEPasses();
 
 #define GEN_PASS_CLASSES
-#include "polyaie/Conversion/Passes.h.inc"
+#include "polyaie/Passes.h.inc"
 
 } // namespace polyaie
 } // namespace mlir
 
-#endif // POLYAIE_CONVERSION_PASSES_H
+#endif // POLYAIE_PASSES_H

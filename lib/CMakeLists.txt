@@ -1,1 +1,7 @@
-add_subdirectory(Conversion)
+add_mlir_library(MLIRPolyAIEPasses
+  Passes.cpp
+  AffinePreprocess.cpp
+
+  DEPENDS
+  MLIRPolyAIEPassesIncGen
+  )

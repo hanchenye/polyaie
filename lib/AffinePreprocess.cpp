@@ -10,14 +10,14 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
-#include "polyaie/Conversion/Passes.h"
+#include "polyaie/Passes.h"
 #include "llvm/ADT/BitVector.h"
 
 using namespace mlir;
 using namespace polyaie;
 
 namespace {
-struct ConvertAffineToAIE : public ConvertAffineToAIEBase<ConvertAffineToAIE> {
+struct AffinePreprocess : public AffinePreprocessBase<AffinePreprocess> {
   void runOnOperation() override;
 };
 } // namespace
@@ -160,7 +160,7 @@ static LogicalResult bufferizeAllScalars(ModuleOp mod) {
   return applyFullConversion(mod, target, std::move(patterns));
 }
 
-void ConvertAffineToAIE::runOnOperation() {
+void AffinePreprocess::runOnOperation() {
   auto mod = getOperation();
   auto topFunc = getTopFunc(mod, topFuncName);
   if (!topFunc)
@@ -181,11 +181,11 @@ void ConvertAffineToAIE::runOnOperation() {
   // Create a seperate function for each call in the top function.
   duplicateSubFuncs(topFunc);
 
-  // Bufferize all scalar arguments.
+  // Bufferize all scalar to single-element memrefs.
   if (failed(bufferizeAllScalars(mod)))
     signalPassFailure();
 }
 
-std::unique_ptr<Pass> polyaie::createConvertAffineToAIEPass() {
-  return std::make_unique<ConvertAffineToAIE>();
+std::unique_ptr<Pass> polyaie::createAffinePreprocessPass() {
+  return std::make_unique<AffinePreprocess>();
 }

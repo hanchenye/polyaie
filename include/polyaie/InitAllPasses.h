@@ -8,17 +8,18 @@
 #define POLYAIE_INITALLPASSES_H
 
 #include "mlir/InitAllPasses.h"
-#include "polyaie/Conversion/Passes.h"
+#include "polyaie/Passes.h"
 
 namespace mlir {
 namespace polyaie {
 
 // Add all the related passes.
 inline void registerAllPasses() {
+  // MLIR passes.
   mlir::registerAllPasses();
 
   // PolyAIE passes.
-  polyaie::registerConversionPasses();
+  polyaie::registerPolyAIEPasses();
 
   // AIE passes.
   xilinx::AIE::registerAIEAssignBufferAddressesPass();
