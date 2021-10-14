@@ -9,7 +9,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AffinePreprocess : Pass<"affine-preprocess", "ModuleOp"> {
+def AffinePreprocess : Pass<"polyaie-affine-preprocess", "ModuleOp"> {
   let summary = "Preprocess the affine-level IR";
   let description = [{
     Erase contant arguments, unroll all loops and duplicate all sub-functions in
@@ -24,8 +24,8 @@ def AffinePreprocess : Pass<"affine-preprocess", "ModuleOp"> {
   let constructor = "mlir::polyaie::createAffinePreprocessPass()";
 
   let dependentDialects = [
-    "mlir::StandardOpsDialect", "mlir::memref::MemRefDialect",
-    "mlir::AffineDialect"
+    "mlir::AffineDialect", "mlir::StandardOpsDialect",
+    "mlir::memref::MemRefDialect", "mlir::vector::VectorDialect"
   ];
 }
 

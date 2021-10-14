@@ -26,8 +26,8 @@ $ git clone $POLYAIE_DIR
 $ mkdir $POLYAIE_DIR/build
 $ cd $POLYAIE_DIR/build
 $ cmake -G Ninja .. \
-    -DMLIR_DIR=$PWD/../../mlir-aie-llvm-project/build/lib/cmake/mlir \
-    -DLLVM_DIR=$PWD/../../mlir-aie-llvm-project/build/lib/cmake/llvm \
+    -DMLIR_DIR=$PWD/../../onnx-mlir-llvm-project/build/lib/cmake/mlir \
+    -DLLVM_DIR=$PWD/../../onnx-mlir-llvm-project/build/lib/cmake/llvm \
     -DAIE_DIR=$PWD/../../mlir-aie/build/lib/cmake/aie \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
@@ -35,4 +35,12 @@ $ cmake -G Ninja .. \
     -DCMAKE_C_COMPILER=clang-10 \
     -DCMAKE_CXX_COMPILER=clang++-10
 $ ninja check-polyaie
+```
+
+### 4. Try PolyAIE
+```sh
+polyaie-opt test/2mm.pre.kern.plmr.ca.lt.mlir \
+    -polyaie-affine-preprocess="top-func-name=kernel_2mm"\
+    -affine-super-vectorize="virtual-vector-size=8"\
+    -canonicalize
 ```

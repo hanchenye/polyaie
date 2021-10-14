@@ -9,7 +9,7 @@
 
 #include "aie/AIEDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/IR/Dialect.h"
 
 namespace mlir {
@@ -19,9 +19,10 @@ namespace polyaie {
 inline void registerAllDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<
+    mlir::AffineDialect,
     mlir::StandardOpsDialect,
     mlir::memref::MemRefDialect,
-    mlir::AffineDialect,
+    mlir::vector::VectorDialect,
     mlir::LLVM::LLVMDialect,
     xilinx::AIE::AIEDialect
   >();

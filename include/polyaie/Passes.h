@@ -9,6 +9,7 @@
 
 #include "aie/AIEDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include <memory>
 

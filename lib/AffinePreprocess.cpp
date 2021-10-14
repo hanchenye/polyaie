@@ -27,7 +27,7 @@ static FuncOp getTopFunc(ModuleOp mod, StringRef topFuncName) {
     if (func.getName() == topFuncName)
       return func;
 
-  mod.emitOpError("doesn't contain function " + topFuncName);
+  emitError(mod.getLoc(), "failed to find top function " + topFuncName);
   return nullptr;
 }
 
@@ -163,27 +163,35 @@ static LogicalResult bufferizeAllScalars(ModuleOp mod) {
 void AffinePreprocess::runOnOperation() {
   auto mod = getOperation();
   auto topFunc = getTopFunc(mod, topFuncName);
-  if (!topFunc)
+  if (!topFunc) {
     signalPassFailure();
+    return;
+  }
 
   // Erase constant arguments of the top function. These constant are unused
   // and dangling there after the compilation of phism.
   eraseConstantArguments(topFunc);
 
   // Unroll all loops in the top function.
-  if (failed(unrollAllLoops(topFunc)))
+  if (failed(unrollAllLoops(topFunc))) {
     signalPassFailure();
+    return;
+  }
 
   // Simplify the top function.
-  if (failed(simplifyFunc(topFunc)))
+  if (failed(simplifyFunc(topFunc))) {
     signalPassFailure();
+    return;
+  }
 
   // Create a seperate function for each call in the top function.
   duplicateSubFuncs(topFunc);
 
   // Bufferize all scalar to single-element memrefs.
-  if (failed(bufferizeAllScalars(mod)))
+  if (failed(bufferizeAllScalars(mod))) {
     signalPassFailure();
+    return;
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createAffinePreprocessPass() {
