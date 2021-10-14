@@ -13,10 +13,16 @@ def ConvertAffineToAIE : Pass<"convert-affine-to-aie", "ModuleOp"> {
   let summary = "Convert Affine operations to AIE";
   let description = [{}];
 
+  let options = [
+    Option<"topFuncName", "top-func-name", "std::string",
+           /*default=*/"\"main\"", "Specify the top function of the program">
+  ];
+
   let constructor = "mlir::polyaie::createConvertAffineToAIEPass()";
 
   let dependentDialects = [
-    "mlir::AffineDialect", "xilinx::AIE::AIEDialect"
+    "mlir::StandardOpsDialect", "mlir::memref::MemRefDialect",
+    "mlir::AffineDialect", "mlir::LLVM::LLVMDialect", "xilinx::AIE::AIEDialect"
   ];
 }
 
