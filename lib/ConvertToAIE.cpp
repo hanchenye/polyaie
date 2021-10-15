@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Pass/PassManager.h"
 #include "polyaie/Passes.h"
 
 using namespace mlir;
@@ -61,8 +62,9 @@ void ConvertToAIE::runOnOperation() {
 
   mod.walk([&](CallOp call) {
     // TODO: Placement algorithm. How to leverage the dependency?
-    auto col = tileIdx / 16 + 1;
-    auto row = tileIdx % 16 + 1;
+    // Place all PEs in a Z-style.
+    auto row = tileIdx / 16 + 1;
+    auto col = (row % 2 ? tileIdx % 16 : 15 - tileIdx % 16) + 1;
 
     auto tile = b.create<xilinx::AIE::TileOp>(call.getLoc(), col, row);
     call->setAttr("aie.x", b.getIndexAttr(col));
@@ -85,16 +87,15 @@ void ConvertToAIE::runOnOperation() {
     auto token = b.create<xilinx::AIE::TokenOp>(alloc.getLoc(), 0);
     auto tokenName = "token" + std::to_string(allocIdx);
     token->setAttr("sym_name", b.getStringAttr(tokenName));
-
     auto type = alloc.getType();
     auto length = type.getNumElements();
 
     // Traverse the users of the memref.
-    unsigned userIdx = 0;
+    unsigned tokenIdx = 0;
     auto memref = alloc.getResult();
     auto tile = xilinx::AIE::TileOp();
+    SmallVector<std::tuple<Operation *, unsigned, Value>, 16> replaceMap;
 
-    SmallVector<std::tuple<Operation *, unsigned, Value>, 16> memrefMap;
     for (auto &use : alloc.getResult().getUses()) {
       // In our case, the user must be a call operation.
       auto call = dyn_cast<CallOp>(use.getOwner());
@@ -103,39 +104,54 @@ void ConvertToAIE::runOnOperation() {
         return;
       }
 
+      // Allocate a new memref if the destination and source are not adjacent
+      // AIE and copy the data from the current memref into the new memref.
+      auto currentTile = tileMap[call];
+      if (tokenIdx > 0) {
+        auto rowDistance = std::abs((int64_t)tile.row() - currentTile.row());
+        auto colDistance = std::abs((int64_t)tile.col() - currentTile.col());
+
+        if (rowDistance + colDistance > 1) {
+          b.setInsertionPoint(call);
+          auto currentMemref = b.create<memref::AllocOp>(call.getLoc(), type);
+          b.create<xilinx::AIE::MemcpyOp>(
+              call.getLoc(), tokenName, tokenIdx++, tokenIdx, tile, memref, 0,
+              length, currentTile, currentMemref, 0, length);
+          memref = currentMemref;
+        }
+      }
+      tile = currentTile;
+
       // Acquire and release tokens in each sub-function.
-      // Working here...
       auto callee = mod.lookupSymbol<FuncOp>(call.callee());
       b.setInsertionPointToStart(&callee.front());
-      b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, userIdx * 2,
+      b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx++,
                                         xilinx::AIE::LockAction::Acquire);
       b.setInsertionPoint(callee.front().getTerminator());
-      b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName,
-                                        userIdx * 2 + 1,
+      b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx,
                                         xilinx::AIE::LockAction::Release);
 
-      // Allocate a new memref for all users except the first one and copy the
-      // data from the current memref into the new memref.
-      if (userIdx > 0) {
-        b.setInsertionPoint(call);
-        auto currentMemref = b.create<memref::AllocOp>(call.getLoc(), type);
-        auto currentTile = tileMap[call];
-        b.create<xilinx::AIE::MemcpyOp>(
-            call.getLoc(), tokenName, userIdx * 2 - 1, userIdx * 2, tile,
-            memref, 0, length, currentTile, currentMemref, 0, length);
-
-        memref = currentMemref;
-      }
-      tile = tileMap[call];
-
-      memrefMap.push_back({use.getOwner(), use.getOperandNumber(), memref});
-      ++userIdx;
+      replaceMap.push_back({use.getOwner(), use.getOperandNumber(), memref});
     }
 
-    for (auto t : memrefMap)
+    // Replace each use of the original memref with new memrefs if required.
+    llvm::for_each(replaceMap, [&](auto t) {
       std::get<0>(t)->setOperand(std::get<1>(t), std::get<2>(t));
+    });
     ++allocIdx;
   }
+
+  // Lower logical AIE IR to physical IR.
+  PassManager pm(mod.getContext(), "module");
+  pm.addPass(xilinx::AIE::createAIECreateCoresPass());
+  pm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+  if (failed(pm.run(mod))) {
+    signalPassFailure();
+    return;
+  }
+
+  // Remove all used functions.
+  mod.walk([&](FuncOp func) { func.erase(); });
 }
 
 std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {
