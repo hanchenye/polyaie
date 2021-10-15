@@ -67,6 +67,7 @@ static void duplicateSubFuncs(FuncOp func) {
 
   unsigned coreIdx = 0;
   for (auto call : calls) {
+    call->removeAttr("scop.pe");
     auto calleeOp = SymbolTable::lookupSymbolIn(
         func->getParentOfType<ModuleOp>(), call.callee());
     auto callee = dyn_cast<FuncOp>(calleeOp);
@@ -106,21 +107,20 @@ static void duplicateSubFuncs(FuncOp func) {
   }
 }
 
-static Value materializeLoad(OpBuilder &b, Type type, ValueRange inputs,
-                             Location loc) {
+static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
+                               Location loc) {
   assert(inputs.size() == 1);
   auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
   assert(inputType && inputType.getElementType() == type);
   return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({}));
 }
 
-static Value materializeAllocAndStore(OpBuilder &b, MemRefType type,
-                                      ValueRange inputs, Location loc) {
+static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
+                            Location loc) {
   assert(inputs.size() == 1);
-  assert(type.getElementType() == inputs[0].getType());
-  auto memref = b.create<memref::AllocOp>(loc, type);
-  b.create<mlir::AffineStoreOp>(loc, inputs[0], memref, ValueRange({}));
-  return memref;
+  auto defLoad = inputs[0].getDefiningOp<mlir::AffineLoadOp>();
+  assert(defLoad && defLoad.getMemRefType() == type);
+  return defLoad.memref();
 }
 
 class ScalarBufferizeTypeConverter : public TypeConverter {
@@ -133,9 +133,9 @@ public:
       return type;
     });
     // Load the original scalar from memref.
-    addArgumentMaterialization(materializeLoad);
-    addSourceMaterialization(materializeLoad);
-    addTargetMaterialization(materializeAllocAndStore);
+    addArgumentMaterialization(materializeDefine);
+    addSourceMaterialization(materializeDefine);
+    addTargetMaterialization(materializeUse);
   }
 };
 
