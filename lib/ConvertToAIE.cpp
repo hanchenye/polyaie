@@ -94,9 +94,10 @@ void ConvertToAIE::runOnOperation() {
     auto memref = alloc.getResult();
     auto tile = xilinx::AIE::TileOp();
 
-    for (auto user : alloc.getResult().getUsers()) {
+    SmallVector<std::tuple<Operation *, unsigned, Value>, 16> memrefMap;
+    for (auto &use : alloc.getResult().getUses()) {
       // In our case, the user must be a call operation.
-      auto call = dyn_cast<CallOp>(user);
+      auto call = dyn_cast<CallOp>(use.getOwner());
       if (!call) {
         signalPassFailure();
         return;
@@ -116,18 +117,23 @@ void ConvertToAIE::runOnOperation() {
       // Allocate a new memref for all users except the first one and copy the
       // data from the current memref into the new memref.
       if (userIdx > 0) {
-        b.setInsertionPoint(user);
-        auto currentMemref = b.create<memref::AllocOp>(user->getLoc(), type);
+        b.setInsertionPoint(call);
+        auto currentMemref = b.create<memref::AllocOp>(call.getLoc(), type);
         auto currentTile = tileMap[call];
-        auto memcpy = b.create<xilinx::AIE::MemcpyOp>(
-            user->getLoc(), tokenName, userIdx * 2 - 1, userIdx * 2, tile,
+        b.create<xilinx::AIE::MemcpyOp>(
+            call.getLoc(), tokenName, userIdx * 2 - 1, userIdx * 2, tile,
             memref, 0, length, currentTile, currentMemref, 0, length);
 
         memref = currentMemref;
       }
       tile = tileMap[call];
+
+      memrefMap.push_back({use.getOwner(), use.getOperandNumber(), memref});
       ++userIdx;
     }
+
+    for (auto t : memrefMap)
+      std::get<0>(t)->setOperand(std::get<1>(t), std::get<2>(t));
     ++allocIdx;
   }
 }

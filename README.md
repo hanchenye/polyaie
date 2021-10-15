@@ -42,5 +42,5 @@ $ ninja check-polyaie
 polyaie-opt -polyaie-affine-preprocess="top-func-name=kernel_2mm" \
     test/2mm.pre.kern.plmr.ca.lt.mlir | \
     scalehls-opt -simplify-affine-if -canonicalize | \
-    polyaie-opt -polyaie-convert-to-aie
+    polyaie-opt -polyaie-convert-to-aie -aie-create-cores
 ```
