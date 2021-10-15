@@ -1,5 +1,19 @@
 # PolyAIE Project (polyaie)
 
+## 2mm Example
+```sh
+polyaie-opt -polyaie-affine-preprocess="top-func-name=kernel_2mm" \
+    test/2mm.pre.kern.plmr.ca.lt.mlir | \
+    scalehls-opt -simplify-affine-if -canonicalize | \
+    polyaie-opt -polyaie-convert-to-aie -aie-create-cores \
+    -aie-assign-buffer-addresses -canonicalize
+```
+
+## TODO
+- Destination tile can only support two DMA channels (S2MM), this needs to be solved through (1) real dependency information (2) more advanced placement algorithm to avoid routing congestion.
+- memcpy is not needed for adjacent tiles.
+- How to use FPGA DMA? to transfer unchanged arrays?
+
 ## Quick Start
 ### 1. Install LLVM and MLIR
 ```sh
@@ -35,12 +49,4 @@ $ cmake -G Ninja .. \
     -DCMAKE_C_COMPILER=clang-10 \
     -DCMAKE_CXX_COMPILER=clang++-10
 $ ninja check-polyaie
-```
-
-### 4. Try PolyAIE
-```sh
-polyaie-opt -polyaie-affine-preprocess="top-func-name=kernel_2mm" \
-    test/2mm.pre.kern.plmr.ca.lt.mlir | \
-    scalehls-opt -simplify-affine-if -canonicalize | \
-    polyaie-opt -polyaie-convert-to-aie -aie-create-cores
 ```
