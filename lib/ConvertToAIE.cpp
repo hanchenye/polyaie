@@ -4,7 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 #include "polyaie/Passes.h"
 
 using namespace mlir;
@@ -150,10 +152,16 @@ void ConvertToAIE::runOnOperation() {
   pm.addPass(xilinx::AIE::createAIECreateCoresPass());
   pm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
   pm.addPass(xilinx::AIE::createAIELowerMemcpyPass());
+  pm.addPass(xilinx::AIE::createAIEPathfinderPass());
+  pm.addPass(xilinx::AIE::createAIECreateLocksPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   if (failed(pm.run(mod))) {
     signalPassFailure();
     return;
   }
+
+  // TODO: Name all generated buffers.
+  // TODO: How to mark buffers that need to be initialized?
 
   // Remove all used functions.
   mod.walk([&](FuncOp func) { func.erase(); });

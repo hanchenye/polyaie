@@ -2,11 +2,13 @@
 
 ## 2mm Example
 ```sh
-polyaie-opt -polyaie-affine-preprocess="top-func-name=kernel_2mm" \
-    test/2mm.pre.kern.plmr.ca.lt.mlir | \
+polyaie-opt test/2mm.pre.kern.plmr.ca.lt.mlir \
+    -polyaie-affine-preprocess="top-func-name=kernel_2mm" | \
     scalehls-opt -simplify-affine-if -canonicalize | \
-    polyaie-opt -polyaie-convert-to-aie -canonicalize
+    polyaie-opt -polyaie-convert-to-aie
 ```
+
+<!-- -affine-super-vectorize="virtual-vector-size=32" -->
 
 ## TODO
 - Destination tile can only support two DMA channels (S2MM), this needs to be solved through (1) real dependency information (2) more advanced placement algorithm to avoid routing congestion.
