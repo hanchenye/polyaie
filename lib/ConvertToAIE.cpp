@@ -82,13 +82,17 @@ void ConvertToAIE::runOnOperation() {
 
   unsigned allocIdx = 0;
   for (auto alloc : allocs) {
+    // For single-element memrefs, we always directly DMA from ARM to the AIE.
+    auto type = alloc.getType();
+    auto length = type.getNumElements();
+    if (length == 1)
+      continue;
+
     // Create a new logical token for each allocated memref.
     b.setInsertionPointToStart(mod.getBody());
     auto token = b.create<xilinx::AIE::TokenOp>(alloc.getLoc(), 0);
     auto tokenName = "token" + std::to_string(allocIdx);
     token->setAttr("sym_name", b.getStringAttr(tokenName));
-    auto type = alloc.getType();
-    auto length = type.getNumElements();
 
     // Traverse the users of the memref.
     unsigned tokenIdx = 0;
@@ -145,6 +149,7 @@ void ConvertToAIE::runOnOperation() {
   PassManager pm(mod.getContext(), "module");
   pm.addPass(xilinx::AIE::createAIECreateCoresPass());
   pm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+  pm.addPass(xilinx::AIE::createAIELowerMemcpyPass());
   if (failed(pm.run(mod))) {
     signalPassFailure();
     return;
