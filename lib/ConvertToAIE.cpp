@@ -84,11 +84,8 @@ void ConvertToAIE::runOnOperation() {
 
   unsigned allocIdx = 0;
   for (auto alloc : allocs) {
-    // For single-element memrefs, we always directly DMA from ARM to the AIE.
     auto type = alloc.getType();
     auto length = type.getNumElements();
-    if (length == 1)
-      continue;
 
     // Create a new logical token for each allocated memref.
     b.setInsertionPointToStart(mod.getBody());
@@ -98,6 +95,7 @@ void ConvertToAIE::runOnOperation() {
 
     // Traverse the users of the memref.
     unsigned tokenIdx = 0;
+    unsigned userIdx = 0;
     auto memref = alloc.getResult();
     auto tile = xilinx::AIE::TileOp();
     SmallVector<std::tuple<Operation *, unsigned, Value>, 16> replaceMap;
@@ -109,35 +107,46 @@ void ConvertToAIE::runOnOperation() {
         signalPassFailure();
         return;
       }
+      auto callee = mod.lookupSymbol<FuncOp>(call.callee());
 
-      // Allocate a new memref if the destination and source are not adjacent
-      // AIE and copy the data from the current memref into the new memref.
       auto currentTile = tileMap[call];
-      if (tokenIdx > 0) {
-        auto rowDistance = std::abs((int64_t)tile.row() - currentTile.row());
-        auto colDistance = std::abs((int64_t)tile.col() - currentTile.col());
+      if (userIdx > 0) {
+        // Allocate a new memref for each use.
+        b.setInsertionPoint(call);
+        auto currentMemref = b.create<memref::AllocOp>(call.getLoc(), type);
 
-        if (rowDistance + colDistance > 1) {
-          b.setInsertionPoint(call);
-          auto currentMemref = b.create<memref::AllocOp>(call.getLoc(), type);
-          b.create<xilinx::AIE::MemcpyOp>(
-              call.getLoc(), tokenName, tokenIdx++, tokenIdx, tile, memref, 0,
-              length, currentTile, currentMemref, 0, length);
-          memref = currentMemref;
+        // We always directly DMA scalar values to the user AIE. Therefore,
+        // scalars don't need to be passed between AIEs.
+        if (length != 1) {
+          auto rowDistance = std::abs((int64_t)tile.row() - currentTile.row());
+          auto colDistance = std::abs((int64_t)tile.col() - currentTile.col());
+          if (rowDistance + colDistance > 1) {
+            b.create<xilinx::AIE::MemcpyOp>(
+                call.getLoc(), tokenName, tokenIdx++, tokenIdx, tile, memref, 0,
+                length, currentTile, currentMemref, 0, length);
+          } else {
+            // TODO: This is a small hack, which is definitely not correct...
+            b.create<xilinx::AIE::MemcpyOp>(
+                call.getLoc(), tokenName, tokenIdx, tokenIdx, tile, memref, 0,
+                length, currentTile, currentMemref, 0, length);
+          }
         }
+
+        memref = currentMemref;
+        replaceMap.push_back({use.getOwner(), use.getOperandNumber(), memref});
       }
       tile = currentTile;
 
-      // Acquire and release tokens in each sub-function.
-      auto callee = mod.lookupSymbol<FuncOp>(call.callee());
-      b.setInsertionPointToStart(&callee.front());
-      b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx++,
-                                        xilinx::AIE::LockAction::Acquire);
-      b.setInsertionPoint(callee.front().getTerminator());
-      b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx,
-                                        xilinx::AIE::LockAction::Release);
-
-      replaceMap.push_back({use.getOwner(), use.getOperandNumber(), memref});
+      // Acquire and release tokens in the sub-function.
+      if (length != 1) {
+        b.setInsertionPointToStart(&callee.front());
+        b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx++,
+                                          xilinx::AIE::LockAction::Acquire);
+        b.setInsertionPoint(callee.front().getTerminator());
+        b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx,
+                                          xilinx::AIE::LockAction::Release);
+      }
+      ++userIdx;
     }
 
     // Replace each use of the original memref with new memrefs if required.
@@ -160,11 +169,24 @@ void ConvertToAIE::runOnOperation() {
     return;
   }
 
-  // TODO: Name all generated buffers.
+  // Name all generated buffers.
   // TODO: How to mark buffers that need to be initialized?
+  unsigned bufferIdx = 0;
+  mod.walk([&](xilinx::AIE::BufferOp buffer) {
+    auto bufferName = "buffer" + std::to_string(bufferIdx);
+    buffer->setAttr("sym_name", b.getStringAttr(bufferName));
+    ++bufferIdx;
+  });
 
-  // Remove all used functions.
-  mod.walk([&](FuncOp func) { func.erase(); });
+  // Remove all wire, token, plio, and unused function ops.
+  mod.walk([&](Operation *op) {
+    if (isa<xilinx::AIE::TokenOp, xilinx::AIE::WireOp, xilinx::AIE::PLIOOp,
+            xilinx::AIE::ShimMuxOp, FuncOp>(op)) {
+      op->dropAllUses();
+      op->dropAllReferences();
+      op->erase();
+    }
+  });
 }
 
 std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {

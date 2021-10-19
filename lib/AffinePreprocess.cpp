@@ -112,7 +112,8 @@ static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
   assert(inputs.size() == 1);
   auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
   assert(inputType && inputType.getElementType() == type);
-  return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({}));
+  auto constZero = b.create<mlir::ConstantIndexOp>(loc, 0).getResult();
+  return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({constZero}));
 }
 
 static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
@@ -128,8 +129,14 @@ public:
   ScalarBufferizeTypeConverter() {
     // Convert all scalar to memref.
     addConversion([](Type type) -> Type {
-      if (!type.isa<MemRefType>())
-        return MemRefType::get({}, type);
+      // TODO: Temporary solution, align to 128 bits. Only support float and
+      // integers.
+      if (!type.isa<MemRefType>()) {
+        if (type.isIntOrFloat())
+          return MemRefType::get({128 / type.getIntOrFloatBitWidth()}, type);
+        else
+          return MemRefType::get({1}, type);
+      }
       return type;
     });
     // Load the original scalar from memref.
