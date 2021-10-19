@@ -98,9 +98,8 @@ void ConvertToAIE::runOnOperation() {
     unsigned userIdx = 0;
     auto memref = alloc.getResult();
     auto tile = xilinx::AIE::TileOp();
-    SmallVector<std::tuple<Operation *, unsigned, Value>, 16> replaceMap;
 
-    for (auto &use : alloc.getResult().getUses()) {
+    for (auto &use : llvm::make_early_inc_range(alloc.getResult().getUses())) {
       // In our case, the user must be a call operation.
       auto call = dyn_cast<CallOp>(use.getOwner());
       if (!call) {
@@ -114,10 +113,11 @@ void ConvertToAIE::runOnOperation() {
         // Allocate a new memref for each use.
         b.setInsertionPoint(call);
         auto currentMemref = b.create<memref::AllocOp>(call.getLoc(), type);
+        use.set(currentMemref);
 
         // We always directly DMA scalar values to the user AIE. Therefore,
         // scalars don't need to be passed between AIEs.
-        if (length != 1) {
+        if (length <= 16) {
           auto rowDistance = std::abs((int64_t)tile.row() - currentTile.row());
           auto colDistance = std::abs((int64_t)tile.col() - currentTile.col());
           if (rowDistance + colDistance > 1) {
@@ -131,14 +131,12 @@ void ConvertToAIE::runOnOperation() {
                 length, currentTile, currentMemref, 0, length);
           }
         }
-
         memref = currentMemref;
-        replaceMap.push_back({use.getOwner(), use.getOperandNumber(), memref});
       }
       tile = currentTile;
 
       // Acquire and release tokens in the sub-function.
-      if (length != 1) {
+      if (length <= 16) {
         b.setInsertionPointToStart(&callee.front());
         b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx++,
                                           xilinx::AIE::LockAction::Acquire);
@@ -148,11 +146,6 @@ void ConvertToAIE::runOnOperation() {
       }
       ++userIdx;
     }
-
-    // Replace each use of the original memref with new memrefs if required.
-    llvm::for_each(replaceMap, [&](auto t) {
-      std::get<0>(t)->setOperand(std::get<1>(t), std::get<2>(t));
-    });
     ++allocIdx;
   }
 
@@ -177,6 +170,18 @@ void ConvertToAIE::runOnOperation() {
     buffer->setAttr("sym_name", b.getStringAttr(bufferName));
     ++bufferIdx;
   });
+
+  // Localize constants.
+  SmallVector<mlir::ConstantOp, 4> constants;
+  mod.walk([&](mlir::ConstantOp constant) { constants.push_back(constant); });
+  for (auto constant : constants) {
+    for (auto &use : llvm::make_early_inc_range(constant->getUses())) {
+      b.setInsertionPoint(use.getOwner());
+      auto localConstant = dyn_cast<mlir::ConstantOp>(b.clone(*constant));
+      use.set(localConstant.getResult());
+    }
+    constant.erase();
+  }
 
   // Remove all wire, token, plio, and unused function ops.
   mod.walk([&](Operation *op) {
