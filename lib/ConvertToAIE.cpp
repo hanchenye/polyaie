@@ -61,6 +61,7 @@ void ConvertToAIE::runOnOperation() {
   b.setInsertionPointToStart(mod.getBody());
   DenseMap<Operation *, xilinx::AIE::TileOp> tileMap;
   unsigned tileIdx = 0;
+  auto lastTile = xilinx::AIE::TileOp();
 
   mod.walk([&](CallOp call) {
     // TODO: Placement algorithm. How to leverage the dependency?
@@ -73,6 +74,7 @@ void ConvertToAIE::runOnOperation() {
     call->setAttr("aie.y", b.getIndexAttr(row));
 
     tileMap[call] = tile;
+    lastTile = tile;
     ++tileIdx;
   });
 
@@ -117,7 +119,7 @@ void ConvertToAIE::runOnOperation() {
 
         // We always directly DMA scalar values to the user AIE. Therefore,
         // scalars don't need to be passed between AIEs.
-        if (length <= 16) {
+        if (length > 16) {
           auto rowDistance = std::abs((int64_t)tile.row() - currentTile.row());
           auto colDistance = std::abs((int64_t)tile.col() - currentTile.col());
           if (rowDistance + colDistance > 1) {
@@ -136,7 +138,7 @@ void ConvertToAIE::runOnOperation() {
       tile = currentTile;
 
       // Acquire and release tokens in the sub-function.
-      if (length <= 16) {
+      if (length > 16) {
         b.setInsertionPointToStart(&callee.front());
         b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx++,
                                           xilinx::AIE::LockAction::Acquire);
@@ -192,6 +194,17 @@ void ConvertToAIE::runOnOperation() {
       op->erase();
     }
   });
+
+  // Create a lock use in the last tile to indicate the completion of the
+  // program.
+  // TODO: Make this more rebust.
+  auto lastCore = lastTile.getCoreOp();
+  b.setInsertionPointAfter(lastTile);
+  auto finalLock =
+      b.create<xilinx::AIE::LockOp>(lastTile.getLoc(), lastTile, 15);
+  b.setInsertionPoint(lastCore.getRegion().front().getTerminator());
+  b.create<xilinx::AIE::UseLockOp>(lastTile.getLoc(), finalLock, 1,
+                                   xilinx::AIE::LockAction::Release, 0);
 }
 
 std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {

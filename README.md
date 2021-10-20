@@ -2,11 +2,24 @@
 
 ## 2mm Example
 ```sh
-$ polyaie-opt test/2mm.pre.kern.plmr.ca.lt.mlir \
+$ polyaie-opt ../test/2mm.pre.kern.plmr.ca.lt.mlir \
     -polyaie-affine-preprocess="top-func-name=kernel_2mm" | \
     scalehls-opt -simplify-affine-if -canonicalize | \
-    polyaie-opt -polyaie-convert-to-aie > tmp/2mm_aie.mlir
-$ cd tmp && aiecc.py --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux 2mm_aie.mlir -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp -o 2mm_aie.elf && cd ..
+    polyaie-opt -polyaie-convert-to-aie > 2mm_aie.mlir
+
+$ aiecc.py --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux 2mm_aie.mlir \
+    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp 2mm_test.cpp -o 2mm_aie.elf
+
+$ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
+    --target=aarch64-linux-gnu -std=c++11 \
+    --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
+    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0 \
+    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/aarch64-xilinx-linux \
+    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/backward \
+    -L/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
+    -B/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
+    -Iacdc_project -fuse-ld=lld -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
+    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp 2mm_test.cpp -o 2mm_test.elf
 ```
 
 <!-- -affine-super-vectorize="virtual-vector-size=32" -->
