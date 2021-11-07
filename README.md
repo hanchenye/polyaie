@@ -2,13 +2,16 @@
 
 ## 2mm Example
 ```sh
-$ polyaie-opt ../test/2mm.pre.kern.plmr.ca.lt.mlir \
-    -polyaie-affine-preprocess="top-func-name=kernel_2mm" | \
-    scalehls-opt -simplify-affine-if -canonicalize | \
-    polyaie-opt -polyaie-convert-to-aie > 2mm_aie.mlir
+$ python scripts/pb-flow.py --polymer --loop-transforms --dataset MINI example/polybench
 
-$ aiecc.py --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux 2mm_aie.mlir \
-    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp 2mm_test.cpp -o 2mm_aie.elf
+$ sed -E 's/arith.//g; s/f64/i32/g; s/mulf/muli/g; s/addf/addi/g; s/0\.000000e\+00/0/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
+$ polyaie-opt 2mm.phism.mlir -polyaie-affine-preprocess="top-func-name=kernel_2mm" -canonicalize > 2mm.phism.pre.mlir
+# $ scalehls-opt -simplify-affine-if -canonicalize
+$ polyaie-opt 2mm.phism.pre.mlir -polyaie-convert-to-aie > 2mm.phism.pre.aie.mlir
+
+$ /home/hanchenye/workspace/mlir-aie/build/bin/aiecc.py \
+    --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux 2mm.phism.pre.aie.mlir \
+    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp 2mm_test.cpp -o 2mm_test.elf
 
 $ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
     --target=aarch64-linux-gnu -std=c++11 \

@@ -66,8 +66,8 @@ void ConvertToAIE::runOnOperation() {
   mod.walk([&](CallOp call) {
     // TODO: Placement algorithm. How to leverage the dependency?
     // Place all PEs in a Z-style.
-    auto row = tileIdx / 16 + 1;
-    auto col = (row % 2 ? tileIdx % 16 : 15 - tileIdx % 16) + 1;
+    auto row = tileIdx / 4 + 2;
+    auto col = (row % 2 ? tileIdx % 4 : 3 - tileIdx % 4);
 
     auto tile = b.create<xilinx::AIE::TileOp>(call.getLoc(), col, row);
     call->setAttr("aie.x", b.getIndexAttr(col));
