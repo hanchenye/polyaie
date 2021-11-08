@@ -53,6 +53,7 @@ void ConvertToAIE::runOnOperation() {
 
   // Inline top function into the module.
   if (failed(inlineTopFunc(mod))) {
+    emitError(mod->getLoc(), "failed to inline the top function");
     signalPassFailure();
     return;
   }
@@ -105,6 +106,7 @@ void ConvertToAIE::runOnOperation() {
       // In our case, the user must be a call operation.
       auto call = dyn_cast<CallOp>(use.getOwner());
       if (!call) {
+        use.getOwner()->emitOpError("memory user must be call operation");
         signalPassFailure();
         return;
       }
@@ -119,7 +121,7 @@ void ConvertToAIE::runOnOperation() {
 
         // We always directly DMA scalar values to the user AIE. Therefore,
         // scalars don't need to be passed between AIEs.
-        if (length > 16) {
+        if (length > 1) {
           auto rowDistance = std::abs((int64_t)tile.row() - currentTile.row());
           auto colDistance = std::abs((int64_t)tile.col() - currentTile.col());
           if (rowDistance + colDistance > 1) {
@@ -138,7 +140,7 @@ void ConvertToAIE::runOnOperation() {
       tile = currentTile;
 
       // Acquire and release tokens in the sub-function.
-      if (length > 16) {
+      if (length > 1) {
         b.setInsertionPointToStart(&callee.front());
         b.create<xilinx::AIE::UseTokenOp>(call.getLoc(), tokenName, tokenIdx++,
                                           xilinx::AIE::LockAction::Acquire);
@@ -160,6 +162,7 @@ void ConvertToAIE::runOnOperation() {
   pm.addPass(xilinx::AIE::createAIECreateLocksPass());
   pm.addPass(mlir::createCanonicalizerPass());
   if (failed(pm.run(mod))) {
+    emitError(mod.getLoc(), "failed to implement on AIE array");
     signalPassFailure();
     return;
   }
@@ -205,6 +208,9 @@ void ConvertToAIE::runOnOperation() {
   b.setInsertionPoint(lastCore.getRegion().front().getTerminator());
   b.create<xilinx::AIE::UseLockOp>(lastTile.getLoc(), finalLock, 1,
                                    xilinx::AIE::LockAction::Release, 0);
+
+  // Remove the incorrect target triple: x86_64-unknown-linux-gnu.
+  mod->removeAttr("llvm.target_triple");
 }
 
 std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {

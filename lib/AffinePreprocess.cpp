@@ -29,7 +29,6 @@ static FuncOp getTopFunc(ModuleOp mod, StringRef topFuncName) {
       return func;
     }
 
-  emitError(mod.getLoc(), "failed to find top function " + topFuncName);
   return nullptr;
 }
 
@@ -112,8 +111,7 @@ static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
   assert(inputs.size() == 1);
   auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
   assert(inputType && inputType.getElementType() == type);
-  auto constZero = b.create<mlir::ConstantIndexOp>(loc, 0).getResult();
-  return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({constZero}));
+  return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({}));
 }
 
 static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
@@ -129,14 +127,8 @@ public:
   ScalarBufferizeTypeConverter() {
     // Convert all scalar to memref.
     addConversion([](Type type) -> Type {
-      // TODO: Temporary solution, align to 128 bits. Only support float and
-      // integers.
-      if (!type.isa<MemRefType>()) {
-        if (type.isIntOrFloat())
-          return MemRefType::get({128 / type.getIntOrFloatBitWidth()}, type);
-        else
-          return MemRefType::get({1}, type);
-      }
+      if (!type.isa<MemRefType>())
+        return MemRefType::get({}, type);
       return type;
     });
     // Load the original scalar from memref.
@@ -173,6 +165,7 @@ void AffinePreprocess::runOnOperation() {
   auto mod = getOperation();
   auto topFunc = getTopFunc(mod, topFuncName);
   if (!topFunc) {
+    emitError(mod.getLoc(), "failed to find top function " + topFuncName);
     signalPassFailure();
     return;
   }
@@ -183,12 +176,14 @@ void AffinePreprocess::runOnOperation() {
 
   // Unroll all loops in the top function.
   if (failed(unrollAllLoops(topFunc))) {
+    emitError(topFunc.getLoc(), "failed to unroll all loops");
     signalPassFailure();
     return;
   }
 
   // Simplify the top function.
   if (failed(simplifyFunc(topFunc))) {
+    emitError(topFunc.getLoc(), "failed to simplify the function");
     signalPassFailure();
     return;
   }
@@ -198,6 +193,14 @@ void AffinePreprocess::runOnOperation() {
 
   // Bufferize all scalar to single-element memrefs.
   if (failed(bufferizeAllScalars(mod))) {
+    emitError(topFunc.getLoc(), "failed to bufferize scalars");
+    signalPassFailure();
+    return;
+  }
+
+  // Simplify the top function.
+  if (failed(simplifyFunc(topFunc))) {
+    emitError(topFunc.getLoc(), "failed to simplify the function");
     signalPassFailure();
     return;
   }
