@@ -23,6 +23,17 @@ $ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
     -B/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
     -Iacdc_project -fuse-ld=lld -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
     -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp 2mm_test.cpp -o 2mm_test.elf
+
+$ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
+    --target=aarch64-linux-gnu -std=c++11 \
+    --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
+    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0 \
+    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/aarch64-xilinx-linux \
+    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/backward \
+    -L/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
+    -B/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
+    -Iacdc_project -fuse-ld=lld -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
+    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ -I/home/hanchenye/workspace/mlir-aie/tmp/2mm_aie /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp polybench.cpp 2mm.cpp -o 2mm.elf
 ```
 
 <!-- -affine-super-vectorize="virtual-vector-size=32" -->

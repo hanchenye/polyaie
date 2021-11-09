@@ -8,6 +8,7 @@ configure_lit_site_cfg(
 set(POLYAIE_TEST_DEPENDS
   FileCheck count not
   polyaie-opt
+  polyaie-translate
   )
 
 add_lit_testsuite(check-polyaie "Running the polyaie regression tests"
