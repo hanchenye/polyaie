@@ -1,5 +1,6 @@
 add_mlir_library(MLIRPolyAIEPasses
-  AffinePreprocess.cpp
+  Preprocess.cpp
+  CreateDataflow.cpp
   ConvertToAIE.cpp
   Passes.cpp
 

@@ -1,4 +1,4 @@
-// RUN: polyaie-opt %s -polyaie-affine-preprocess="top-func-name=kernel_2mm" -polyaie-convert-to-aie | FileCheck %s
+// RUN: polyaie-opt %s -polyaie-preprocess="top-func-name=kernel_2mm" -polyaie-convert-to-aie | FileCheck %s
 
 // CHECK: module
 

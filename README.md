@@ -4,7 +4,7 @@
 ```sh
 $ python scripts/pb-flow.py --polymer --loop-transforms --dataset MINI example/polybench
 
-$ sed -E 's/arith.//g; s/f64/i32/g; s/mulf/muli/g; s/addf/addi/g; s/0\.000000e\+00/0/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
+$ sed -E 's/arith.//g; s/f64/i32/g; s/mulf/muli/g; s/addf/addi/g; s/andi/and/g; s/0\.000000e\+00/0/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
 $ polyaie-opt 2mm.phism.mlir -polyaie-affine-preprocess="top-func-name=kernel_2mm" -canonicalize > 2mm.phism.pre.mlir
 # $ scalehls-opt -simplify-affine-if -canonicalize
 $ polyaie-opt 2mm.phism.pre.mlir -polyaie-convert-to-aie > 2mm.phism.pre.aie.mlir

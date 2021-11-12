@@ -20,7 +20,8 @@ class Pass;
 namespace mlir {
 namespace polyaie {
 
-std::unique_ptr<Pass> createAffinePreprocessPass();
+std::unique_ptr<Pass> createPreprocessPass();
+std::unique_ptr<Pass> createCreateDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
 
 void registerPolyAIEPasses();

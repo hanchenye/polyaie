@@ -17,20 +17,10 @@ using namespace mlir;
 using namespace polyaie;
 
 namespace {
-struct AffinePreprocess : public AffinePreprocessBase<AffinePreprocess> {
+struct Preprocess : public PreprocessBase<Preprocess> {
   void runOnOperation() override;
 };
 } // namespace
-
-static FuncOp getTopFunc(ModuleOp mod, StringRef topFuncName) {
-  for (auto func : mod.getOps<FuncOp>())
-    if (func.getName() == topFuncName) {
-      func->setAttr("scop.top_function", UnitAttr::get(mod.getContext()));
-      return func;
-    }
-
-  return nullptr;
-}
 
 static void eraseConstantArguments(FuncOp func) {
   SmallVector<unsigned, 16> argsToErase;
@@ -44,11 +34,9 @@ static void eraseConstantArguments(FuncOp func) {
 static LogicalResult unrollAllLoops(FuncOp func) {
   SmallVector<mlir::AffineForOp, 16> loops;
   func.walk([&](mlir::AffineForOp loop) { loops.push_back(loop); });
-
   for (auto loop : loops)
     if (failed(loopUnrollFull(loop)))
       return failure();
-
   return success();
 }
 
@@ -59,16 +47,12 @@ static LogicalResult simplifyFunc(FuncOp func) {
   return pm.run(func);
 }
 
-static void duplicateSubFuncs(FuncOp func) {
+static void duplicateSubFuncs(ModuleOp mod, FuncOp func) {
   auto b = OpBuilder(func);
-  SmallVector<CallOp, 16> calls;
-  func.walk([&](CallOp call) { calls.push_back(call); });
-
-  unsigned coreIdx = 0;
-  for (auto call : calls) {
+  unsigned aieIdx = 0;
+  func.walk([&](CallOp call) {
     call->removeAttr("scop.pe");
-    auto calleeOp = SymbolTable::lookupSymbolIn(
-        func->getParentOfType<ModuleOp>(), call.callee());
+    auto calleeOp = mod.lookupSymbol(call.callee());
     auto callee = dyn_cast<FuncOp>(calleeOp);
 
     // Create a new callee function for each call operation.
@@ -77,7 +61,7 @@ static void duplicateSubFuncs(FuncOp func) {
     b.insert(newCallee);
 
     // Set up a new name.
-    auto newName = call.callee().str() + "_AIE" + std::to_string(coreIdx);
+    auto newName = call.callee().str() + "_AIE" + std::to_string(aieIdx);
     newCallee.setName(newName);
     call->setAttr("callee", b.getSymbolRefAttr(newName));
 
@@ -101,9 +85,13 @@ static void duplicateSubFuncs(FuncOp func) {
     newCallee.eraseArguments(argsToErase);
     call->eraseOperands(operandsToErase);
 
+    // Remove the callee function if not used.
+    if (callee.symbolKnownUseEmpty(mod))
+      callee.erase();
+
     // Move to the next AIE call.
-    ++coreIdx;
-  }
+    ++aieIdx;
+  });
 }
 
 static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
@@ -161,13 +149,47 @@ static LogicalResult bufferizeAllScalars(ModuleOp mod) {
   return applyFullConversion(mod, target, std::move(patterns));
 }
 
-void AffinePreprocess::runOnOperation() {
+static LogicalResult inlineFunc(ModuleOp mod, FuncOp func) {
+  // Create alloc for all arguments of the top function.
+  auto b = OpBuilder(mod);
+  b.setInsertionPointToEnd(mod.getBody());
+  for (auto arg : func.getArguments()) {
+    auto type = arg.getType().dyn_cast<MemRefType>();
+    if (!type)
+      return emitError(func.getLoc(), "top function isn't fully bufferized");
+    auto memref = b.create<memref::AllocOp>(func.getLoc(), type);
+    arg.replaceAllUsesWith(memref);
+  }
+
+  // Inline the top function into the module.
+  auto &modOps = mod.getBody()->getOperations();
+  auto &funcOps = func.front().getOperations();
+  modOps.splice(modOps.end(), funcOps, funcOps.begin(),
+                std::prev(funcOps.end()));
+  func.erase();
+
+  PassManager pm(mod.getContext(), "module");
+  pm.addPass(createCanonicalizerPass());
+  return pm.run(mod);
+}
+
+void Preprocess::runOnOperation() {
   auto mod = getOperation();
-  auto topFunc = getTopFunc(mod, topFuncName);
+  mod->removeAttr("llvm.target_triple");
+  mod->removeAttr("llvm.data_layout");
+
+  // Erase unused operations and find the top function.
+  auto topFunc = FuncOp();
+  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
+    if (isa<LLVM::GlobalOp, LLVM::LLVMFuncOp>(op))
+      op.erase();
+    else if (auto func = dyn_cast<FuncOp>(op))
+      if (func.getName() == topFuncName)
+        topFunc = func;
+  }
   if (!topFunc) {
     emitError(mod.getLoc(), "failed to find top function " + topFuncName);
     signalPassFailure();
-    return;
   }
 
   // Erase constant arguments of the top function. These constant are unused
@@ -178,34 +200,30 @@ void AffinePreprocess::runOnOperation() {
   if (failed(unrollAllLoops(topFunc))) {
     emitError(topFunc.getLoc(), "failed to unroll all loops");
     signalPassFailure();
-    return;
   }
 
   // Simplify the top function.
   if (failed(simplifyFunc(topFunc))) {
     emitError(topFunc.getLoc(), "failed to simplify the function");
     signalPassFailure();
-    return;
   }
 
   // Create a seperate function for each call in the top function.
-  duplicateSubFuncs(topFunc);
+  duplicateSubFuncs(mod, topFunc);
 
   // Bufferize all scalar to single-element memrefs.
   if (failed(bufferizeAllScalars(mod))) {
-    emitError(topFunc.getLoc(), "failed to bufferize scalars");
+    emitError(mod->getLoc(), "failed to bufferize scalars");
     signalPassFailure();
-    return;
   }
 
-  // Simplify the top function.
-  if (failed(simplifyFunc(topFunc))) {
-    emitError(topFunc.getLoc(), "failed to simplify the function");
+  // Inline top function into the module.
+  if (failed(inlineFunc(mod, topFunc))) {
+    emitError(mod->getLoc(), "failed to inline the top function");
     signalPassFailure();
-    return;
   }
 }
 
-std::unique_ptr<Pass> polyaie::createAffinePreprocessPass() {
-  return std::make_unique<AffinePreprocess>();
+std::unique_ptr<Pass> polyaie::createPreprocessPass() {
+  return std::make_unique<Preprocess>();
 }
