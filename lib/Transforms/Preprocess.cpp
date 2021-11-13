@@ -22,6 +22,21 @@ struct Preprocess : public PreprocessBase<Preprocess> {
 };
 } // namespace
 
+static FuncOp simplifyModuleAndFindTopFunc(ModuleOp mod,
+                                           StringRef topFuncName) {
+  mod->removeAttr("llvm.data_layout");
+  mod->removeAttr("llvm.target_triple");
+  auto topFunc = FuncOp();
+  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
+    if (isa<LLVM::GlobalOp, LLVM::LLVMFuncOp>(op))
+      op.erase();
+    else if (auto func = dyn_cast<FuncOp>(op))
+      if (func.getName() == topFuncName)
+        topFunc = func;
+  }
+  return topFunc;
+}
+
 static void eraseConstantArguments(FuncOp func) {
   SmallVector<unsigned, 16> argsToErase;
   for (unsigned i = 0, e = func.getNumArguments(); i < e; ++i) {
@@ -40,18 +55,15 @@ static LogicalResult unrollAllLoops(FuncOp func) {
   return success();
 }
 
-static LogicalResult simplifyFunc(FuncOp func) {
+static void duplicateSubFuncs(ModuleOp mod, FuncOp func) {
   PassManager pm(func.getContext(), "func");
   pm.addPass(createCanonicalizerPass());
   pm.addPass((createSimplifyAffineStructuresPass()));
-  return pm.run(func);
-}
+  (void)pm.run(func);
 
-static void duplicateSubFuncs(ModuleOp mod, FuncOp func) {
   auto b = OpBuilder(func);
-  unsigned aieIdx = 0;
+  unsigned callIdx = 0;
   func.walk([&](CallOp call) {
-    call->removeAttr("scop.pe");
     auto calleeOp = mod.lookupSymbol(call.callee());
     auto callee = dyn_cast<FuncOp>(calleeOp);
 
@@ -61,7 +73,7 @@ static void duplicateSubFuncs(ModuleOp mod, FuncOp func) {
     b.insert(newCallee);
 
     // Set up a new name.
-    auto newName = call.callee().str() + "_AIE" + std::to_string(aieIdx);
+    auto newName = call.callee().str() + "_AIE" + std::to_string(callIdx);
     newCallee.setName(newName);
     call->setAttr("callee", b.getSymbolRefAttr(newName));
 
@@ -90,28 +102,29 @@ static void duplicateSubFuncs(ModuleOp mod, FuncOp func) {
       callee.erase();
 
     // Move to the next AIE call.
-    ++aieIdx;
+    ++callIdx;
   });
 }
 
-static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
-                               Location loc) {
-  assert(inputs.size() == 1);
-  auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
-  assert(inputType && inputType.getElementType() == type);
-  return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({}));
-}
-
-static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
-                            Location loc) {
-  assert(inputs.size() == 1);
-  auto defLoad = inputs[0].getDefiningOp<mlir::AffineLoadOp>();
-  assert(defLoad && defLoad.getMemRefType() == type);
-  return defLoad.memref();
-}
-
+namespace {
 class ScalarBufferizeTypeConverter : public TypeConverter {
 public:
+  static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
+                                 Location loc) {
+    assert(inputs.size() == 1);
+    auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
+    assert(inputType && inputType.getElementType() == type);
+    return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({}));
+  }
+
+  static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
+                              Location loc) {
+    assert(inputs.size() == 1);
+    auto defLoad = inputs[0].getDefiningOp<mlir::AffineLoadOp>();
+    assert(defLoad && defLoad.getMemRefType() == type);
+    return defLoad.memref();
+  }
+
   ScalarBufferizeTypeConverter() {
     // Convert all scalar to memref.
     addConversion([](Type type) -> Type {
@@ -125,6 +138,7 @@ public:
     addTargetMaterialization(materializeUse);
   }
 };
+} // namespace
 
 static LogicalResult bufferizeAllScalars(ModuleOp mod) {
   ScalarBufferizeTypeConverter typeConverter;
@@ -175,18 +189,7 @@ static LogicalResult inlineFunc(ModuleOp mod, FuncOp func) {
 
 void Preprocess::runOnOperation() {
   auto mod = getOperation();
-  mod->removeAttr("llvm.target_triple");
-  mod->removeAttr("llvm.data_layout");
-
-  // Erase unused operations and find the top function.
-  auto topFunc = FuncOp();
-  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
-    if (isa<LLVM::GlobalOp, LLVM::LLVMFuncOp>(op))
-      op.erase();
-    else if (auto func = dyn_cast<FuncOp>(op))
-      if (func.getName() == topFuncName)
-        topFunc = func;
-  }
+  auto topFunc = simplifyModuleAndFindTopFunc(mod, topFuncName);
   if (!topFunc) {
     emitError(mod.getLoc(), "failed to find top function " + topFuncName);
     signalPassFailure();
@@ -202,24 +205,18 @@ void Preprocess::runOnOperation() {
     signalPassFailure();
   }
 
-  // Simplify the top function.
-  if (failed(simplifyFunc(topFunc))) {
-    emitError(topFunc.getLoc(), "failed to simplify the function");
-    signalPassFailure();
-  }
-
   // Create a seperate function for each call in the top function.
   duplicateSubFuncs(mod, topFunc);
 
   // Bufferize all scalar to single-element memrefs.
   if (failed(bufferizeAllScalars(mod))) {
-    emitError(mod->getLoc(), "failed to bufferize scalars");
+    emitError(mod.getLoc(), "failed to bufferize scalars");
     signalPassFailure();
   }
 
   // Inline top function into the module.
   if (failed(inlineFunc(mod, topFunc))) {
-    emitError(mod->getLoc(), "failed to inline the top function");
+    emitError(mod.getLoc(), "failed to inline the top function");
     signalPassFailure();
   }
 }
