@@ -12,8 +12,9 @@ include "mlir/Pass/PassBase.td"
 def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
   let summary = "Preprocess the affine-level IR";
   let description = [{
-    Erase contant arguments, unroll all loops and duplicate all sub-functions in
-    the top function, and bufferize all scalars to single-element memrefs.
+    Erase contant arguments, unroll all loops, duplicate all sub-functions in
+    the top function, bufferize all scalars to single-element memrefs, inline
+    top function, and eliminate redundant sub-functions.
   }];
 
   let options = [
@@ -25,7 +26,7 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
 
   let dependentDialects = [
     "mlir::AffineDialect", "mlir::StandardOpsDialect",
-    "mlir::memref::MemRefDialect", "mlir::vector::VectorDialect"
+    "mlir::memref::MemRefDialect", "mlir::LLVM::LLVMDialect"
   ];
 }
 
@@ -40,14 +41,14 @@ def CreateDataflow : Pass<"polyaie-create-dataflow", "ModuleOp"> {
 
   let dependentDialects = [
     "mlir::AffineDialect", "mlir::StandardOpsDialect",
-    "mlir::memref::MemRefDialect", "mlir::vector::VectorDialect"
+    "mlir::memref::MemRefDialect"
   ];
 }
 
 def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
   let summary = "Convert to the logical-level IR of AIE";
   let description = [{
-    Create logical-level locks and flows for the memory dependencies.
+    Placement, buffer allocation, routing, and physical locks materialization.
   }];
 
   let constructor = "mlir::polyaie::createConvertToAIEPass()";
