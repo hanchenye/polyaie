@@ -84,6 +84,7 @@ static void duplicateSubFuncs(FuncOp func) {
     auto operandsToErase = llvm::BitVector();
     for (unsigned i = 0, e = call.getNumOperands(); i < e; ++i) {
       if (auto param = call.getOperand(i).getDefiningOp<ConstantOp>()) {
+        // Replace function argument with a constant number if applicable.
         b.setInsertionPointToStart(&newCallee.front());
         auto newParam = param.clone();
         b.insert(newParam);
@@ -91,9 +92,12 @@ static void duplicateSubFuncs(FuncOp func) {
 
         argsToErase.push_back(i);
         operandsToErase.push_back(true);
-        continue;
-      }
-      operandsToErase.push_back(false);
+      } else if (newCallee.getArgument(i).use_empty()) {
+        // Remove unused function arguments.
+        argsToErase.push_back(i);
+        operandsToErase.push_back(true);
+      } else
+        operandsToErase.push_back(false);
     }
     newCallee.eraseArguments(argsToErase);
     call->eraseOperands(operandsToErase);
