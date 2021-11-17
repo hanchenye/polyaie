@@ -8,6 +8,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "polyaie/MemRefExt/MemRefExt.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
@@ -36,11 +37,13 @@ void CreateDataflow::runOnOperation() {
         return signalPassFailure();
       }
 
-      // For single-element memory, directly create a local buffer for it.
+      // For single-element memory, directly create a local buffer for it and
+      // create a new memory copy.
       if (argType.getRank() == 0) {
         auto buf = b.create<memref::AllocOp>(func.getLoc(), argType);
         arg.replaceAllUsesWith(buf);
-        // Working here...
+        b.create<memrefext::MemCpyOp>(func.getLoc(), b.getI64ArrayAttr({0}),
+                                      arg, buf);
         continue;
       }
 
@@ -87,6 +90,7 @@ void CreateDataflow::runOnOperation() {
           symbolRepls.push_back(b.getAffineDimExpr(i));
 
       SmallVector<int64_t, 4> bufShape;
+      SmallVector<int64_t, 4> bufOffsets;
       SmallVector<AffineExpr, 4> results;
       for (auto expr : map.getResults()) {
         // Replace symbols with dims because is seems Polygeist will make all
@@ -97,10 +101,14 @@ void CreateDataflow::runOnOperation() {
         // where `m` as the offset could be any constant number.
         if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
           bufShape.push_back(dimSizeMap[dimExpr.getPosition()]);
+          bufOffsets.push_back(0);
           results.push_back(dimExpr);
+
         } else if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
           bufShape.push_back(1);
+          bufOffsets.push_back(0);
           results.push_back(0);
+
         } else if (auto binaryExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
           if (binaryExpr.getKind() != AffineExprKind::Add ||
               binaryExpr.getLHS().getKind() != AffineExprKind::DimId ||
@@ -109,8 +117,12 @@ void CreateDataflow::runOnOperation() {
             return signalPassFailure();
           }
           auto dimExprLHS = binaryExpr.getLHS().dyn_cast<AffineDimExpr>();
+          auto constExprRHS =
+              binaryExpr.getRHS().dyn_cast<AffineConstantExpr>();
           bufShape.push_back(dimSizeMap[dimExprLHS.getPosition()]);
+          bufOffsets.push_back(constExprRHS.getValue());
           results.push_back(dimExprLHS);
+
         } else {
           firstUser->emitOpError("illegal memory access pattern");
           return signalPassFailure();
@@ -119,12 +131,13 @@ void CreateDataflow::runOnOperation() {
       auto newMap =
           AffineMap::get(map.getNumInputs(), 0, results, map.getContext());
 
-      // Create a local buffer for the memory.
+      // Create a local buffer for the memory and a new memory copy.
       auto bufType = MemRefType::get(bufShape, argType.getElementType(),
                                      argType.getAffineMaps());
       auto buf = b.create<memref::AllocOp>(func.getLoc(), bufType);
       arg.replaceAllUsesWith(buf);
-      // Working here...
+      b.create<memrefext::MemCpyOp>(func.getLoc(),
+                                    b.getI64ArrayAttr(bufOffsets), arg, buf);
 
       // Update memory access maps.
       auto mapAttr = AffineMapAttr::get(newMap);
@@ -136,6 +149,16 @@ void CreateDataflow::runOnOperation() {
           storeOp->setAttr(storeOp.getMapAttrName(), mapAttr);
           hasStore = true;
         }
+      }
+
+      // If there are store operations, create a copy the contents in buffer
+      // back to memory in the end.
+      if (hasStore) {
+        auto intertPoint = b.saveInsertionPoint();
+        b.setInsertionPoint(func.front().getTerminator());
+        b.create<memrefext::MemCpyOp>(func.getLoc(),
+                                      b.getI64ArrayAttr(bufOffsets), buf, arg);
+        b.restoreInsertionPoint(intertPoint);
       }
     }
     // Working here...

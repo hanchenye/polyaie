@@ -22,6 +22,20 @@ def MemRefExtDialect : Dialect {
 class MemRefExtOp<string mnemonic, list<OpTrait> traits = []> :
     Op<MemRefExtDialect, mnemonic, traits>;
 
-include "Ops.td"
+def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
+  let summary = "memory copy operation";
+  let description = [{
+    This operation represents the memory copy between global memory and local
+    memory, which should only be used in the procedure of compilation and should
+    not appear in the finalized IR of PolyAIE.
+  }];
+
+  let arguments = (ins I64ArrayAttr:$offsets, AnyMemRef:$source,
+                       AnyMemRef:$destination);
+
+  let assemblyFormat = [{
+    $source `:` type($source) `to` $destination `:` type($destination) attr-dict
+  }];
+}
 
 #endif // POLYAIE_MEMREFEXT_MEMREFEXT_TD
