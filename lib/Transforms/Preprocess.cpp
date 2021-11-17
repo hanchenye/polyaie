@@ -25,8 +25,13 @@ static FuncOp simplifyModuleAndFindTopFunc(ModuleOp mod,
     if (isa<LLVM::GlobalOp, LLVM::LLVMFuncOp>(op))
       op.erase();
     else if (auto func = dyn_cast<FuncOp>(op))
-      if (func.getName() == topFuncName)
+      if (func.getName() == topFuncName) {
+        for (auto argType : func.getArgumentTypes())
+          if (auto memrefType = argType.dyn_cast<MemRefType>())
+            if (!memrefType.hasStaticShape())
+              emitError(func.getLoc(), "has dynamic shaped argument");
         topFunc = func;
+      }
   }
   return topFunc;
 }

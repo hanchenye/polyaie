@@ -31,7 +31,7 @@ def MemCpyKind: I32EnumAttr<"MemCpyKind", "", [Load, Store]> {
 def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
   let summary = "memory copy operation";
   let description = [{
-    This operation represents the memory copy between global memory and local
+    This operation represents the memory copy between external memory and local
     memory, which should only be used in the procedure of compilation and should
     not appear in the finalized IR of PolyAIE.
   }];
@@ -42,6 +42,12 @@ def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
   let assemblyFormat = [{
     $kind $source `:` type($source) `to` $destination `:` type($destination)
     attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    Value getLocalBuffer() {
+      return kind() == memrefext::MemCpyKind::Load ? destination() : source();
+    }
   }];
 }
 
