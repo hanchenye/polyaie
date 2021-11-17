@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/IR/Dialect.h"
+#include "polyaie/MemRefExt/MemRefExt.h"
 
 namespace mlir {
 namespace polyaie {
@@ -22,6 +23,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     mlir::AffineDialect,
     mlir::StandardOpsDialect,
     mlir::memref::MemRefDialect,
+    polyaie::memrefext::MemRefExtDialect,
     mlir::vector::VectorDialect,
     mlir::LLVM::LLVMDialect,
     xilinx::AIE::AIEDialect

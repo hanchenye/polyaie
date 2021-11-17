@@ -10,7 +10,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
-#include "polyaie/Passes.h"
+#include "polyaie/Transforms/Passes.h"
 #include "llvm/ADT/BitVector.h"
 
 using namespace mlir;

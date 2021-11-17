@@ -13,6 +13,7 @@ namespace mlir {
 namespace polyaie {
 
 LogicalResult exportHostKernel(ModuleOp module, llvm::raw_ostream &os);
+
 void registerExportHostKernel();
 
 //===----------------------------------------------------------------------===//

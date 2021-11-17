@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polyaie/Passes.h"
+#include "polyaie/Transforms/Passes.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -14,7 +14,7 @@ using namespace polyaie;
 
 namespace {
 #define GEN_PASS_REGISTRATION
-#include "polyaie/Passes.h.inc"
+#include "polyaie/Transforms/Passes.h.inc"
 } // namespace
 
 void polyaie::registerPolyAIEPassPipeline() {

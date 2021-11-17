@@ -7,7 +7,7 @@
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "polyaie/Passes.h"
+#include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
 using namespace polyaie;

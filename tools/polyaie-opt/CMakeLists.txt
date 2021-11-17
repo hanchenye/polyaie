@@ -10,5 +10,6 @@ target_link_libraries(polyaie-opt
   PRIVATE
   ${all_libs}
   AIE
+  MLIRMemRefExt
   MLIRPolyAIEPasses
   )

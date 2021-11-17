@@ -8,7 +8,7 @@
 #define POLYAIE_INITALLPASSES_H
 
 #include "mlir/InitAllPasses.h"
-#include "polyaie/Passes.h"
+#include "polyaie/Transforms/Passes.h"
 
 namespace mlir {
 namespace polyaie {
