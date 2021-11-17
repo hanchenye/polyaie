@@ -11,6 +11,7 @@
 #include "mlir/IR/OpImplementation.h"
 
 #include "polyaie/MemRefExt/MemRefExtDialect.h.inc"
+#include "polyaie/MemRefExt/MemRefExtEnums.h.inc"
 
 #define GET_OP_CLASSES
 #include "polyaie/MemRefExt/MemRefExt.h.inc"

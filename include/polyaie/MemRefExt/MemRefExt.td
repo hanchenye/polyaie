@@ -22,6 +22,12 @@ def MemRefExtDialect : Dialect {
 class MemRefExtOp<string mnemonic, list<OpTrait> traits = []> :
     Op<MemRefExtDialect, mnemonic, traits>;
 
+def Load: I32EnumAttrCase<"Load", 0>;
+def Store: I32EnumAttrCase<"Store", 1>;
+def MemCpyKind: I32EnumAttr<"MemCpyKind", "", [Load, Store]> {
+  let cppNamespace = "::mlir::polyaie::memrefext";
+}
+
 def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
   let summary = "memory copy operation";
   let description = [{
@@ -30,11 +36,12 @@ def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
     not appear in the finalized IR of PolyAIE.
   }];
 
-  let arguments = (ins I64ArrayAttr:$offsets, AnyMemRef:$source,
-                       AnyMemRef:$destination);
+  let arguments = (ins MemCpyKind:$kind, I64ArrayAttr:$offsets, 
+                       AnyMemRef:$source, AnyMemRef:$destination);
 
   let assemblyFormat = [{
-    $source `:` type($source) `to` $destination `:` type($destination) attr-dict
+    $kind $source `:` type($source) `to` $destination `:` type($destination)
+    attr-dict
   }];
 }
 

@@ -3,4 +3,5 @@ add_mlir_dialect_library(MLIRMemRefExt
 
   DEPENDS
   MLIRMemRefExtIncGen
+  MLIRMemRefExtEnumsIncGen
   )

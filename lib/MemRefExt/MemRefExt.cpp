@@ -18,9 +18,7 @@ void MemRefExtDialect::initialize() {
       >();
 }
 
-//===----------------------------------------------------------------------===//
-// Include Logics Generated from TableGen
-//===----------------------------------------------------------------------===//
+#include "polyaie/MemRefExt/MemRefExtEnums.cpp.inc"
 
 #define GET_OP_CLASSES
 #include "polyaie/MemRefExt/MemRefExt.cpp.inc"

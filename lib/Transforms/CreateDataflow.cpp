@@ -42,8 +42,9 @@ void CreateDataflow::runOnOperation() {
       if (argType.getRank() == 0) {
         auto buf = b.create<memref::AllocOp>(func.getLoc(), argType);
         arg.replaceAllUsesWith(buf);
-        b.create<memrefext::MemCpyOp>(func.getLoc(), b.getI64ArrayAttr({0}),
-                                      arg, buf);
+        b.create<memrefext::MemCpyOp>(func.getLoc(),
+                                      memrefext::MemCpyKind::Load,
+                                      b.getI64ArrayAttr({0}), arg, buf);
         continue;
       }
 
@@ -136,7 +137,7 @@ void CreateDataflow::runOnOperation() {
                                      argType.getAffineMaps());
       auto buf = b.create<memref::AllocOp>(func.getLoc(), bufType);
       arg.replaceAllUsesWith(buf);
-      b.create<memrefext::MemCpyOp>(func.getLoc(),
+      b.create<memrefext::MemCpyOp>(func.getLoc(), memrefext::MemCpyKind::Load,
                                     b.getI64ArrayAttr(bufOffsets), arg, buf);
 
       // Update memory access maps.
@@ -157,11 +158,11 @@ void CreateDataflow::runOnOperation() {
         auto intertPoint = b.saveInsertionPoint();
         b.setInsertionPoint(func.front().getTerminator());
         b.create<memrefext::MemCpyOp>(func.getLoc(),
+                                      memrefext::MemCpyKind::Store,
                                       b.getI64ArrayAttr(bufOffsets), buf, arg);
         b.restoreInsertionPoint(intertPoint);
       }
     }
-    // Working here...
   }
 }
 
