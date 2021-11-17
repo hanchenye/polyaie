@@ -41,7 +41,21 @@ def CreateDataflow : Pass<"polyaie-create-dataflow", "ModuleOp"> {
 
   let dependentDialects = [
     "mlir::AffineDialect", "mlir::StandardOpsDialect",
-    "mlir::memref::MemRefDialect"
+    "mlir::memref::MemRefDialect", "mlir::polyaie::memrefext::MemRefExtDialect"
+  ];
+}
+
+def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
+  let summary = "Print dataflow";
+  let description = [{
+    Print the call operations' dataflow graph of the module.
+  }];
+
+  let constructor = "mlir::polyaie::createPrintDataflowPass()";
+
+  let dependentDialects = [
+    "mlir::AffineDialect", "mlir::StandardOpsDialect",
+    "mlir::memref::MemRefDialect", "mlir::polyaie::memrefext::MemRefExtDialect"
   ];
 }
 

@@ -9,6 +9,9 @@ $ polyaie-opt 2mm.phism.mlir -polyaie-affine-preprocess="top-func-name=kernel_2m
 # $ scalehls-opt -simplify-affine-if -canonicalize
 $ polyaie-opt 2mm.phism.pre.mlir -polyaie-convert-to-aie > 2mm.phism.pre.aie.mlir
 
+$ polyaie-opt -polyaie-print-dataflow 2> df.gv
+$ dot -Tpng df.gv > df.png
+
 $ /home/hanchenye/workspace/mlir-aie/build/bin/aiecc.py \
     --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux 2mm.phism.pre.aie.mlir \
     -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp 2mm_test.cpp -o 2mm_test.elf

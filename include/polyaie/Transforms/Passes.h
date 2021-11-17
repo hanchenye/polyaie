@@ -12,6 +12,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Pass/Pass.h"
+#include "polyaie/MemRefExt/MemRefExt.h"
 #include <memory>
 
 namespace mlir {
@@ -32,6 +33,7 @@ struct PolyAIEPipelineOptions
 std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createCreateDataflowPass();
+std::unique_ptr<Pass> createPrintDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
 
 void registerPolyAIEPassPipeline();
@@ -39,7 +41,7 @@ void registerPolyAIEPassPipeline();
 void registerPolyAIEPasses();
 
 #define GEN_PASS_CLASSES
-#include "polyaie/Passes.h.inc"
+#include "polyaie/Transforms/Passes.h.inc"
 
 } // namespace polyaie
 } // namespace mlir
