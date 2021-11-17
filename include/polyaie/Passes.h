@@ -21,9 +21,20 @@ class Pass;
 namespace mlir {
 namespace polyaie {
 
+struct PolyAIEPipelineOptions
+    : public PassPipelineOptions<PolyAIEPipelineOptions> {
+  Option<std::string> pipelineTopFuncName{
+      *this, "top-func-name",
+      ::llvm::cl::desc("Specify the top function of the program"),
+      ::llvm::cl::init("main")};
+};
+
 std::unique_ptr<Pass> createPreprocessPass();
+std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createCreateDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
+
+void registerPolyAIEPassPipeline();
 
 void registerPolyAIEPasses();
 

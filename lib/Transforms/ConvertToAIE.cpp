@@ -13,7 +13,7 @@ using namespace mlir;
 using namespace polyaie;
 
 namespace {
-struct ConvertToAIE : public ConvertToAIEBase<ConvertToAIE> {
+struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   void runOnOperation() override;
 };
 } // namespace

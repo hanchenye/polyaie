@@ -237,7 +237,13 @@ static void removeRedundantFuncs(ModuleOp mod) {
 }
 
 namespace {
-struct Preprocess : public PreprocessBase<Preprocess> {
+struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
+  Preprocess() = default;
+  Preprocess(const Preprocess &) {}
+  Preprocess(const PolyAIEPipelineOptions &opts) {
+    topFuncName = opts.pipelineTopFuncName;
+  }
+
   void runOnOperation() override {
     auto mod = getOperation();
     auto topFunc = simplifyModuleAndFindTopFunc(mod, topFuncName);
@@ -263,4 +269,8 @@ struct Preprocess : public PreprocessBase<Preprocess> {
 
 std::unique_ptr<Pass> polyaie::createPreprocessPass() {
   return std::make_unique<Preprocess>();
+}
+std::unique_ptr<Pass>
+polyaie::createPreprocessPass(const PolyAIEPipelineOptions &opts) {
+  return std::make_unique<Preprocess>(opts);
 }

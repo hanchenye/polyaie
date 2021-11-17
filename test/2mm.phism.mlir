@@ -1,4 +1,4 @@
-// RUN: polyaie-opt %s -polyaie-preprocess="top-func-name=kernel_2mm" -polyaie-create-dataflow -polyaie-convert-to-aie | FileCheck %s
+// RUN: polyaie-opt %s -polyaie-pipeline="top-func-name=kernel_2mm" | FileCheck %s
 
 // CHECK: module
 
