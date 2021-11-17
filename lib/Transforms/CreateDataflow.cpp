@@ -126,7 +126,8 @@ void CreateDataflow::runOnOperation() {
 
       // For single-element memory, directly create a local buffer for it and
       // create a new memory copy.
-      if (argType.getRank() == 0) {
+      if (argType.getRank() == 0 ||
+          (argType.getRank() == 1 && argType.getDimSize(0) == 1)) {
         auto buf = b.create<memref::AllocOp>(func.getLoc(), argType);
         arg.replaceAllUsesWith(buf);
         b.create<memrefext::MemCpyOp>(func.getLoc(),

@@ -202,6 +202,11 @@ static void inlineFuncIntoModule(FuncOp func) {
   PassManager pm(mod.getContext(), "module");
   pm.addPass(createCanonicalizerPass());
   (void)pm.run(mod);
+
+  // FIXME: Temporary solution.
+  for (auto store :
+       llvm::make_early_inc_range(mod.getOps<mlir::AffineStoreOp>()))
+    store.erase();
 }
 
 /// Eliminate all funcions that are redundant.
