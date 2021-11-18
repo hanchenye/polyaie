@@ -83,8 +83,6 @@ class MemorySegmentList {
 public:
   MemorySegmentList(Value memory = nullptr) : memory(memory) {}
 
-  bool isEmpty() const { return segments.empty(); }
-
   Optional<MemorySegment> getSegment(const MemorySegment &segment) const {
     assert(memory == segment.getMemory());
     auto result = llvm::find(segments, segment);
@@ -101,7 +99,10 @@ public:
     return false;
   }
 
-  // private:
+  bool isEmpty() const { return segments.empty(); }
+  ArrayRef<MemorySegment> getSegments() const { return segments; }
+
+private:
   Value memory;
   SmallVector<MemorySegment, 8> segments;
 };
@@ -195,7 +196,7 @@ void CreateDataflow::runOnOperation() {
 
         } else if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
           bufShape.push_back(1);
-          bufOffsets.push_back(0);
+          bufOffsets.push_back(constExpr.getValue());
           results.push_back(0);
 
         } else if (auto binaryExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
@@ -342,6 +343,15 @@ void CreateDataflow::runOnOperation() {
       }
     }
   }
+
+  // Create memory copy operations between result buffers and global memories.
+  for (auto pair : segListMap)
+    for (auto const &seg : pair.second.getSegments()) {
+      b.setInsertionPointToEnd(mod.getBody());
+      b.create<memrefext::MemCpyOp>(mod.getLoc(), memrefext::MemCpyKind::Store,
+                                    b.getI64ArrayAttr(seg.getOffsets()),
+                                    seg.getSegment(), seg.getMemory());
+    }
 }
 
 std::unique_ptr<Pass> polyaie::createCreateDataflowPass() {
