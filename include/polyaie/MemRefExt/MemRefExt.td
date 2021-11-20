@@ -22,6 +22,33 @@ def MemRefExtDialect : Dialect {
 class MemRefExtOp<string mnemonic, list<OpTrait> traits = []> :
     Op<MemRefExtDialect, mnemonic, traits>;
 
+def LoadBufferOp : MemRefExtOp<"load_buffer",
+    [SameOperandsAndResultElementType]> {
+  let summary = "load buffer operation";
+  let description = [{
+    This operation loads data from memory to a buffer.
+  }];
+
+  let arguments = (ins I64ArrayAttr:$offsets, I64ArrayAttr:$lengths,
+                       AnyMemRef:$memory);
+  let results = (outs AnyMemRef:$buffer);
+
+  let verifier = [{ return ::verify(*this); }];
+}
+
+def StoreBufferOp : MemRefExtOp<"store_buffer",
+    [SameOperandsElementType]> {
+  let summary = "store buffer operation";
+  let description = [{
+    This operation stores data from buffer to a memory.
+  }];
+
+  let arguments = (ins I64ArrayAttr:$offsets, I64ArrayAttr:$lengths,
+                       AnyMemRef:$memory, AnyMemRef:$buffer);
+
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def Load: I32EnumAttrCase<"Load", 0>;
 def Store: I32EnumAttrCase<"Store", 1>;
 def MemCpyKind: I32EnumAttr<"MemCpyKind", "", [Load, Store]> {
