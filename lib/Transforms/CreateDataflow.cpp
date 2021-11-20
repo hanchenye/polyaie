@@ -20,91 +20,57 @@ struct CreateDataflow : public polyaie::CreateDataflowBase<CreateDataflow> {
 };
 } // namespace
 
-namespace {
-class MemorySegment {
-public:
-  MemorySegment(const Value memory, const Value segment,
-                const ArrayRef<int64_t> offsetsRef)
-      : memory(memory), segment(segment) {
-    for (auto zip : llvm::zip(offsetsRef, getShape(),
-                              memory.getType().cast<MemRefType>().getShape())) {
-      auto offset = std::get<0>(zip);
-      auto length = std::get<1>(zip);
-      auto size = std::get<2>(zip);
-      assert(offset >= 0 && length > 0 & offset + length <= size &&
-             "illegal memory segment definition");
-    }
-    offsets.append(offsetsRef.begin(), offsetsRef.end());
-  }
+/// Inference the buffer offsets from the input `type`.
+static SmallVector<int64_t, 4> getBufferOffsets(MemRefType type) {
+  auto affineMaps = type.getAffineMaps();
+  if (affineMaps.empty())
+    return SmallVector<int64_t, 4>(type.getRank(), 0);
 
-  MemorySegment(const MemorySegment &RHS) { operator=(RHS); }
-
-  MemorySegment &operator=(const MemorySegment &RHS) {
-    this->memory = RHS.memory;
-    this->segment = RHS.segment;
-    this->offsets = RHS.offsets;
-    return *this;
-  }
-
-  bool operator==(const MemorySegment &RHS) const {
-    return this->memory == RHS.memory && this->offsets == RHS.offsets &&
-           this->getType() == RHS.getType();
-  }
-  bool operator!=(const MemorySegment &RHS) const { return !(*this == RHS); }
-
-  Value getMemory() const { return memory; }
-  Value getSegment() const { return segment; }
-  ArrayRef<int64_t> getOffsets() const { return offsets; }
-
-  MemRefType getType() const { return segment.getType().cast<MemRefType>(); }
-  ArrayRef<int64_t> getShape() const { return getType().getShape(); }
-
-private:
-  Value memory;
-  Value segment;
   SmallVector<int64_t, 4> offsets;
-};
+  for (auto expr : affineMaps.back().getResults()) {
+    // If the expression is a dimension value, the offset is 0.
+    if (expr.getKind() == AffineExprKind::DimId) {
+      offsets.push_back(0);
+      continue;
+    }
 
-static bool haveNoIntersection(const MemorySegment &LHS,
-                               const MemorySegment &RHS) {
-  auto compare =
-      [&](std::tuple<const int64_t &, const int64_t &, const int64_t &> zip) {
-        return std::get<0>(zip) >= std::get<1>(zip) + std::get<2>(zip);
-      };
-  return llvm::any_of(
-             llvm::zip(LHS.getOffsets(), RHS.getOffsets(), RHS.getShape()),
-             compare) ||
-         llvm::any_of(
-             llvm::zip(RHS.getOffsets(), LHS.getOffsets(), LHS.getShape()),
-             compare);
+    // If the expression is a binary add, the offset is the constant operator.
+    if (expr.getKind() == AffineExprKind::Add) {
+      auto addExpr = expr.cast<AffineBinaryOpExpr>();
+      if (addExpr.getLHS().getKind() == AffineExprKind::DimId)
+        if (auto constExpr = addExpr.getRHS().dyn_cast<AffineConstantExpr>()) {
+          offsets.push_back(constExpr.getValue());
+          continue;
+        }
+    }
+
+    // Otherwise, the memref type is illegal.
+    offsets.push_back(-1);
+  }
+  return offsets;
 }
 
-class MemorySegmentList {
+namespace {
+/// This is a class used to maintain a list of buffers with different types.
+class BufferList {
 public:
-  MemorySegmentList(Value memory = nullptr) : memory(memory) {}
-
-  Optional<MemorySegment> getSegment(const MemorySegment &segment) const {
-    assert(memory == segment.getMemory());
-    auto result = llvm::find(segments, segment);
-    return result != segments.end() ? *result : Optional<MemorySegment>();
+  Value getBuffer(Type type) const {
+    auto existBufPtr =
+        llvm::find_if(impl, [&](Value v) { return v.getType() == type; });
+    return existBufPtr != impl.end() ? *existBufPtr : nullptr;
   }
 
-  bool updateSegment(const MemorySegment &segment) {
-    if (getSegment(segment).hasValue())
-      return llvm::find(segments, segment)->operator=(segment), true;
-    else if (llvm::all_of(segments, [&](MemorySegment &RHS) {
-               return haveNoIntersection(segment, RHS);
-             }))
-      return segments.push_back(segment), true;
-    return false;
+  void updateBuffer(Value newBuf) {
+    auto oldBufPtr = llvm::find_if(
+        impl, [&](Value v) { return v.getType() == newBuf.getType(); });
+    if (oldBufPtr != impl.end())
+      impl[oldBufPtr - impl.begin()] = newBuf;
+    else
+      impl.push_back(newBuf);
   }
-
-  bool isEmpty() const { return segments.empty(); }
-  ArrayRef<MemorySegment> getSegments() const { return segments; }
 
 private:
-  Value memory;
-  SmallVector<MemorySegment, 8> segments;
+  SmallVector<Value, 32> impl;
 };
 } // namespace
 
@@ -112,34 +78,44 @@ void CreateDataflow::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
 
-  // Create local buffers and memory copies for each function.
-  for (auto func : mod.getOps<FuncOp>()) {
-    b.setInsertionPointToStart(&func.front());
-    for (auto arg : func.getArguments()) {
-      if (arg.use_empty())
-        continue;
+  // This loop first reduces the sizes of memrefs passed to each function: (1)
+  // conduct loop analysis to determine which tile of a memref is accessed in a
+  // function, (2) create a corresponding LoadBufferOp to load the tile out from
+  // the original memref, and (3) pass the loaded buffer to the function. Also,
+  // if a function stores data to a buffer, we (1) return the buffer as the
+  // result of the function and (2) create a corresponding StoreBufferOp to
+  // store the tile in the buffer back to the original memref.
+  for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
+    auto func = mod.lookupSymbol<FuncOp>(call.callee());
 
+    SmallVector<Type, 8> inputTypes;
+    SmallVector<Value, 2> resultBufs;
+    SmallVector<Value, 2> resultMems;
+    for (auto arg : func.getArguments()) {
+      // Get the type of the current argument.
       auto argType = arg.getType().dyn_cast<MemRefType>();
       if (!argType) {
         emitError(func.getLoc(), "function must be fully bufferized");
         return signalPassFailure();
       }
+      auto mem = call.getOperand(arg.getArgNumber());
 
-      // For single-element memory, directly create a local buffer for it and
-      // create a new memory copy.
-      if (argType.getRank() == 0 ||
-          (argType.getRank() == 1 && argType.getDimSize(0) == 1)) {
-        auto buf = b.create<memref::AllocOp>(func.getLoc(), argType);
-        arg.replaceAllUsesWith(buf);
-        b.create<memrefext::MemCpyOp>(func.getLoc(),
-                                      memrefext::MemCpyKind::Load,
-                                      b.getI64ArrayAttr({0}), arg, buf);
+      // Create a LoadBufferOp with the same type to buffer any single-element
+      // memory. We assume single-element memory will never be updated.
+      if (argType.getRank() == 0) {
+        b.setInsertionPoint(call);
+        auto buf = b.create<memrefext::LoadBufferOp>(
+            b.getUnknownLoc(), argType, b.getI64ArrayAttr({0}),
+            b.getI64ArrayAttr({1}), mem);
+        call.setOperand(arg.getArgNumber(), buf);
+        inputTypes.push_back(argType);
         continue;
       }
 
       // We assume that after the compilation of phism, all users have the same
       // memory access pattern. Therefore, we only collect the operands and
       // affine map of the first user.
+      // TODO: Make this more robust.
       auto firstUser = *arg.getUsers().begin();
       SmallVector<Value, 4> operands;
       AffineMap map;
@@ -163,7 +139,8 @@ void CreateDataflow::runOnOperation() {
           firstUser->emitOpError("operand is not a loop induction variable");
           return signalPassFailure();
         }
-        // TODO: We assume all loops are normalized and have constant bounds.
+        // We assume all loops are normalized and have constant bounds.
+        // TODO: Make this more flexible.
         if (!loop.hasConstantLowerBound() || !loop.hasConstantUpperBound() ||
             loop.getConstantLowerBound() != 0 ||
             loop.getConstantUpperBound() <= 0 || loop.getStep() != 1) {
@@ -173,185 +150,172 @@ void CreateDataflow::runOnOperation() {
         dimSizeMap[idx++] = loop.getConstantUpperBound();
       }
 
-      // Construct the local buffer shape and new memory access map.
+      // Collect the buffer lengths, offsets, and layout affine expressions.
+      // Also, collect the memory access affine expressions for affine load and
+      // store operations.
       SmallVector<AffineExpr, 4> symbolRepls;
       for (unsigned i = 0, e = map.getNumInputs(); i < e; ++i)
         if (i >= map.getNumDims())
           symbolRepls.push_back(b.getAffineDimExpr(i));
 
-      SmallVector<int64_t, 4> bufShape;
+      SmallVector<int64_t, 4> bufLengths;
       SmallVector<int64_t, 4> bufOffsets;
-      SmallVector<AffineExpr, 4> results;
+      SmallVector<AffineExpr, 4> bufAffineExprs;
+      SmallVector<AffineExpr, 4> accessAffineExprs;
+      unsigned position = 0;
       for (auto expr : map.getResults()) {
         // Replace symbols with dims because is seems Polygeist will make all
         // memory operation's inputs symbols.
         expr = expr.replaceSymbols(symbolRepls);
 
-        // TODO: We assume all memory indices are in th form of `dim(n) + m`,
-        // where `m` as the offset could be any constant number.
+        // We assume all memory indices are in th form of `dim(n) + m`, where
+        // `m` as the offset could be any constant number.
         if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
-          bufShape.push_back(dimSizeMap[dimExpr.getPosition()]);
+          bufLengths.push_back(dimSizeMap[dimExpr.getPosition()]);
           bufOffsets.push_back(0);
-          results.push_back(dimExpr);
+          bufAffineExprs.push_back(b.getAffineDimExpr(position++));
+          accessAffineExprs.push_back(dimExpr);
 
         } else if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-          bufShape.push_back(1);
+          bufLengths.push_back(1);
           bufOffsets.push_back(constExpr.getValue());
-          results.push_back(0);
+          bufAffineExprs.push_back(b.getAffineDimExpr(position++) +
+                                   constExpr.getValue());
+          accessAffineExprs.push_back(b.getAffineConstantExpr(0));
 
         } else if (auto binaryExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+          // TODO: Make this more flexible.
           if (binaryExpr.getKind() != AffineExprKind::Add ||
               binaryExpr.getLHS().getKind() != AffineExprKind::DimId ||
               binaryExpr.getRHS().getKind() != AffineExprKind::Constant) {
             firstUser->emitOpError("illegal memory access pattern");
             return signalPassFailure();
           }
-          auto dimExprLHS = binaryExpr.getLHS().dyn_cast<AffineDimExpr>();
-          auto constExprRHS =
-              binaryExpr.getRHS().dyn_cast<AffineConstantExpr>();
-          bufShape.push_back(dimSizeMap[dimExprLHS.getPosition()]);
+          auto dimExprLHS = binaryExpr.getLHS().cast<AffineDimExpr>();
+          auto constExprRHS = binaryExpr.getRHS().cast<AffineConstantExpr>();
+
+          bufLengths.push_back(dimSizeMap[dimExprLHS.getPosition()]);
           bufOffsets.push_back(constExprRHS.getValue());
-          results.push_back(dimExprLHS);
+          bufAffineExprs.push_back(b.getAffineDimExpr(position++) +
+                                   constExprRHS.getValue());
+          accessAffineExprs.push_back(dimExprLHS);
 
         } else {
           firstUser->emitOpError("illegal memory access pattern");
           return signalPassFailure();
         }
       }
-      auto newMap =
-          AffineMap::get(map.getNumInputs(), 0, results, map.getContext());
 
-      // Create a local buffer for the memory and a new memory copy.
-      auto bufType = MemRefType::get(bufShape, argType.getElementType(),
-                                     argType.getAffineMaps());
-      auto buf = b.create<memref::AllocOp>(func.getLoc(), bufType);
-      arg.replaceAllUsesWith(buf);
-      b.create<memrefext::MemCpyOp>(func.getLoc(), memrefext::MemCpyKind::Load,
-                                    b.getI64ArrayAttr(bufOffsets), arg, buf);
+      // Construct the buffer type and create the LoadBufferOp.
+      // TODO: Support memrefs with layout map? How?
+      if (!argType.getAffineMaps().empty()) {
+        call.emitOpError("memory isn't expected to have layout map");
+        return signalPassFailure();
+      }
+      auto bufAffineMap = AffineMap::get(map.getNumResults(), 0, bufAffineExprs,
+                                         map.getContext());
+      auto bufType =
+          MemRefType::get(bufLengths, argType.getElementType(), {bufAffineMap});
+      auto bufOffsetsAttr = b.getI64ArrayAttr(bufOffsets);
+      auto bufLengthsAttr = b.getI64ArrayAttr(bufLengths);
 
-      // Update memory access maps.
-      auto mapAttr = AffineMapAttr::get(newMap);
+      b.setInsertionPoint(call);
+      auto buf = b.create<memrefext::LoadBufferOp>(
+          b.getUnknownLoc(), bufType, bufOffsetsAttr, bufLengthsAttr, mem);
+      call.setOperand(arg.getArgNumber(), buf);
+      inputTypes.push_back(bufType);
+      // `arg` is now representing the internal buffer.
+      arg.setType(bufType);
+
+      // Update memory access maps of all affine load and store operations.
+      auto accessAffineMap = AffineMap::get(
+          map.getNumInputs(), 0, accessAffineExprs, map.getContext());
+      auto accessMapAttr = AffineMapAttr::get(accessAffineMap);
       bool hasStore = false;
-      for (auto user : buf.getResult().getUsers()) {
+      for (auto user : arg.getUsers()) {
         if (auto loadOp = dyn_cast<mlir::AffineLoadOp>(user)) {
-          loadOp->setAttr(loadOp.getMapAttrName(), mapAttr);
+          loadOp->setAttr(loadOp.getMapAttrName(), accessMapAttr);
         } else if (auto storeOp = dyn_cast<mlir::AffineStoreOp>(user)) {
-          storeOp->setAttr(storeOp.getMapAttrName(), mapAttr);
+          storeOp->setAttr(storeOp.getMapAttrName(), accessMapAttr);
           hasStore = true;
         }
       }
 
-      // If there are store operations, create a copy the contents in buffer
-      // back to memory in the end.
+      // We need to return the local buffer if it is updated.
       if (hasStore) {
-        auto intertPoint = b.saveInsertionPoint();
-        b.setInsertionPoint(func.front().getTerminator());
-        b.create<memrefext::MemCpyOp>(func.getLoc(),
-                                      memrefext::MemCpyKind::Store,
-                                      b.getI64ArrayAttr(bufOffsets), buf, arg);
-        b.restoreInsertionPoint(intertPoint);
+        resultBufs.push_back(arg);
+        resultMems.push_back(mem);
       }
-    }
-  }
-
-  // Construct a map from memory to its segment list.
-  DenseMap<Value, MemorySegmentList> segListMap;
-  for (auto alloc : mod.getOps<memref::AllocOp>())
-    segListMap[alloc.getResult()] = MemorySegmentList(alloc.getResult());
-
-  // Create dataflow between calls.
-  for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
-    auto callee = mod.lookupSymbol<FuncOp>(call.callee());
-
-    SmallVector<Type, 8> newInputTypes;
-    SmallVector<Type, 2> newResultTypes;
-    SmallVector<Value, 8> newReturnOperands;
-    SmallVector<MemorySegment, 2> segsToUpdate;
-    unsigned idx = 0;
-    for (auto mem : call.getOperands()) {
-      auto const &segList = segListMap[mem];
-
-      auto memref = callee.getArgument(idx);
-      auto loadOp = memrefext::MemCpyOp();
-      auto storeOp = memrefext::MemCpyOp();
-      for (auto user : memref.getUsers()) {
-        auto memcpyOp = dyn_cast<memrefext::MemCpyOp>(user);
-        if (!memcpyOp) {
-          user->emitOpError("user must be memory copy operation");
-          return signalPassFailure();
-        }
-        if (memcpyOp.kind() == memrefext::MemCpyKind::Load)
-          loadOp = memcpyOp;
-        else
-          storeOp = memcpyOp;
-      }
-
-      auto buf = loadOp.getLocalBuffer();
-      SmallVector<int64_t, 4> offsets(
-          llvm::map_range(loadOp.offsets(), [&](Attribute attr) {
-            return attr.dyn_cast<IntegerAttr>().getInt();
-          }));
-      auto optSeg = segList.getSegment(MemorySegment(mem, buf, offsets));
-
-      // If the segment exists in the memory segment list, that means we need to
-      // update the input to the segment memref.
-      if (optSeg.hasValue()) {
-        auto seg = optSeg.getValue();
-        call.setOperand(idx, seg.getSegment());
-        memref.setType(seg.getType());
-        newInputTypes.push_back(seg.getType());
-
-        SmallVector<int64_t, 4> newOffsets(offsets.size(), 0);
-        loadOp->setAttr("offsets", b.getI64ArrayAttr(newOffsets));
-      } else {
-        newInputTypes.push_back(memref.getType());
-      }
-
-      // If there is store operation, return the local buffer as output and
-      // update the memory segment list.
-      if (storeOp) {
-        newResultTypes.push_back(buf.getType());
-        newReturnOperands.push_back(buf);
-        segsToUpdate.push_back(MemorySegment(mem, buf, offsets));
-        storeOp.erase();
-      }
-      ++idx;
     }
 
     // Update callee function type.
-    callee.setType(b.getFunctionType(newInputTypes, newResultTypes));
+    SmallVector<Type, 2> resultTypes;
+    for (auto result : resultBufs)
+      resultTypes.push_back(result.getType());
+    func.setType(b.getFunctionType(inputTypes, resultTypes));
 
     // Update return operation.
-    auto returnOp = dyn_cast<ReturnOp>(callee.front().getTerminator());
+    auto returnOp = cast<ReturnOp>(func.front().getTerminator());
     b.setInsertionPoint(returnOp);
-    b.create<ReturnOp>(returnOp.getLoc(), newReturnOperands);
+    b.create<ReturnOp>(returnOp.getLoc(), resultBufs);
     returnOp.erase();
 
-    // Update call operation.
+    // Update call operation with new operands and results.
     b.setInsertionPoint(call);
-    auto newCall = b.create<CallOp>(call.getLoc(), callee, call.getOperands());
+    auto newCall = b.create<CallOp>(call.getLoc(), func, call.getOperands());
     call.erase();
 
-    // Update memory segment list.
-    for (auto resultAndSeg : llvm::zip(newCall.getResults(), segsToUpdate)) {
-      auto seg = std::get<1>(resultAndSeg);
-      auto &segList = segListMap[seg.getMemory()];
-      if (!segList.updateSegment(MemorySegment(
-              seg.getMemory(), std::get<0>(resultAndSeg), seg.getOffsets()))) {
-        newCall.emitOpError("failed to update segment list");
-        return signalPassFailure();
-      }
+    // If there are store operations, create a StoreBufferOp to store buffer
+    // back to memory after the function call.
+    b.setInsertionPointAfter(newCall);
+    for (auto zip : llvm::zip(newCall.getResults(), resultMems)) {
+      auto bufType = std::get<0>(zip).getType().cast<MemRefType>();
+      b.create<memrefext::StoreBufferOp>(
+          b.getUnknownLoc(), b.getI64ArrayAttr(getBufferOffsets(bufType)),
+          b.getI64ArrayAttr(bufType.getShape()), std::get<1>(zip),
+          std::get<0>(zip));
     }
   }
 
-  // Create memory copy operations between result buffers and global memories.
-  for (auto pair : segListMap)
-    for (auto const &seg : pair.second.getSegments()) {
-      b.setInsertionPointToEnd(mod.getBody());
-      b.create<memrefext::MemCpyOp>(mod.getLoc(), memrefext::MemCpyKind::Store,
-                                    b.getI64ArrayAttr(seg.getOffsets()),
-                                    seg.getSegment(), seg.getMemory());
+  // Construct a map from memory to its buffer list.
+  DenseMap<Value, BufferList> bufListMap;
+  for (auto alloc : mod.getOps<memref::AllocOp>())
+    bufListMap[alloc.getResult()] = BufferList();
+
+  // Create dataflow between function calls.
+  for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
+    for (auto buf : call.getOperands()) {
+      auto loadOp = buf.getDefiningOp<memrefext::LoadBufferOp>();
+      auto &bufList = bufListMap[loadOp.memory()];
+
+      // Find the result buffer whether it exists.
+      auto resultBuf = llvm::find_if(call.getResults(), [&](OpResult r) {
+        auto storeOp = cast<memrefext::StoreBufferOp>(*r.getUsers().begin());
+        return r.getType() == buf.getType() &&
+               storeOp.memory() == loadOp.memory();
+      });
+
+      // Query the buffer list to check whether there is a buffer with the same
+      // type existing. If so, replace the buffer generated by LoadBufferOp with
+      // the exist buffer and erase the LoadBufferOp.
+      if (auto existBuf = bufList.getBuffer(buf.getType())) {
+        loadOp.replaceAllUsesWith(existBuf);
+        loadOp.erase();
+      }
+
+      // Update the buffer list with the current buffer if applicable.
+      if (resultBuf != call.getResults().end())
+        bufList.updateBuffer(*resultBuf);
     }
+  }
+
+  // As long as the buffer is used by operations other than a StoreBufferOp, the
+  // StoreBufferOp can be identified as redundant.
+  for (auto storeOp :
+       llvm::make_early_inc_range(mod.getOps<memrefext::StoreBufferOp>())) {
+    if (!llvm::hasSingleElement(storeOp.buffer().getUsers()))
+      storeOp.erase();
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createCreateDataflowPass() {
