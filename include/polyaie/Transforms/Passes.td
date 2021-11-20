@@ -59,10 +59,26 @@ def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
   ];
 }
 
+def Placement : Pass<"polyaie-placement", "ModuleOp"> {
+  let summary = "Place function calls to a physical location";
+  let description = [{
+    Find a physical location for each function call in the module using the
+    given strategy. Buffer size and routing distance (adjacent/non-adjacent) are
+    considered in wirestrength.
+  }];
+
+  let constructor = "mlir::polyaie::createPlacementPass()";
+
+  let dependentDialects = [
+    "mlir::AffineDialect", "mlir::StandardOpsDialect",
+    "mlir::memref::MemRefDialect", "mlir::polyaie::memrefext::MemRefExtDialect"
+  ];
+}
+
 def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
   let summary = "Convert to the logical-level IR of AIE";
   let description = [{
-    Placement, buffer allocation, routing, and physical locks materialization.
+    Buffer allocation, routing, and physical locks materialization.
   }];
 
   let constructor = "mlir::polyaie::createConvertToAIEPass()";

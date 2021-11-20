@@ -4,13 +4,8 @@
 ```sh
 $ python scripts/pb-flow.py --polymer --loop-transforms --dataset MINI example/polybench
 
-$ sed -E 's/arith.//g; s/f64/i32/g; s/mulf/muli/g; s/addf/addi/g; s/andi/and/g; s/0\.000000e\+00/0/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
-$ polyaie-opt 2mm.phism.mlir -polyaie-affine-preprocess="top-func-name=kernel_2mm" -canonicalize > 2mm.phism.pre.mlir
-# $ scalehls-opt -simplify-affine-if -canonicalize
-$ polyaie-opt 2mm.phism.pre.mlir -polyaie-convert-to-aie > 2mm.phism.pre.aie.mlir
-
-$ polyaie-opt -polyaie-print-dataflow 2> df.gv
-$ dot -Tpng df.gv > df.png
+$ polyaie-opt ../tmp/2mm-small/2mm.phism.mlir -polyaie-pipeline="top-func-name=kernel_2mm" -polyaie-print-dataflow  1> ../tmp/2mm-small/2mm.phism.pre.df.mlir 2> ../tmp/2mm-small/2mm.phism.pre.df.gv
+$ dot -Tpng ../tmp/2mm-small/2mm.phism.pre.df.gv > ../tmp/2mm-small/2mm.phism.pre.df.png
 
 $ /home/hanchenye/workspace/mlir-aie/build/bin/aiecc.py \
     --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux 2mm.phism.pre.aie.mlir \
@@ -40,10 +35,6 @@ $ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
 ```
 
 <!-- -affine-super-vectorize="virtual-vector-size=32" -->
-
-## TODO
-- Destination tile can only support two DMA channels (S2MM), this needs to be solved through (1) real dependency information (2) more advanced placement algorithm to avoid routing congestion.
-- How to use FPGA DMA? to transfer unchanged arrays?
 
 ## Quick Start
 ### 1. Install LLVM and MLIR
