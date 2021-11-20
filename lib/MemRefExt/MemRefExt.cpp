@@ -40,8 +40,13 @@ static LogicalResult verifyLoadStoreBufferOp(OpType op) {
     if (offsets.size() != 1 || lengths.size() != 1 || offsets.front() != 0 ||
         lengths.front() != 1)
       return op.emitOpError("illegal offsets or lengths attribute");
-  } else if (bufferType.getShape() != ArrayRef<int64_t>(lengths))
-    return op.emitOpError("illegal lengths attribute");
+  } else {
+    if (bufferType.getShape() != ArrayRef<int64_t>(lengths))
+      return op.emitOpError("illegal lengths attribute");
+    for (auto zip : llvm::zip(offsets, lengths, memoryType.getShape()))
+      if (std::get<0>(zip) + std::get<1>(zip) > std::get<2>(zip))
+        return op.emitOpError("exceeds memory boundary");
+  }
 
   return success();
 }
