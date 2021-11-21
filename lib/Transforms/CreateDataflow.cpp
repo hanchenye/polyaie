@@ -13,6 +13,7 @@
 
 using namespace mlir;
 using namespace polyaie;
+using namespace memrefext;
 
 namespace {
 struct CreateDataflow : public polyaie::CreateDataflowBase<CreateDataflow> {
@@ -104,9 +105,9 @@ void CreateDataflow::runOnOperation() {
       // memory. We assume single-element memory will never be updated.
       if (argType.getRank() == 0) {
         b.setInsertionPoint(call);
-        auto buf = b.create<memrefext::LoadBufferOp>(
-            b.getUnknownLoc(), argType, b.getI64ArrayAttr({0}),
-            b.getI64ArrayAttr({1}), mem);
+        auto buf = b.create<LoadBufferOp>(b.getUnknownLoc(), argType,
+                                          b.getI64ArrayAttr({0}),
+                                          b.getI64ArrayAttr({1}), mem);
         call.setOperand(arg.getArgNumber(), buf);
         inputTypes.push_back(argType);
         continue;
@@ -220,8 +221,8 @@ void CreateDataflow::runOnOperation() {
       auto bufLengthsAttr = b.getI64ArrayAttr(bufLengths);
 
       b.setInsertionPoint(call);
-      auto buf = b.create<memrefext::LoadBufferOp>(
-          b.getUnknownLoc(), bufType, bufOffsetsAttr, bufLengthsAttr, mem);
+      auto buf = b.create<LoadBufferOp>(b.getUnknownLoc(), bufType,
+                                        bufOffsetsAttr, bufLengthsAttr, mem);
       call.setOperand(arg.getArgNumber(), buf);
       inputTypes.push_back(bufType);
       // `arg` is now representing the internal buffer.
@@ -270,10 +271,10 @@ void CreateDataflow::runOnOperation() {
     b.setInsertionPointAfter(newCall);
     for (auto zip : llvm::zip(newCall.getResults(), resultMems)) {
       auto bufType = std::get<0>(zip).getType().cast<MemRefType>();
-      b.create<memrefext::StoreBufferOp>(
-          b.getUnknownLoc(), b.getI64ArrayAttr(getBufferOffsets(bufType)),
-          b.getI64ArrayAttr(bufType.getShape()), std::get<1>(zip),
-          std::get<0>(zip));
+      b.create<StoreBufferOp>(b.getUnknownLoc(),
+                              b.getI64ArrayAttr(getBufferOffsets(bufType)),
+                              b.getI64ArrayAttr(bufType.getShape()),
+                              std::get<1>(zip), std::get<0>(zip));
     }
   }
 
@@ -285,12 +286,12 @@ void CreateDataflow::runOnOperation() {
   // Create dataflow between function calls.
   for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
     for (auto buf : call.getOperands()) {
-      auto loadOp = buf.getDefiningOp<memrefext::LoadBufferOp>();
+      auto loadOp = buf.getDefiningOp<LoadBufferOp>();
       auto &bufList = bufListMap[loadOp.memory()];
 
-      // Find the result buffer whether it exists.
-      auto resultBuf = llvm::find_if(call.getResults(), [&](OpResult r) {
-        auto storeOp = cast<memrefext::StoreBufferOp>(*r.getUsers().begin());
+      // Find the result buffer if it exists.
+      auto resultBufPtr = llvm::find_if(call.getResults(), [&](OpResult r) {
+        auto storeOp = cast<StoreBufferOp>(*r.getUsers().begin());
         return r.getType() == buf.getType() &&
                storeOp.memory() == loadOp.memory();
       });
@@ -304,15 +305,17 @@ void CreateDataflow::runOnOperation() {
       }
 
       // Update the buffer list with the current buffer if applicable.
-      if (resultBuf != call.getResults().end())
-        bufList.updateBuffer(*resultBuf);
+      if (resultBufPtr != call.getResults().end())
+        bufList.updateBuffer(*resultBufPtr);
     }
   }
 
   // As long as the buffer is used by operations other than a StoreBufferOp, the
   // StoreBufferOp can be identified as redundant.
-  for (auto storeOp :
-       llvm::make_early_inc_range(mod.getOps<memrefext::StoreBufferOp>())) {
+  // FIXME: If a buffer is accessed by a function but not updated in the end,
+  // the buffer will be identified as redundant. But actually this is not the
+  // case, we should store all buffers that are updated back.
+  for (auto storeOp : llvm::make_early_inc_range(mod.getOps<StoreBufferOp>())) {
     if (!llvm::hasSingleElement(storeOp.buffer().getUsers()))
       storeOp.erase();
   }
