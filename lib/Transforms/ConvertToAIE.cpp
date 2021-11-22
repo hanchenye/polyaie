@@ -24,8 +24,6 @@ static void createMemBlocks(OpBuilder &b, Location loc, Block *dmaBlock,
                             Block *bdBlock, Block *endBlock, Value buf,
                             StringRef tokenName, int64_t tokenAcquire,
                             int64_t tokenRelease, DMAChan channel) {
-  auto insertPoint = b.saveInsertionPoint();
-
   // Create DMA start block.
   b.setInsertionPointToStart(dmaBlock);
   b.create<DMAStartOp>(loc, channel, bdBlock, endBlock);
@@ -43,12 +41,12 @@ static void createMemBlocks(OpBuilder &b, Location loc, Block *dmaBlock,
     b.setInsertionPointToStart(endBlock);
     b.create<xilinx::AIE::EndOp>(loc);
   }
-
-  b.restoreInsertionPoint(insertPoint);
 }
 
 static void createOrUpdateMemOp(OpBuilder &b, CopyBufferOp copyOp, TileOp tile,
                                 Value buf, DMAChan channel) {
+  auto insertPoint = b.saveInsertionPoint();
+
   // Extract token information.
   auto tokenName = copyOp->getAttrOfType<StringAttr>("aie.token").getValue();
   auto tokenAcquire =
@@ -60,16 +58,15 @@ static void createOrUpdateMemOp(OpBuilder &b, CopyBufferOp copyOp, TileOp tile,
     auto &endBlock = aieMem.body().back();
     auto &predDmaBlock = *std::prev(aieMem.body().end(), 3);
 
-    auto insertPoint = b.saveInsertionPoint();
     auto dmaBlock = b.createBlock(&endBlock);
     auto bdBlock = b.createBlock(&endBlock);
-    b.restoreInsertionPoint(insertPoint);
 
     auto predDma = cast<DMAStartOp>(&predDmaBlock.front());
     predDma.setSuccessor(dmaBlock, /*index=*/1);
 
     createMemBlocks(b, copyOp.getLoc(), dmaBlock, bdBlock, &endBlock, buf,
                     tokenName, tokenAcquire, tokenRelease, channel);
+
   } else {
     auto newAieMem = b.create<MemOp>(copyOp.getLoc(), tile);
 
@@ -80,6 +77,7 @@ static void createOrUpdateMemOp(OpBuilder &b, CopyBufferOp copyOp, TileOp tile,
     createMemBlocks(b, copyOp.getLoc(), &dmaBlock, &bdBlock, &endBlock, buf,
                     tokenName, tokenAcquire, tokenRelease, channel);
   }
+  b.restoreInsertionPoint(insertPoint);
 }
 
 void ConvertToAIE::runOnOperation() {
@@ -266,6 +264,12 @@ void ConvertToAIE::runOnOperation() {
       }
     }
 
+    // Move MemOp to the current insertion point.
+    if (auto aieMem = aieTile.getMemOp()) {
+      aieMem->remove();
+      b.insert(aieMem);
+    }
+
     // Generate a CoreOp and inline the contents of the function.
     auto aieCore = b.create<CoreOp>(call.getLoc(), aieTile);
     auto &coreBlock = aieCore.body().emplaceBlock();
@@ -289,12 +293,24 @@ void ConvertToAIE::runOnOperation() {
   }
 
   // Remove all redundant operations that are already converted.
-  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations()))
+  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
     if (isa<LoadBufferOp, StoreBufferOp, CopyBufferOp, TokenOp, WireOp, PLIOOp,
             ShimMuxOp, CallOp, FuncOp>(op)) {
       op.dropAllUses();
       op.erase();
     }
+    if (auto switchBox = dyn_cast<SwitchboxOp>(op)) {
+      if (&switchBox.getBody()->front() ==
+          switchBox.getBody()->getTerminator()) {
+        switchBox->dropAllUses();
+        switchBox->erase();
+      }
+    }
+  }
+  for (auto tile : llvm::make_early_inc_range(mod.getOps<TileOp>())) {
+    if (tile.result().use_empty())
+      tile.erase();
+  }
 
   // Localize constants.
   for (auto constant : llvm::make_early_inc_range(mod.getOps<ConstantOp>())) {

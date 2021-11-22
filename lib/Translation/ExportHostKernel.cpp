@@ -204,6 +204,10 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
       emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
                  memCpy.source(), /*isWrite=*/false);
 
+  os << R"XXX(
+  printf("Complete compute.\n");
+)XXX";
+
   os << "}\n";
 }
 
