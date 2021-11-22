@@ -13,6 +13,15 @@
 #include "polyaie/MemRefExt/MemRefExtDialect.h.inc"
 #include "polyaie/MemRefExt/MemRefExtEnums.h.inc"
 
+namespace mlir {
+namespace polyaie {
+
+/// Inference the buffer offsets from the input `type`.
+SmallVector<int64_t, 4> getBufferOffsets(MemRefType type);
+
+} // namespace polyaie
+} // namespace mlir
+
 #define GET_OP_CLASSES
 #include "polyaie/MemRefExt/MemRefExt.h.inc"
 

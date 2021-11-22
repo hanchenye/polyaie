@@ -21,6 +21,36 @@ void MemRefExtDialect::initialize() {
 
 #include "polyaie/MemRefExt/MemRefExtEnums.cpp.inc"
 
+/// Inference the buffer offsets from the input `type`.
+SmallVector<int64_t, 4> polyaie::getBufferOffsets(MemRefType type) {
+  auto affineMaps = type.getAffineMaps();
+  if (affineMaps.empty())
+    return SmallVector<int64_t, 4>(type.getRank(), 0);
+
+  SmallVector<int64_t, 4> offsets;
+  for (auto expr : affineMaps.back().getResults()) {
+    // If the expression is a dimension value, the offset is 0.
+    if (expr.getKind() == AffineExprKind::DimId) {
+      offsets.push_back(0);
+      continue;
+    }
+
+    // If the expression is a binary add, the offset is the constant operator.
+    if (expr.getKind() == AffineExprKind::Add) {
+      auto addExpr = expr.cast<AffineBinaryOpExpr>();
+      if (addExpr.getLHS().getKind() == AffineExprKind::DimId)
+        if (auto constExpr = addExpr.getRHS().dyn_cast<AffineConstantExpr>()) {
+          offsets.push_back(constExpr.getValue());
+          continue;
+        }
+    }
+
+    // Otherwise, the memref type is illegal.
+    offsets.push_back(-1);
+  }
+  return offsets;
+}
+
 template <class OpType>
 static LogicalResult verifyLoadStoreBufferOp(OpType op) {
   auto bufferType = op.buffer().getType().template cast<MemRefType>();

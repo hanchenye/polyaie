@@ -21,36 +21,6 @@ struct CreateDataflow : public polyaie::CreateDataflowBase<CreateDataflow> {
 };
 } // namespace
 
-/// Inference the buffer offsets from the input `type`.
-static SmallVector<int64_t, 4> getBufferOffsets(MemRefType type) {
-  auto affineMaps = type.getAffineMaps();
-  if (affineMaps.empty())
-    return SmallVector<int64_t, 4>(type.getRank(), 0);
-
-  SmallVector<int64_t, 4> offsets;
-  for (auto expr : affineMaps.back().getResults()) {
-    // If the expression is a dimension value, the offset is 0.
-    if (expr.getKind() == AffineExprKind::DimId) {
-      offsets.push_back(0);
-      continue;
-    }
-
-    // If the expression is a binary add, the offset is the constant operator.
-    if (expr.getKind() == AffineExprKind::Add) {
-      auto addExpr = expr.cast<AffineBinaryOpExpr>();
-      if (addExpr.getLHS().getKind() == AffineExprKind::DimId)
-        if (auto constExpr = addExpr.getRHS().dyn_cast<AffineConstantExpr>()) {
-          offsets.push_back(constExpr.getValue());
-          continue;
-        }
-    }
-
-    // Otherwise, the memref type is illegal.
-    offsets.push_back(-1);
-  }
-  return offsets;
-}
-
 namespace {
 /// This is a class used to maintain a list of buffers with different types.
 class BufferList {
