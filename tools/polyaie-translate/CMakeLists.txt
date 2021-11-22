@@ -16,5 +16,6 @@ target_link_libraries(polyaie-translate
   ${dialect_libs}
   ${translation_libs}
   AIE
+  MLIRMemRefExt
   MLIRPolyAIEExporters
   )

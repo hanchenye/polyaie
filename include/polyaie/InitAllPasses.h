@@ -23,7 +23,6 @@ inline void registerAllPasses() {
 
   // AIE passes.
   xilinx::AIE::registerAIEAssignBufferAddressesPass();
-  xilinx::AIE::registerAIECoreToLLVMPass();
   xilinx::AIE::registerAIECoreToStandardPass();
   xilinx::AIE::registerAIECreateCoresPass();
   xilinx::AIE::registerAIECreateLocksPass();
