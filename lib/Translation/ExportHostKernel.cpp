@@ -19,8 +19,57 @@ class HostKernelExporter : public ExporterBase {
 public:
   explicit HostKernelExporter(ExporterState &state) : ExporterBase(state) {}
   void exportHostKernel(ModuleOp mod);
+  void emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx, Value arg,
+                  Value buf, bool isWrite);
 };
 } // namespace
+
+void HostKernelExporter::emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx,
+                                    Value arg, Value buf, bool isWrite) {
+  auto bufType = buf.getType().dyn_cast<MemRefType>();
+  auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
+  auto bufRank = bufType.getRank();
+  auto bufOffsets = getBufferOffsets(bufType);
+
+  // Generate the loop head.
+  // TODO: Make this more robust. Now we assume we won't read and write buffer
+  // simultaneously in the host kernel.
+  if (bufRank)
+    indent() << "bufIdx = 0;\n";
+  unsigned ivIdx = 0;
+  for (auto dimSize : bufType.getShape()) {
+    auto ivName = "idx" + std::to_string(ivIdx++);
+    indent() << "for (int64_t " << ivName << " = 0; " << ivName << " < "
+             << dimSize << "; ++" << ivName << ")\n";
+    addIndent();
+  }
+
+  auto emitArgValue = [&]() {
+    os << "arg" << argIdx;
+    for (ivIdx = 0; ivIdx < bufRank; ++ivIdx) {
+      reduceIndent();
+      os << "[idx" << ivIdx;
+      auto offset = bufOffsets[ivIdx];
+      if (offset)
+        os << " + " << offset << "]";
+      else
+        os << "]";
+    }
+  };
+
+  // Generate the loop body.
+  if (isWrite) {
+    indent() << "mlir_write_buffer_" << bufName << "("
+             << (bufRank ? "bufIdx++" : "0") << ", ";
+    emitArgValue();
+    os << ");\n\n";
+  } else {
+    indent();
+    emitArgValue();
+    os << " = mlir_read_buffer_" << bufName << "("
+       << (bufRank ? "bufIdx++" : "0") << ");\n\n";
+  }
+}
 
 static StringRef emitType(Type type) {
   if (auto intType = type.dyn_cast<IntegerType>()) {
@@ -55,6 +104,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 #define XAIE_NUM_ROWS 8
 #define XAIE_NUM_COLS 50
 #define XAIE_ADDR_ARRAY_OFF 0x800
+
+#define LOCK_TIMEOUT 100
 
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
@@ -112,52 +163,46 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
   mlir_configure_dmas();
   mlir_initialize_locks();
 
+
   printf("Initialize buffers...\n");
 
 )XXX";
 
   // Clear the local memory of all tiles.
-  SmallVector<TileOp, 32> tiles(mod.getOps<TileOp>());
-  for (auto tile : tiles)
-    indent() << "ACDC_clear_tile_memory(TileInst[" << tile.col() << "]["
-             << tile.row() << "];\n";
-  indent() << "\n";
+  SmallVector<TileOp, 32> tiles;
+  for (auto tile : mod.getOps<TileOp>()) {
+    if (tile.getCoreOp()) {
+      indent() << "ACDC_clear_tile_memory(TileInst[" << tile.col() << "]["
+               << tile.row() << "]);\n";
+      tiles.push_back(tile);
+    }
+  }
+  os << "\n";
 
   // Initialize local memories.
+  indent() << "unsigned bufIdx;\n\n";
   for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
-    if (memCpy.source().getDefiningOp<memref::AllocOp>()) {
-      auto arg = memCpy.source();
-      auto buf = memCpy.target();
-      auto bufType = buf.getType().dyn_cast<MemRefType>();
-      auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
-      auto bufRank = bufType.getRank();
+    if (memCpy.source().getDefiningOp<memref::AllocOp>())
+      emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
+                 memCpy.target(), /*isWrite=*/true);
 
-      // Generate the loop head.
-      if (bufRank)
-        indent() << "unsigned " << bufName << "_idx = 0;\n";
-      unsigned ivIdx = 0;
-      for (auto dimSize : bufType.getShape()) {
-        auto ivName = "idx" + std::to_string(ivIdx++);
-        indent() << "for (int64_t " << ivName << " = 0; " << ivName << " < "
-                 << dimSize << "; ++" << ivName << ") {\n";
-        addIndent();
-      }
+  // Start the execution.
+  os << R"XXX(
+  printf("Start cores...\n");
+  mlir_start_cores();
 
-      // Generate the loop body.
-      indent() << "mlir_write_buffer_" << bufName << "(";
-      if (bufRank)
-        os << bufName << "_idx++";
-      else
-        os << "0";
-      os << ", arg" << argIdxMap[arg];
-      for (ivIdx = 0; ivIdx < bufRank; ++ivIdx) {
-        reduceIndent();
-        os << "[idx" << ivIdx << "]";
-      }
-      os << ");\n";
+)XXX";
 
-      indent() << "\n";
-    }
+  // TODO: Make this more robust.
+  auto lastTile = tiles.back();
+  indent() << "while (!XAieTile_LockAcquire(&(TileInst[" << lastTile.col()
+           << "][" << lastTile.row() << "]), 15, 1, LOCK_TIMEOUT)) {}\n\n";
+
+  // Write back results from local to global memory.
+  for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
+    if (memCpy.target().getDefiningOp<memref::AllocOp>())
+      emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
+                 memCpy.source(), /*isWrite=*/false);
 
   os << "}\n";
 }
