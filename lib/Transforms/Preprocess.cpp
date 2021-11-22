@@ -196,6 +196,7 @@ static void inlineFuncIntoModule(FuncOp func) {
   auto &funcOps = func.front().getOperations();
   modOps.splice(modOps.end(), funcOps, funcOps.begin(),
                 std::prev(funcOps.end()));
+  mod->setAttr("sym_name", func.sym_nameAttr());
   func.erase();
 
   // Canonicalize the whole module.

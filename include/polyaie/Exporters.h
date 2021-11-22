@@ -42,11 +42,6 @@ class ExporterBase {
 public:
   explicit ExporterBase(ExporterState &state) : state(state), os(state.os) {}
 
-  InFlightDiagnostic emitError(Operation *op, const Twine &message) {
-    state.encounteredError = true;
-    return op->emitError(message);
-  }
-
   raw_ostream &indent() { return os.indent(state.currentIndent); }
 
   void addIndent() { state.currentIndent += 2; }
