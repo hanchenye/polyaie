@@ -324,8 +324,8 @@ void ConvertToAIE::runOnOperation() {
     }
   }
 
-  // Lower LoadBufferOp and StoreBufferOp to general MemCpyOp.
   for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
+    // Lower LoadBufferOp and StoreBufferOp to general MemCpyOp.
     if (auto loadOp = dyn_cast<LoadBufferOp>(op)) {
       auto &use = *loadOp.buffer().use_begin();
       auto call = cast<CallOp>(use.getOwner());
@@ -353,6 +353,27 @@ void ConvertToAIE::runOnOperation() {
           storeOp.getLoc(), storeOp.offsets(),
           b.getI64ArrayAttr(SmallVector<int64_t>(rank, 0)), storeOp.lengths(),
           storeOp.memory(), buf);
+    }
+
+    // TODO: This is a quick solution to canonicalize token uses.
+    if (auto coreOp = dyn_cast<CoreOp>(op)) {
+      auto useTknOps = coreOp.body().front().getOps<UseTokenOp>();
+      unsigned idx = 0;
+      SmallVector<Operation *, 2> usesToErase;
+      for (auto useA : useTknOps) {
+        if (!useA.release())
+          continue;
+        for (auto useB : llvm::drop_begin(useTknOps, ++idx)) {
+          if (!useB.acquire() || useA.value() != useB.value() ||
+              useA.tokenName() != useB.tokenName())
+            continue;
+          usesToErase.push_back(useA);
+          usesToErase.push_back(useB);
+          break;
+        }
+      }
+      for (auto use : usesToErase)
+        use->erase();
     }
   }
 
