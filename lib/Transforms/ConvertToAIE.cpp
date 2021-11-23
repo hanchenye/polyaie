@@ -14,13 +14,15 @@ using namespace polyaie;
 using namespace memrefext;
 using namespace xilinx::AIE;
 
+using TokenInfo = std::tuple<StringAttr, unsigned, unsigned>;
+
 namespace {
 struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   void runOnOperation() override;
 
   /// Used to hold the token name, token acquire value, and token release value
   /// for each intermediate result.
-  DenseMap<Value, std::tuple<StringAttr, unsigned, unsigned>> tokInfoMap;
+  DenseMap<Value, TokenInfo> tokInfoMap;
 
   /// Map from argument to the corresponding BufferOp.
   DenseMap<BlockArgument, BufferOp> bufMap;
@@ -39,9 +41,9 @@ static bool isAdjacent(int64_t srcCol, int64_t srcRow, int64_t tgtCol,
   return (std::abs(srcCol - tgtCol) + std::abs(srcRow - tgtRow)) == 1;
 }
 
-static bool createMemCpyLoops(OpBuilder &b, StringRef tokName, unsigned tokValA,
-                              unsigned tokValR, TileOp srcTile, TileOp tgtTile,
-                              BufferOp srcBuf, BufferOp tgtBuf) {
+static bool createMemCpyLoops(OpBuilder &b, TileOp srcTile, TileOp tgtTile,
+                              BufferOp srcBuf, BufferOp tgtBuf,
+                              TokenInfo tokInfo) {
   // Extract location of target and source tiles.
   auto srcCol = srcTile.col();
   auto srcRow = srcTile.row();
@@ -58,6 +60,11 @@ static bool createMemCpyLoops(OpBuilder &b, StringRef tokName, unsigned tokValA,
   // buffers due to the AIE layout.
   if ((isW && !isEvenRow) || (isE && isEvenRow))
     return false;
+
+  // Extract token information.
+  auto tokName = std::get<0>(tokInfo).getValue();
+  auto tokValA = std::get<1>(tokInfo);
+  auto tokValR = std::get<2>(tokInfo);
 
   // Generate token acquire and release.
   b.setInsertionPointToStart(&tgtTile.getCoreOp().body().front());
@@ -81,12 +88,16 @@ static bool createMemCpyLoops(OpBuilder &b, StringRef tokName, unsigned tokValA,
 }
 
 static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
-                            Block *endBlock, BufferOp buf, StringRef tokName,
-                            unsigned tokValA, unsigned tokValR,
+                            Block *endBlock, BufferOp buf, TokenInfo tokInfo,
                             DMAChan channel) {
   // Create DMA start block.
   b.setInsertionPointToStart(dmaBlock);
   b.create<DMAStartOp>(b.getUnknownLoc(), channel, bdBlock, endBlock);
+
+  // Extract token information.
+  auto tokName = std::get<0>(tokInfo).getValue();
+  auto tokValA = std::get<1>(tokInfo);
+  auto tokValR = std::get<2>(tokInfo);
 
   // Create DMA descripter block.
   b.setInsertionPointToStart(bdBlock);
@@ -105,9 +116,8 @@ static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
   }
 }
 
-static void createOrUpdateMemOp(OpBuilder &b, StringRef tokName,
-                                unsigned tokValA, unsigned tokValR, TileOp tile,
-                                BufferOp buf, DMAChan channel) {
+static void createOrUpdateMemOp(OpBuilder &b, TileOp tile, BufferOp buf,
+                                TokenInfo tokInfo, DMAChan channel) {
   if (auto mem = tile.getMemOp()) {
     auto &endBlock = mem.body().back();
     auto &predDmaBlock = *std::prev(mem.body().end(), 3);
@@ -118,8 +128,7 @@ static void createOrUpdateMemOp(OpBuilder &b, StringRef tokName,
     auto predDma = cast<DMAStartOp>(&predDmaBlock.front());
     predDma.setSuccessor(dmaBlock, /*index=*/1);
 
-    fillMemOpBlocks(b, dmaBlock, bdBlock, &endBlock, buf, tokName, tokValA,
-                    tokValR, channel);
+    fillMemOpBlocks(b, dmaBlock, bdBlock, &endBlock, buf, tokInfo, channel);
 
   } else {
     // If MemOp has not been created, create a new one.
@@ -130,8 +139,7 @@ static void createOrUpdateMemOp(OpBuilder &b, StringRef tokName,
     auto &bdBlock = newMem.body().emplaceBlock();
     auto &endBlock = newMem.body().emplaceBlock();
 
-    fillMemOpBlocks(b, &dmaBlock, &bdBlock, &endBlock, buf, tokName, tokValA,
-                    tokValR, channel);
+    fillMemOpBlocks(b, &dmaBlock, &bdBlock, &endBlock, buf, tokInfo, channel);
   }
 }
 
@@ -167,7 +175,8 @@ void ConvertToAIE::runOnOperation() {
       b.setInsertionPoint(user);
       auto tok = b.create<TokenOp>(b.getUnknownLoc(), 0);
       auto tokName = "token" + std::to_string(tokIdx++);
-      tok->setAttr("sym_name", b.getStringAttr(tokName));
+      auto tokNameAttr = b.getStringAttr(tokName);
+      tok->setAttr("sym_name", tokNameAttr);
 
       // Propogate in the whole program to generate the token aquire/release
       // chain of the current buffer.
@@ -175,8 +184,7 @@ void ConvertToAIE::runOnOperation() {
       unsigned tokVal = 1;
       while (!worklist.empty()) {
         auto buf = worklist.pop_back_val();
-        auto bufTokVal =
-            tokInfoMap.count(buf) ? std::get<2>(tokInfoMap[buf]) : 0;
+        auto tokInfo = tokInfoMap.lookup(buf);
 
         for (auto &use : buf.getUses()) {
           // Similarly, always ignore StoreBufferOps.
@@ -187,21 +195,24 @@ void ConvertToAIE::runOnOperation() {
           auto func = mod.lookupSymbol<FuncOp>(call.callee());
           auto returnOp = cast<ReturnOp>(func.front().getTerminator());
 
+          auto arg = func.getArgument(use.getOperandNumber());
+          auto memTokVal = tokVal++;
+          tokInfoMap[arg] = {tokNameAttr, std::get<1>(tokInfo), memTokVal};
+
           // Acquire and release the current token.
           b.setInsertionPointToStart(&func.front());
-          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, bufTokVal,
+          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, memTokVal,
                                LockAction::Acquire);
 
           b.setInsertionPoint(returnOp);
-          auto funcTokVal = tokVal++;
-          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, funcTokVal,
+          auto coreTokVal = tokVal++;
+          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, coreTokVal,
                                LockAction::Release);
 
           // Find the result number of the buffer.
           if (auto resultBuf = getResultFromInput(use, func)) {
             // Record token name and acquire/release values.
-            tokInfoMap[resultBuf] = {b.getStringAttr(tokName), funcTokVal,
-                                     tokVal++};
+            tokInfoMap[resultBuf] = {tokNameAttr, coreTokVal, tokVal++};
 
             // Push back the result buffer into the worklist.
             worklist.push_back(resultBuf);
@@ -261,12 +272,6 @@ void ConvertToAIE::runOnOperation() {
       auto srcTile = tileMap[call];
       auto &srcChanIdx = MM2SChanMap[srcTile];
 
-      // Extract token information.
-      auto tokInfo = tokInfoMap[result];
-      auto tokName = std::get<0>(tokInfo).getValue();
-      auto tokValA = std::get<1>(tokInfo);
-      auto tokValR = std::get<2>(tokInfo);
-
       // Traverse all users to create MemOp or direct memory copy.
       bool hasDmaUses = false;
       for (auto &use : result.getUses()) {
@@ -277,48 +282,50 @@ void ConvertToAIE::runOnOperation() {
         // Retrieve TileOp and BufferOp of the successor.
         auto tgtCall = cast<CallOp>(use.getOwner());
         auto tgtFunc = mod.lookupSymbol<FuncOp>(tgtCall.callee());
-        auto tgtBuf = bufMap[tgtFunc.getArgument(use.getOperandNumber())];
+        auto tgtArg = tgtFunc.getArgument(use.getOperandNumber());
+
+        auto tgtBuf = bufMap[tgtArg];
         auto tgtTile = tileMap[tgtCall];
+        auto tgtTokInfo = tokInfoMap[tgtArg];
 
         // Create direct memory copy if current and successor tiles are adjacent
         // with each other.
         if (isAdjacent(srcTile.col(), srcTile.row(), tgtTile.col(),
                        tgtTile.row()) &&
-            createMemCpyLoops(b, tokName, tokValA, tokValR, srcTile, tgtTile,
-                              srcBuf, tgtBuf))
+            createMemCpyLoops(b, srcTile, tgtTile, srcBuf, tgtBuf, tgtTokInfo))
           continue;
 
         // Otherwise, we need to use switch boxes to establish the data delivery
         // between pred and target tiles.
         auto &tgtChanIdx = S2MMChanMap[tgtTile];
-
-        // TODO: Handle more than 2 input channels, is it possible?
+        // TODO: Handle more than 2 channels, is it possible?
         if (tgtChanIdx > 1) {
           call.emitOpError("has more than two S2MM channels");
           return signalPassFailure();
         }
 
-        // Create FlowOp connecting the source srcTile and current
-        // srcTile.
+        // Create FlowOp connecting the source srcTile and current srcTile.
         b.setInsertionPoint(tgtTile.getCoreOp());
         b.create<FlowOp>(b.getUnknownLoc(), srcTile, WireBundle::DMA,
                          srcChanIdx, tgtTile, WireBundle::DMA, tgtChanIdx);
 
         // Create or update MemOp for DMA descripters.
-        createOrUpdateMemOp(b, tokName, tokValA, tokValR, tgtTile, tgtBuf,
+        createOrUpdateMemOp(b, tgtTile, tgtBuf, tgtTokInfo,
                             tgtChanIdx ? DMAChan::S2MM1 : DMAChan::S2MM0);
         ++tgtChanIdx;
         hasDmaUses = true;
       }
 
       if (hasDmaUses) {
+        // TODO: Handle more than 2 channels, is it possible?
         if (srcChanIdx > 1) {
-          call.emitOpError("each AIE only has two MM2S channels");
+          call.emitOpError("has more than two MM2S channels");
           return signalPassFailure();
         }
 
         // Create or update MemOp for MM2S descripters.
-        createOrUpdateMemOp(b, tokName, tokValA, tokValR, srcTile, srcBuf,
+        auto srcTokInfo = tokInfoMap[result];
+        createOrUpdateMemOp(b, srcTile, srcBuf, srcTokInfo,
                             srcChanIdx ? DMAChan::MM2S1 : DMAChan::MM2S0);
         ++srcChanIdx;
       }

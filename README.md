@@ -5,22 +5,17 @@
 $ python scripts/pb-flow.py --polymer --loop-transforms --dataset MINI example/polybench
 
 $ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
-$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir > 2mm.phism.pre.df.place.aie.mlir
+$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir 1> 2mm.phism.pre.df.place.aie.mlir 2> 2mm.phism.pre.df.place.dot
 $ polyaie-translate -export-host-kernel 2mm.phism.pre.df.place.aie.mlir > 2mm.host.cpp
-$ sed -E -i '/memcpy/d; /alloc/d' 2mm.phism.pre.df.place.aie.mlir
 
-$ polyaie-opt 2mm.phism.mlir \
-    -polyaie-preprocess="top-func-name=kernel_2mm" \
-    -affine-loop-normalize -simplify-affine-structures -canonicalize \
-    -polyaie-create-dataflow -polyaie-placement -polyaie-print-dataflow \
-    1> 2mm.phism.pre.df.mlir 2> 2mm.phism.pre.df.dot
-$ dot -Tpng 2mm.phism.pre.df.dot > 2mm.phism.pre.df.png
+$ dot -Tpng 2mm.phism.pre.df.place.dot > 2mm.phism.pre.df.png
+$ sed -E -i 's/,\s#map[[:digit:]]//g; /memcpy/d; /alloc/d; /affine\_map/d' 2mm.phism.pre.df.place.aie.mlir
 
+$ source /tools/Xilinx/Vitis/2020.1/settings64.sh
 $ /home/hanchenye/workspace/mlir-aie/build/bin/aiecc.py \
     --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
     2mm.phism.pre.df.place.aie.mlir \
-    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ \
-    -I/home/hanchenye/workspace/mlir-aie/tmp/2mm-mini \
+    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ -I${PWD} \
     /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp \
     polybench.cpp 2mm.host.cpp 2mm.cpp -o 2mm.elf
 
