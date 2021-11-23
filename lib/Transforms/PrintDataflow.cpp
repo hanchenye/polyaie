@@ -45,7 +45,9 @@ template <> struct DOTGraphTraits<ModuleOp> : public DefaultDOTGraphTraits {
     // Reuse the print output for the node labels.
     std::string ostr;
     raw_string_ostream os(ostr);
-    os << dyn_cast<CallOp>(op).callee().rsplit("_").second;
+    os << op->getAttrOfType<IntegerAttr>("aie.col").getInt() << ", "
+       << op->getAttrOfType<IntegerAttr>("aie.row").getInt() << "\n";
+    // os << dyn_cast<CallOp>(op).callee().rsplit("_").second;
     return os.str();
   }
 };

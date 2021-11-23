@@ -4,7 +4,7 @@
 ```sh
 $ python scripts/pb-flow.py --polymer --loop-transforms --dataset MINI example/polybench
 
-$ sed -E 's/arith.//g; s/f64/f32/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
+$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir > 2mm.phism.pre.df.place.aie.mlir
 $ polyaie-translate -export-host-kernel 2mm.phism.pre.df.place.aie.mlir > 2mm.host.cpp
 $ sed -E -i '/memcpy/d; /alloc/d' 2mm.phism.pre.df.place.aie.mlir
@@ -12,7 +12,7 @@ $ sed -E -i '/memcpy/d; /alloc/d' 2mm.phism.pre.df.place.aie.mlir
 $ polyaie-opt 2mm.phism.mlir \
     -polyaie-preprocess="top-func-name=kernel_2mm" \
     -affine-loop-normalize -simplify-affine-structures -canonicalize \
-    -polyaie-create-dataflow -polyaie-print-dataflow \
+    -polyaie-create-dataflow -polyaie-placement -polyaie-print-dataflow \
     1> 2mm.phism.pre.df.mlir 2> 2mm.phism.pre.df.dot
 $ dot -Tpng 2mm.phism.pre.df.dot > 2mm.phism.pre.df.png
 

@@ -56,7 +56,7 @@ static bool createMemCpyLoops(OpBuilder &b, StringRef tokName, unsigned tokValA,
 
   // Although they are ajacent, but the target tile cannot access two local
   // buffers due to the AIE layout.
-  if ((isW && isEvenRow) || (isE && !isEvenRow))
+  if ((isW && !isEvenRow) || (isE && isEvenRow))
     return false;
 
   // Generate token acquire and release.
@@ -193,13 +193,14 @@ void ConvertToAIE::runOnOperation() {
                                LockAction::Acquire);
 
           b.setInsertionPoint(returnOp);
-          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokVal,
+          auto funcTokVal = tokVal++;
+          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, funcTokVal,
                                LockAction::Release);
 
           // Find the result number of the buffer.
           if (auto resultBuf = getResultFromInput(use, func)) {
             // Record token name and acquire/release values.
-            tokInfoMap[resultBuf] = {b.getStringAttr(tokName), tokVal++,
+            tokInfoMap[resultBuf] = {b.getStringAttr(tokName), funcTokVal,
                                      tokVal++};
 
             // Push back the result buffer into the worklist.
