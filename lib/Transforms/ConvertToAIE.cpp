@@ -231,9 +231,7 @@ void ConvertToAIE::runOnOperation() {
     b.setInsertionPointAfter(call);
 
     // Generate TileOp based on the placement results.
-    auto tile = b.create<TileOp>(
-        b.getUnknownLoc(), call->getAttrOfType<IntegerAttr>("aie.col").getInt(),
-        call->getAttrOfType<IntegerAttr>("aie.row").getInt());
+    auto tile = b.create<TileOp>(b.getUnknownLoc(), getCol(call), getRow(call));
 
     // Generate a BufferOp for each argument of the function.
     for (auto arg : func.getArguments()) {

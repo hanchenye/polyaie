@@ -9,6 +9,7 @@ $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir 1> 2mm
 $ polyaie-translate -export-host-kernel 2mm.phism.pre.df.place.aie.mlir > 2mm.host.cpp
 
 $ dot -Tpng 2mm.phism.pre.df.place.dot > 2mm.phism.pre.df.png
+$ dot -Tpng -Kfdp 2mm.phism.pre.df.place.dot > 2mm.phism.pre.df.png
 $ sed -E -i 's/,\s#map[[:digit:]]//g; /memcpy/d; /alloc/d; /affine\_map/d' 2mm.phism.pre.df.place.aie.mlir
 
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh

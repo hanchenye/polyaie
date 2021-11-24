@@ -21,6 +21,10 @@ void MemRefExtDialect::initialize() {
 
 #include "polyaie/MemRefExt/MemRefExtEnums.cpp.inc"
 
+//===----------------------------------------------------------------------===//
+// Supporting methods, should be factored out
+//===----------------------------------------------------------------------===//
+
 /// Inference the buffer offsets from the input `type`.
 SmallVector<int64_t, 4> polyaie::getBufferOffsets(MemRefType type) {
   auto affineMaps = type.getAffineMaps();
@@ -50,6 +54,17 @@ SmallVector<int64_t, 4> polyaie::getBufferOffsets(MemRefType type) {
   }
   return offsets;
 }
+
+int64_t polyaie::getCol(Operation *call) {
+  return call->getAttrOfType<IntegerAttr>("aie.col").getInt();
+}
+int64_t polyaie::getRow(Operation *call) {
+  return call->getAttrOfType<IntegerAttr>("aie.row").getInt();
+}
+
+//===----------------------------------------------------------------------===//
+// BufferLoadOp and BufferStoreOp
+//===----------------------------------------------------------------------===//
 
 template <class OpType>
 static LogicalResult verifyLoadStoreBufferOp(OpType op) {

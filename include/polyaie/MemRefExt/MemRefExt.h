@@ -19,6 +19,9 @@ namespace polyaie {
 /// Inference the buffer offsets from the input `type`.
 SmallVector<int64_t, 4> getBufferOffsets(MemRefType type);
 
+int64_t getCol(Operation *call);
+int64_t getRow(Operation *call);
+
 } // namespace polyaie
 } // namespace mlir
 
