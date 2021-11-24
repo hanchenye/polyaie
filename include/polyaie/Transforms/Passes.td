@@ -67,6 +67,12 @@ def Placement : Pass<"polyaie-placement", "ModuleOp"> {
     considered in wirestrength.
   }];
 
+  let options = [
+    Option<"algorithm", "algorithm", "std::string",
+           /*default=*/"\"naive\"", "Specify the placement algorithm, possible "
+           "values are: naive(default), simulated-annealing">
+  ];
+
   let constructor = "mlir::polyaie::createPlacementPass()";
 
   let dependentDialects = [

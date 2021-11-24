@@ -252,7 +252,7 @@ struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
   Preprocess() = default;
   Preprocess(const Preprocess &) {}
   Preprocess(const PolyAIEPipelineOptions &opts) {
-    topFuncName = opts.pipelineTopFuncName;
+    topFuncName = opts.preprocessTopFuncName;
   }
 
   void runOnOperation() override {

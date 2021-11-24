@@ -26,7 +26,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(polyaie::createCreateDataflowPass());
-        pm.addPass(polyaie::createPlacementPass());
+        pm.addPass(polyaie::createPlacementPass(opts));
         pm.addPass(polyaie::createPrintDataflowPass());
         pm.addPass(polyaie::createConvertToAIEPass());
       });

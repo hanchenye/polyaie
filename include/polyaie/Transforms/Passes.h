@@ -24,16 +24,25 @@ namespace polyaie {
 
 struct PolyAIEPipelineOptions
     : public PassPipelineOptions<PolyAIEPipelineOptions> {
-  Option<std::string> pipelineTopFuncName{
+  /// Configure the preprocess pass.
+  Option<std::string> preprocessTopFuncName{
       *this, "top-func-name",
-      ::llvm::cl::desc("Specify the top function of the program"),
-      ::llvm::cl::init("main")};
+      llvm::cl::desc("Specify the top function of the program"),
+      llvm::cl::init("main")};
+
+  /// Configure the placement pass.
+  Option<std::string> placementAlgorithm{
+      *this, "algorithm",
+      llvm::cl::desc("Specify the placement algorithm, possible values are: "
+                     "naive(default), simulated-annealing"),
+      llvm::cl::init("naive")};
 };
 
 std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createCreateDataflowPass();
 std::unique_ptr<Pass> createPlacementPass();
+std::unique_ptr<Pass> createPlacementPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createPrintDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
 
