@@ -27,9 +27,6 @@ struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   /// Map from argument to the corresponding BufferOp.
   DenseMap<BlockArgument, BufferOp> bufMap;
 
-  /// Map from CallOp to the corresponding TileOp.
-  DenseMap<Operation *, TileOp> tileMap;
-
   /// Used to hold the channel number of each TileOp.
   DenseMap<Operation *, unsigned> MM2SChanMap;
   DenseMap<Operation *, unsigned> S2MMChanMap;
@@ -41,8 +38,11 @@ static bool isAdjacent(int64_t srcCol, int64_t srcRow, int64_t tgtCol,
   return (std::abs(srcCol - tgtCol) + std::abs(srcRow - tgtRow)) == 1;
 }
 
-static bool createMemCpy(OpBuilder &b, TileOp srcTile, TileOp tgtTile,
-                         BufferOp srcBuf, BufferOp tgtBuf, TokenInfo tokInfo) {
+static bool createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
+                         TokenInfo tokInfo) {
+  auto srcTile = srcBuf.getTileOp();
+  auto tgtTile = tgtBuf.getTileOp();
+
   // Extract location of target and source tiles.
   auto srcCol = srcTile.col();
   auto srcRow = srcTile.row();
@@ -115,8 +115,10 @@ static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
   }
 }
 
-static void createOrUpdateMemOp(OpBuilder &b, TileOp tile, BufferOp buf,
-                                TokenInfo tokInfo, DMAChan channel) {
+static void createOrUpdateMemOp(OpBuilder &b, BufferOp buf, TokenInfo tokInfo,
+                                DMAChan channel) {
+  auto tile = buf.getTileOp();
+
   if (auto mem = tile.getMemOp()) {
     auto &endBlock = mem.body().back();
     auto &predDmaBlock = *std::prev(mem.body().end(), 3);
@@ -232,7 +234,6 @@ void ConvertToAIE::runOnOperation() {
     auto tile = b.create<TileOp>(
         b.getUnknownLoc(), call->getAttrOfType<IntegerAttr>("aie.col").getInt(),
         call->getAttrOfType<IntegerAttr>("aie.row").getInt());
-    tileMap[call] = tile;
 
     // Generate a BufferOp for each argument of the function.
     for (auto arg : func.getArguments()) {
@@ -265,7 +266,7 @@ void ConvertToAIE::runOnOperation() {
       // Get the current BufferOp and TileOp.
       auto srcBuf = bufMap[returnOp.getOperand(result.getResultNumber())
                                .cast<BlockArgument>()];
-      auto srcTile = tileMap[call];
+      auto srcTile = srcBuf.getTileOp();
       auto &srcChanIdx = MM2SChanMap[srcTile];
 
       // Traverse all users to create MemOp or direct memory copy.
@@ -281,14 +282,14 @@ void ConvertToAIE::runOnOperation() {
         auto tgtArg = tgtFunc.getArgument(use.getOperandNumber());
 
         auto tgtBuf = bufMap[tgtArg];
-        auto tgtTile = tileMap[tgtCall];
+        auto tgtTile = tgtBuf.getTileOp();
         auto tgtTokInfo = tokInfoMap[tgtArg];
 
         // Create direct memory copy if current and successor tiles are adjacent
         // with each other.
         if (isAdjacent(srcTile.col(), srcTile.row(), tgtTile.col(),
                        tgtTile.row()) &&
-            createMemCpy(b, srcTile, tgtTile, srcBuf, tgtBuf, tgtTokInfo))
+            createMemCpy(b, srcBuf, tgtBuf, tgtTokInfo))
           continue;
 
         // Otherwise, we need to use switch boxes to establish the data delivery
@@ -306,7 +307,7 @@ void ConvertToAIE::runOnOperation() {
                          srcChanIdx, tgtTile, WireBundle::DMA, tgtChanIdx);
 
         // Create or update MemOp for DMA descripters.
-        createOrUpdateMemOp(b, tgtTile, tgtBuf, tgtTokInfo,
+        createOrUpdateMemOp(b, tgtBuf, tgtTokInfo,
                             tgtChanIdx ? DMAChan::S2MM1 : DMAChan::S2MM0);
         ++tgtChanIdx;
         hasDmaUses = true;
@@ -321,7 +322,7 @@ void ConvertToAIE::runOnOperation() {
 
         // Create or update MemOp for MM2S descripters.
         auto srcTokInfo = tokInfoMap[result];
-        createOrUpdateMemOp(b, srcTile, srcBuf, srcTokInfo,
+        createOrUpdateMemOp(b, srcBuf, srcTokInfo,
                             srcChanIdx ? DMAChan::MM2S1 : DMAChan::MM2S0);
         ++srcChanIdx;
       }
