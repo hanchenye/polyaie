@@ -23,18 +23,8 @@ class MemRefExtOp<string mnemonic, list<OpTrait> traits = []> :
     Op<MemRefExtDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// Buffer Copy/Load/Store Operation
+// Buffer Load/Store Operation
 //===----------------------------------------------------------------------===//
-
-def CopyBufferOp : MemRefExtOp<"copy_buffer", [SameOperandsAndResultType]> {
-  let summary = "copy buffer operation";
-  let description = [{
-    This operation copys data from one buffer to another buffer explicitly.
-  }];
-
-  let arguments = (ins AnyMemRef:$source);
-  let results = (outs AnyMemRef:$target);
-}
 
 def LoadBufferOp : MemRefExtOp<"load_buffer",
     [SameOperandsAndResultElementType]> {
@@ -70,7 +60,7 @@ def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
   let summary = "memory copy operation";
   let description = [{
     This operation represents a general memory copy from source to target. All
-    buffer operation (copy/load/store) can be lowered to this operation.
+    buffer operation (load/store) can be lowered to this operation.
   }];
 
   let arguments = (ins I64ArrayAttr:$targetOffsets, I64ArrayAttr:$sourceOffsets,
