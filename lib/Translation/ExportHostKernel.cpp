@@ -179,12 +179,20 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
   }
   os << "\n";
 
-  // Initialize local memories.
-  indent() << "unsigned bufIdx;\n\n";
+  // Collect memory copy operations.
+  SmallVector<memrefext::MemCpyOp, 32> loads;
+  SmallVector<memrefext::MemCpyOp, 32> stores;
   for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
     if (memCpy.source().getDefiningOp<memref::AllocOp>())
-      emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
-                 memCpy.target(), /*isWrite=*/true);
+      loads.push_back(memCpy);
+    else if (memCpy.target().getDefiningOp<memref::AllocOp>())
+      stores.push_back(memCpy);
+
+  // Initialize local memories.
+  indent() << "unsigned bufIdx;\n\n";
+  for (auto memCpy : loads)
+    emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
+               memCpy.target(), /*isWrite=*/true);
 
   // Start the execution.
   os << R"XXX(
@@ -193,16 +201,20 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
 
 )XXX";
 
+  // Check the completion of the program.
   // TODO: Make this more robust.
-  auto lastTile = tiles.back();
-  indent() << "while (!XAieTile_LockAcquire(&(TileInst[" << lastTile.col()
-           << "][" << lastTile.row() << "]), 15, 1, LOCK_TIMEOUT)) {}\n\n";
+  for (auto memCpy : stores) {
+    auto buf = memCpy.source().getDefiningOp<BufferOp>();
+    auto tile = buf.getTileOp();
+    indent() << "while (!XAieTile_LockAcquire(&(TileInst[" << tile.col() << "]["
+             << tile.row() << "]), 15, 1, LOCK_TIMEOUT)) {}\n";
+  }
+  os << "\n";
 
   // Write back results from local to global memory.
-  for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
-    if (memCpy.target().getDefiningOp<memref::AllocOp>())
-      emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
-                 memCpy.source(), /*isWrite=*/false);
+  for (auto memCpy : stores)
+    emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
+               memCpy.source(), /*isWrite=*/false);
 
   os << R"XXX(
   printf("Complete compute.\n");

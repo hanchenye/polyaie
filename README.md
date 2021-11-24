@@ -28,8 +28,7 @@ $ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
     -L/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
     -B/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
     -Iacdc_project -fuse-ld=lld -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
-    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ \
-    -I/home/hanchenye/workspace/mlir-aie/tmp/2mm-mini \
+    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ -I${PWD} \
     /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp \
     polybench.cpp 2mm.host.cpp 2mm.cpp -o 2mm.elf
 ```
