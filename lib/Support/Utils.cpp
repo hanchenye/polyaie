@@ -43,33 +43,32 @@ SmallVector<int64_t, 4> polyaie::getBufferOffsets(MemRefType type) {
 
 unsigned polyaie::getCol(Operation *call) {
   auto col = call->getAttrOfType<IntegerAttr>("aie.col").getInt();
-  assert(col >= 0);
+  assert(col >= 0 && "illegal col attribute");
   return col;
 }
 unsigned polyaie::getRow(Operation *call) {
   auto row = call->getAttrOfType<IntegerAttr>("aie.row").getInt();
-  assert(row >= 0);
+  assert(row >= 0 && "illegal row attribute");
   return row;
 }
 
-bool polyaie::haveShareableBuffer(unsigned srcCol, unsigned srcRow,
-                                  unsigned tgtCol, unsigned tgtRow) {
-  // If the source and target tiles are not adjacent with each other, they don't
-  // have shareable buffer.
-  if ((std::abs((int64_t)srcCol - (int64_t)tgtCol) +
-       std::abs((int64_t)srcRow - (int64_t)tgtRow)) != 1)
-    return false;
+xilinx::AIE::TileOp polyaie::getShareableTile(xilinx::AIE::TileOp srcTile,
+                                              xilinx::AIE::TileOp tgtTile) {
+  auto srcCol = srcTile.col();
+  auto srcRow = srcTile.row();
+  auto tgtCol = tgtTile.col();
+  auto tgtRow = tgtTile.row();
 
-  // Retrieve the positional relationship of target and source tiles.
-  auto isE = xilinx::AIE::isEast(srcCol, srcRow, tgtCol, tgtRow);
-  auto isW = xilinx::AIE::isWest(srcCol, srcRow, tgtCol, tgtRow);
-  auto isEvenRow = (srcRow % 2) == 0;
+  bool isS = xilinx::AIE::isSouth(srcCol, srcRow, tgtCol, tgtRow);
+  bool isW = xilinx::AIE::isWest(srcCol, srcRow, tgtCol, tgtRow);
+  bool isN = xilinx::AIE::isNorth(srcCol, srcRow, tgtCol, tgtRow);
+  bool isE = xilinx::AIE::isEast(srcCol, srcRow, tgtCol, tgtRow);
+  bool isEvenRow = ((srcRow % 2) == 0);
 
-  // Although they are ajacent, but the target tile cannot access the source
-  // tile's local buffer due to the AIE layout.
+  if (isS || isN || (isW && isEvenRow) || (isE && !isEvenRow))
+    return tgtTile;
   if ((isW && !isEvenRow) || (isE && isEvenRow))
-    return false;
+    return srcTile;
 
-  // Otherwise, the source and target tiles have shareable buffer.
-  return true;
+  return nullptr;
 }

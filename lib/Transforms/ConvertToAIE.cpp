@@ -32,15 +32,28 @@ struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
 };
 } // namespace
 
-static bool createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
-                         TokenInfo tokInfo) {
-  // Extract token information.
+static bool createShareBufCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
+                              TokenInfo tokInfo) {
+  auto srcTile = srcBuf.getTileOp();
+  auto tgtTile = tgtBuf.getTileOp();
+
+  // Early return if the source and target tile don't share buffers.
+  auto shareTile = getShareableTile(srcTile, tgtTile);
+  if (!shareTile)
+    return false;
+
+  // If the shareable tile is source tile, then create memory copy in the end of
+  // CoreOp of the source tile. Otherwise, create in the start of CoreOp of the
+  // target tile.
+  if (shareTile == srcTile)
+    b.setInsertionPoint(srcTile.getCoreOp().body().front().getTerminator());
+  else
+    b.setInsertionPointToStart(&tgtTile.getCoreOp().body().front());
+
+  // Generate token acquire and release.
   auto tokName = std::get<0>(tokInfo).getValue();
   auto tokValA = std::get<1>(tokInfo);
   auto tokValR = std::get<2>(tokInfo);
-
-  // Generate token acquire and release.
-  b.setInsertionPointToStart(&tgtBuf.getTileOp().getCoreOp().body().front());
   b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValA,
                        LockAction::Acquire);
   auto useTokOp = b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValR,
@@ -259,11 +272,8 @@ void ConvertToAIE::runOnOperation() {
 
         // Create direct memory copy if current and successor tiles are adjacent
         // with each other.
-        if (haveShareableBuffer(srcTile.col(), srcTile.row(), tgtTile.col(),
-                                tgtTile.row())) {
-          createMemCpy(b, srcBuf, tgtBuf, tgtTokInfo);
+        if (createShareBufCpy(b, srcBuf, tgtBuf, tgtTokInfo))
           continue;
-        }
 
         // Otherwise, we need to use switch boxes to establish the data delivery
         // between pred and target tiles.
@@ -339,13 +349,14 @@ void ConvertToAIE::runOnOperation() {
       // Release the last lock (ID is 15) with value 1. Host kernel should wait
       // this lock to release before collect the results.
       // TODO: Make this more robust?
-      auto tile = buf.getTileOp();
-      b.setInsertionPointAfter(tile);
-      auto lock = b.create<LockOp>(b.getUnknownLoc(), tile, 15);
+      // auto tile = buf.getTileOp();
+      // b.setInsertionPointAfter(tile);
+      // auto lock = b.create<LockOp>(b.getUnknownLoc(), tile, 15);
 
-      auto core = tile.getCoreOp();
-      b.setInsertionPoint(core.body().front().getTerminator());
-      b.create<UseLockOp>(b.getUnknownLoc(), lock, 1, LockAction::Release, 0);
+      // auto core = tile.getCoreOp();
+      // b.setInsertionPoint(core.body().front().getTerminator());
+      // b.create<UseLockOp>(b.getUnknownLoc(), lock, 1, LockAction::Release,
+      // 0);
     }
 
     // TODO: This is a quick solution to canonicalize token uses.
@@ -408,6 +419,13 @@ void ConvertToAIE::runOnOperation() {
   for (auto tile : llvm::make_early_inc_range(mod.getOps<TileOp>())) {
     if (tile.result().use_empty())
       tile.erase();
+    else if (auto core = tile.getCoreOp()) {
+      b.setInsertionPointAfter(tile);
+      auto lock = b.create<LockOp>(b.getUnknownLoc(), tile, 15);
+
+      b.setInsertionPoint(core.body().front().getTerminator());
+      b.create<UseLockOp>(b.getUnknownLoc(), lock, 1, LockAction::Release, 0);
+    }
   }
 }
 

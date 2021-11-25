@@ -7,6 +7,7 @@
 #ifndef POLYAIE_UTILS_H
 #define POLYAIE_UTILS_H
 
+#include "aie/AIEDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
 
@@ -19,8 +20,8 @@ SmallVector<int64_t, 4> getBufferOffsets(MemRefType type);
 unsigned getCol(Operation *call);
 unsigned getRow(Operation *call);
 
-bool haveShareableBuffer(unsigned srcCol, unsigned srcRow, unsigned tgtCol,
-                         unsigned tgtRow);
+xilinx::AIE::TileOp getShareableTile(xilinx::AIE::TileOp srcTile,
+                                     xilinx::AIE::TileOp tgtTile);
 
 } // namespace polyaie
 } // namespace mlir

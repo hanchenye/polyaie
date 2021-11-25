@@ -102,8 +102,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
+#define XAIE_NUM_ROWS 10
+#define XAIE_NUM_COLS 40
 #define XAIE_ADDR_ARRAY_OFF 0x800
 
 #define LOCK_TIMEOUT 100
@@ -204,12 +204,29 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
 
   // Check the completion of the program.
   // TODO: Make this more robust.
-  for (auto memCpy : stores) {
-    auto buf = memCpy.source().getDefiningOp<BufferOp>();
-    auto tile = buf.getTileOp();
-    indent() << "while (!XAieTile_LockAcquire(&(TileInst[" << tile.col() << "]["
-             << tile.row() << "]), 15, 1, LOCK_TIMEOUT)) {}\n";
-  }
+  // for (auto memCpy : stores) {
+  //   auto buf = memCpy.source().getDefiningOp<BufferOp>();
+  //   auto tile = buf.getTileOp();
+  //   indent() << "while (!XAieTile_LockAcquire(&(TileInst[" << tile.col() <<
+  //   "]["
+  //            << tile.row() << "]), 15, 1, LOCK_TIMEOUT)) {}\n";
+  // }
+  // os << "\n";
+
+  indent() << "sleep(2);\n";
+  indent() << "u8 result[" << tiles.size() << "];\n\n";
+
+  unsigned tileIdx = 0;
+  for (auto tile : tiles)
+    indent() << "result[" << tileIdx++ << "] = XAieTile_LockAcquire(&(TileInst["
+             << tile.col() << "][" << tile.row()
+             << "]), 15, 1, LOCK_TIMEOUT);\n";
+  os << "\n";
+
+  tileIdx = 0;
+  for (auto tile : tiles)
+    indent() << "printf(\"Tile[" << tile.col() << "][" << tile.row()
+             << "] = \%d\\n\", result[" << tileIdx++ << "]);\n";
   os << "\n";
 
   // Write back results from local to global memory.

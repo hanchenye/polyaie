@@ -91,8 +91,9 @@ private:
           auto tgtRow = indexToCoord(tgtIndex).first;
           auto tgtCol = indexToCoord(tgtIndex).second;
 
-          // We don't count the cost between tiles that have shareable buffer.
-          if (!haveShareableBuffer(srcCol, srcRow, tgtCol, tgtRow)) {
+          // We don't count the cost between tiles that are neighbors.
+          if ((std::abs((int64_t)srcCol - (int64_t)tgtCol) +
+               std::abs((int64_t)srcRow - (int64_t)tgtRow)) != 1) {
             nodeRows.push_back(tgtRow);
             nodeCols.push_back(tgtCol);
           }
