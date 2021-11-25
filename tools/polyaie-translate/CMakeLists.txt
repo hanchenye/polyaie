@@ -18,4 +18,5 @@ target_link_libraries(polyaie-translate
   AIE
   MLIRMemRefExt
   MLIRPolyAIEExporters
+  MLIRPolyAIESupport
   )

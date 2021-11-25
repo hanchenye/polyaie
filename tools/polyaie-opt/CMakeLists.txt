@@ -12,4 +12,5 @@ target_link_libraries(polyaie-opt
   AIE
   MLIRMemRefExt
   MLIRPolyAIEPasses
+  MLIRPolyAIESupport
   )

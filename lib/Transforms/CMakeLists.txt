@@ -7,6 +7,5 @@ add_mlir_library(MLIRPolyAIEPasses
   Passes.cpp
 
   DEPENDS
-  MLIRMemRefExt
   MLIRPolyAIEPassesIncGen
   )

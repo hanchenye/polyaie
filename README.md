@@ -12,6 +12,8 @@ $ dot -Tpng 2mm.phism.pre.df.place.dot > 2mm.phism.pre.df.place.png
 $ dot -Tpng -Kfdp 2mm.phism.pre.df.place.dot > 2mm.phism.pre.df.place.png
 $ sed -E -i 's/,\s#map[[:digit:]]//g; /memcpy/d; /alloc/d; /affine\_map/d' 2mm.phism.pre.df.place.aie.mlir
 
+$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm algorithm=simulated-annealing" 2mm.phism.mlir 1> 2mm.phism.pre.df.place.aie.mlir 2> 2mm.phism.pre.df.place.dot && dot -Tpng -Kfdp  2mm.phism.pre.df.place.dot > 2mm.phism.pre.df.place.png
+
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh
 $ /home/hanchenye/workspace/mlir-aie/build/bin/aiecc.py \
     --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \

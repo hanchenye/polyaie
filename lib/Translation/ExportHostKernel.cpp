@@ -8,6 +8,7 @@
 #include "mlir/Translation.h"
 #include "polyaie/Exporters.h"
 #include "polyaie/InitAllDialects.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;

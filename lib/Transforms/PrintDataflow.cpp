@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Support/LLVM.h"
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 #include "llvm/Support/GraphWriter.h"
 
 using namespace mlir;

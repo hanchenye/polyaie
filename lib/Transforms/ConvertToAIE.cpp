@@ -4,10 +4,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/Passes.h"
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -33,40 +32,15 @@ struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
 };
 } // namespace
 
-static bool isAdjacent(int64_t srcCol, int64_t srcRow, int64_t tgtCol,
-                       int64_t tgtRow) {
-  return (std::abs(srcCol - tgtCol) + std::abs(srcRow - tgtRow)) == 1;
-}
-
 static bool createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
                          TokenInfo tokInfo) {
-  auto srcTile = srcBuf.getTileOp();
-  auto tgtTile = tgtBuf.getTileOp();
-
-  // Extract location of target and source tiles.
-  auto srcCol = srcTile.col();
-  auto srcRow = srcTile.row();
-  auto tgtCol = tgtTile.col();
-  auto tgtRow = tgtTile.row();
-  assert(isAdjacent(srcCol, srcRow, tgtCol, tgtRow));
-
-  // Retrieve the positional relationship of target and source tiles.
-  auto isE = isEast(srcCol, srcRow, tgtCol, tgtRow);
-  auto isW = isWest(srcCol, srcRow, tgtCol, tgtRow);
-  auto isEvenRow = (srcRow % 2) == 0;
-
-  // Although they are ajacent, but the target tile cannot access two local
-  // buffers due to the AIE layout.
-  if ((isW && !isEvenRow) || (isE && isEvenRow))
-    return false;
-
   // Extract token information.
   auto tokName = std::get<0>(tokInfo).getValue();
   auto tokValA = std::get<1>(tokInfo);
   auto tokValR = std::get<2>(tokInfo);
 
   // Generate token acquire and release.
-  b.setInsertionPointToStart(&tgtTile.getCoreOp().body().front());
+  b.setInsertionPointToStart(&tgtBuf.getTileOp().getCoreOp().body().front());
   b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValA,
                        LockAction::Acquire);
   auto useTokOp = b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValR,
@@ -285,10 +259,11 @@ void ConvertToAIE::runOnOperation() {
 
         // Create direct memory copy if current and successor tiles are adjacent
         // with each other.
-        if (isAdjacent(srcTile.col(), srcTile.row(), tgtTile.col(),
-                       tgtTile.row()) &&
-            createMemCpy(b, srcBuf, tgtBuf, tgtTokInfo))
+        if (haveShareableBuffer(srcTile.col(), srcTile.row(), tgtTile.col(),
+                                tgtTile.row())) {
+          createMemCpy(b, srcBuf, tgtBuf, tgtTokInfo);
           continue;
+        }
 
         // Otherwise, we need to use switch boxes to establish the data delivery
         // between pred and target tiles.
