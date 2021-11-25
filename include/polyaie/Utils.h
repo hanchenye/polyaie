@@ -16,11 +16,11 @@ namespace polyaie {
 /// Inference the buffer offsets from the input `type`.
 SmallVector<int64_t, 4> getBufferOffsets(MemRefType type);
 
-int64_t getCol(Operation *call);
-int64_t getRow(Operation *call);
+unsigned getCol(Operation *call);
+unsigned getRow(Operation *call);
 
-bool haveShareableBuffer(int64_t srcCol, int64_t srcRow, int64_t tgtCol,
-                         int64_t tgtRow);
+bool haveShareableBuffer(unsigned srcCol, unsigned srcRow, unsigned tgtCol,
+                         unsigned tgtRow);
 
 } // namespace polyaie
 } // namespace mlir

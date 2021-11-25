@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -12,17 +13,20 @@ using namespace polyaie;
 namespace {
 class Placer {
 public:
-  Placer(ModuleOp mod, unsigned rowNum = 8, unsigned colNum = 16,
-         unsigned rowBegin = 2, unsigned colBegin = 0)
-      : mod(mod), rowNum(rowNum), colNum(colNum), rowBegin(rowBegin),
-        colBegin(colBegin) {
+  Placer(ModuleOp mod) : mod(mod) {
+    for (auto call : mod.getOps<CallOp>())
+      nodes.push_back(call);
+
+    rowBegin = 2;
+    colBegin = 0;
+    rowNum = std::min((unsigned)sqrt(nodes.size()), (unsigned)8);
+    colNum = std::min((unsigned)(1.5 * nodes.size() / rowNum), (unsigned)40);
+
     assert(rowBegin >= 2 && rowBegin + rowNum <= 10 &&
            "invalid range of row, first two rows should not be used");
     assert(colBegin + colNum <= 40 && "invalid range of col");
 
     layout.resize(rowNum * colNum);
-    for (auto call : mod.getOps<CallOp>())
-      nodes.push_back(call);
   }
 
   /// Interfaces to run placement.
@@ -53,31 +57,58 @@ private:
     unsigned index = 0;
     for (auto node : nodes)
       layout[index++] = node;
-
-    std::srand(std::time(0));
     std::random_shuffle(layout.begin(), layout.end(),
                         [&](int i) { return std::rand() % i; });
   }
 
   /// Swap a random node into a new random location.
   void randomlySwapNode() {
-    std::srand(std::time(0));
-    auto call = nodes[std::rand() % nodes.size()];
-
-    auto index = llvm::find(layout, call) - layout.begin();
+    auto node = nodes[std::rand() % nodes.size()];
+    auto index = llvm::find(layout, node) - layout.begin();
     auto newIndex = std::rand() % layout.size();
 
     layout[index] = layout[newIndex];
-    layout[newIndex] = call;
+    layout[newIndex] = node;
   }
 
   /// Calculate the cost of the layout.
-  unsigned getLayoutCost() {
+  double getLayoutCost() {
+    double cost = 0;
     for (auto node : nodes) {
+      unsigned srcIndex = llvm::find(layout, node) - layout.begin();
+      auto srcRow = indexToCoord(srcIndex).first;
+      auto srcCol = indexToCoord(srcIndex).second;
+
       for (auto result : node.getResults()) {
+        SmallVector<unsigned, 4> nodeRows({srcRow});
+        SmallVector<unsigned, 4> nodeCols({srcCol});
+        auto numElem = result.getType().cast<MemRefType>().getNumElements();
+
+        for (auto user : result.getUsers()) {
+          if (!isa<CallOp>(user))
+            continue;
+          unsigned tgtIndex = llvm::find(layout, user) - layout.begin();
+          auto tgtRow = indexToCoord(tgtIndex).first;
+          auto tgtCol = indexToCoord(tgtIndex).second;
+
+          // We don't count the cost between tiles that have shareable buffer.
+          if (!haveShareableBuffer(srcCol, srcRow, tgtCol, tgtRow)) {
+            nodeRows.push_back(tgtRow);
+            nodeCols.push_back(tgtCol);
+          }
+        }
+
+        // Calculate the cost using Half-Perimeter Wirelength (HPWL).
+        if (!llvm::hasSingleElement(nodeRows)) {
+          auto boxHeight = *std::max_element(nodeRows.begin(), nodeRows.end()) -
+                           *std::min_element(nodeRows.begin(), nodeRows.end());
+          auto boxWidth = *std::max_element(nodeCols.begin(), nodeCols.end()) -
+                          *std::min_element(nodeCols.begin(), nodeCols.end());
+          cost += numElem * (boxHeight + boxWidth);
+        }
       }
     }
-    return 0;
+    return cost;
   }
 
   /// Apply the current layout to the IR.
@@ -87,8 +118,8 @@ private:
     for (auto call : layout) {
       if (call) {
         auto coord = indexToCoord(index);
-        call->setAttr("aie.row", b.getIndexAttr(coord.first + rowBegin));
-        call->setAttr("aie.col", b.getIndexAttr(coord.second + colBegin));
+        call->setAttr("aie.row", b.getI64IntegerAttr(coord.first + rowBegin));
+        call->setAttr("aie.col", b.getI64IntegerAttr(coord.second + colBegin));
       }
       ++index;
     }
@@ -96,14 +127,14 @@ private:
 
 private:
   ModuleOp mod;
+  SmallVector<CallOp, 128> nodes;
 
-  unsigned rowNum;
-  unsigned colNum;
   unsigned rowBegin;
   unsigned colBegin;
+  unsigned rowNum;
+  unsigned colNum;
 
   SmallVector<CallOp, 128> layout;
-  SmallVector<CallOp, 128> nodes;
 };
 } // namespace
 
@@ -118,12 +149,47 @@ void Placer::runNaive() {
     layout[coordToIndex(row, col)] = node;
     ++tileIdx;
   }
+  // llvm::dbgs() << getLayoutCost() << "\n";
+
   applyLayout();
 }
 
 /// Place all nodes with simulated annealing.
 void Placer::runSimulatedAnnealing() {
+  std::srand(std::time(0));
   randomlyInitializeLayout();
+  auto minCost = getLayoutCost();
+  auto minLayout = layout;
+
+  // Set a simulated temperature and start the cooling down.
+  double temperature = getLayoutCost();
+  for (auto i = 0, e = 1000000; i < e; ++i) {
+    // Generate a new layout by random nodes swapping.
+    for (auto k = 0, ek = 2; k < ek; ++k)
+      randomlySwapNode();
+    auto cost = getLayoutCost();
+
+    if (cost > minCost) {
+      // If the new solution is worse than the current solution, determine
+      // whether to take it.
+      auto randNum = (double)std::rand() / (double)RAND_MAX;
+      auto threshold = std::exp((minCost - cost) / temperature);
+      if (randNum > threshold)
+        layout = minLayout;
+    } else {
+      // Otherwise, update the current solution.
+      minCost = cost;
+      minLayout = layout;
+    }
+
+    if (i % 1000 == 0) {
+      // Cool down the temperature.
+      temperature = 0.99 * temperature;
+      // llvm::dbgs() << temperature << "\t" << minCost << "\n";
+    }
+  }
+  layout = minLayout;
+
   applyLayout();
 }
 

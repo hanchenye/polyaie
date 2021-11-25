@@ -41,18 +41,23 @@ SmallVector<int64_t, 4> polyaie::getBufferOffsets(MemRefType type) {
   return offsets;
 }
 
-int64_t polyaie::getCol(Operation *call) {
-  return call->getAttrOfType<IntegerAttr>("aie.col").getInt();
+unsigned polyaie::getCol(Operation *call) {
+  auto col = call->getAttrOfType<IntegerAttr>("aie.col").getInt();
+  assert(col >= 0);
+  return col;
 }
-int64_t polyaie::getRow(Operation *call) {
-  return call->getAttrOfType<IntegerAttr>("aie.row").getInt();
+unsigned polyaie::getRow(Operation *call) {
+  auto row = call->getAttrOfType<IntegerAttr>("aie.row").getInt();
+  assert(row >= 0);
+  return row;
 }
 
-bool polyaie::haveShareableBuffer(int64_t srcCol, int64_t srcRow,
-                                  int64_t tgtCol, int64_t tgtRow) {
+bool polyaie::haveShareableBuffer(unsigned srcCol, unsigned srcRow,
+                                  unsigned tgtCol, unsigned tgtRow) {
   // If the source and target tiles are not adjacent with each other, they don't
   // have shareable buffer.
-  if ((std::abs(srcCol - tgtCol) + std::abs(srcRow - tgtRow)) != 1)
+  if ((std::abs((int64_t)srcCol - (int64_t)tgtCol) +
+       std::abs((int64_t)srcRow - (int64_t)tgtRow)) != 1)
     return false;
 
   // Retrieve the positional relationship of target and source tiles.
