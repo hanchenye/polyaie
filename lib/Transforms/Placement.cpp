@@ -13,183 +13,224 @@ using namespace polyaie;
 namespace {
 class Placer {
 public:
-  Placer(ModuleOp mod) : mod(mod) {
-    for (auto call : mod.getOps<CallOp>())
-      nodes.push_back(call);
+  Placer(ModuleOp mod);
 
-    rowBegin = 2;
-    colBegin = 0;
-    rowNum = std::min((unsigned)sqrt(nodes.size()), (unsigned)8);
-    colNum = std::min((unsigned)(1.5 * nodes.size() / rowNum), (unsigned)40);
-
-    assert(rowBegin >= 2 && rowBegin + rowNum <= 10 &&
-           "invalid range of row, first two rows should not be used");
-    assert(colBegin + colNum <= 40 && "invalid range of col");
-
-    layout.resize(rowNum * colNum);
-  }
-
-  /// Interfaces to run placement.
+  /// Place all nodes into a Z-style layout.
   void runNaive();
-  void runSimulatedAnnealing();
+  /// Place all nodes with simulated annealing.
+  void runSimulatedAnnealing(double, double, unsigned, unsigned, unsigned);
 
 private:
-  /// Convert between coordinates and `layout` index.
-  unsigned coordToIndex(unsigned row, unsigned col) {
-    assert(row < rowNum && col < colNum && "illegal coordinates");
-    return row * colNum + col;
-  }
-  std::pair<unsigned, unsigned> indexToCoord(unsigned index) {
+  /// Convert `layout` index to coordinates.
+  std::pair<unsigned, unsigned> indexToCoord(unsigned index) const {
     assert(index < layout.size() && "illegal layout index");
     return {index / colNum, index % colNum};
   }
 
   /// Erase all placed nodes in the layout.
-  void eraseAllNode() {
-    for (unsigned index = 0, e = layout.size(); index < e; ++index)
-      layout[index] = CallOp();
+  void clearLayout() {
+    layoutMap.clear();
+    for (auto &node : layout)
+      node = CallOp();
   }
 
   /// Initialize all nodes to a random location.
-  void randomlyInitializeLayout() {
-    eraseAllNode();
-
-    unsigned index = 0;
-    for (auto node : nodes)
-      layout[index++] = node;
-    std::random_shuffle(layout.begin(), layout.end(),
-                        [&](int i) { return std::rand() % i; });
-  }
-
+  void initLayoutRandomly();
   /// Swap a random node into a new random location.
-  void randomlySwapNode() {
-    auto node = nodes[std::rand() % nodes.size()];
-    auto index = llvm::find(layout, node) - layout.begin();
-    auto newIndex = std::rand() % layout.size();
-
-    layout[index] = layout[newIndex];
-    layout[newIndex] = node;
-  }
+  void swapRandomlyOnce();
 
   /// Calculate the cost of the layout.
-  double getLayoutCost() {
-    double cost = 0;
-    for (auto node : nodes) {
-      unsigned srcIndex = llvm::find(layout, node) - layout.begin();
-      auto srcRow = indexToCoord(srcIndex).first;
-      auto srcCol = indexToCoord(srcIndex).second;
-
-      for (auto result : node.getResults()) {
-        SmallVector<unsigned, 4> nodeRows({srcRow});
-        SmallVector<unsigned, 4> nodeCols({srcCol});
-        auto numElem = result.getType().cast<MemRefType>().getNumElements();
-
-        for (auto user : result.getUsers()) {
-          if (!isa<CallOp>(user))
-            continue;
-          unsigned tgtIndex = llvm::find(layout, user) - layout.begin();
-          auto tgtRow = indexToCoord(tgtIndex).first;
-          auto tgtCol = indexToCoord(tgtIndex).second;
-
-          // We don't count the cost between tiles that are neighbors.
-          if (!adjacent(srcRow, srcCol, tgtRow, tgtCol)) {
-            nodeRows.push_back(tgtRow);
-            nodeCols.push_back(tgtCol);
-          }
-        }
-
-        // Calculate the cost using Half-Perimeter Wirelength (HPWL).
-        if (!llvm::hasSingleElement(nodeRows)) {
-          auto boxHeight = *std::max_element(nodeRows.begin(), nodeRows.end()) -
-                           *std::min_element(nodeRows.begin(), nodeRows.end());
-          auto boxWidth = *std::max_element(nodeCols.begin(), nodeCols.end()) -
-                          *std::min_element(nodeCols.begin(), nodeCols.end());
-          cost += numElem * (boxHeight + boxWidth);
-        }
-      }
-    }
-    return cost;
-  }
+  double getLayoutCost() const;
 
   /// Apply the current layout to the IR.
-  void applyLayout() {
-    auto b = Builder(mod);
-    unsigned index = 0;
-    for (auto call : layout) {
-      if (call) {
-        auto coord = indexToCoord(index);
-        call->setAttr("aie.row", b.getI64IntegerAttr(coord.first + rowBegin));
-        call->setAttr("aie.col", b.getI64IntegerAttr(coord.second + colBegin));
-      }
-      ++index;
-    }
-  }
+  void applyLayout() const;
 
 private:
-  ModuleOp mod;
-  SmallVector<CallOp, 128> nodes;
+  const ModuleOp mod;
 
-  unsigned rowBegin;
-  unsigned colBegin;
-  unsigned rowNum;
-  unsigned colNum;
+  /// All CallOps in the placement problem.
+  const SmallVector<CallOp, 128> nodes;
 
+  /// The block for placement.
+  const unsigned rowBegin, colBegin, rowNum, colNum;
+
+  /// Record the CallOp on each coordinates(index).
   SmallVector<CallOp, 128> layout;
+  /// Record the coordinates(index) of each CallOp.
+  DenseMap<Operation *, unsigned> layoutMap;
 };
 } // namespace
 
+Placer::Placer(ModuleOp mod)
+    : mod(mod), nodes(mod.getOps<CallOp>().begin(), mod.getOps<CallOp>().end()),
+      rowBegin(2), colBegin(0),
+      rowNum(std::min((unsigned)sqrt(nodes.size()), (unsigned)8)),
+      colNum(std::min((unsigned)(1.5 * nodes.size() / rowNum), (unsigned)40)) {
+
+  assert(rowNum * colNum >= nodes.size() && "AIEs are not enough");
+  layout.resize(rowNum * colNum);
+
+  std::srand(std::time(0));
+}
+
+/// Initialize all nodes to a random location.
+void Placer::initLayoutRandomly() {
+  clearLayout();
+
+  unsigned index = 0;
+  for (auto node : nodes)
+    layout[index++] = node;
+
+  std::random_shuffle(layout.begin(), layout.end(),
+                      [&](int i) { return std::rand() % i; });
+  index = 0;
+  for (auto node : layout) {
+    if (node)
+      layoutMap[node] = index;
+    ++index;
+  }
+}
+
+/// Swap a random node into a new random location.
+void Placer::swapRandomlyOnce() {
+  auto node = nodes[std::rand() % nodes.size()];
+  auto index = layoutMap[node];
+
+  auto swapIndex = std::rand() % layout.size();
+  auto swapNode = layout[swapIndex];
+
+  layoutMap[node] = swapIndex;
+  layout[swapIndex] = node;
+
+  layout[index] = swapNode;
+  if (swapNode)
+    layoutMap[swapNode] = index;
+}
+
+/// Calculate the cost of the layout.
+double Placer::getLayoutCost() const {
+  double cost = 0;
+  for (auto node : nodes) {
+    auto srcCoord = indexToCoord(layoutMap.lookup(node));
+    auto srcRow = srcCoord.first;
+    auto srcCol = srcCoord.second;
+
+    for (auto result : node.getResults()) {
+      SmallVector<unsigned, 4> rows({srcRow});
+      SmallVector<unsigned, 4> cols({srcCol});
+
+      for (auto user : result.getUsers()) {
+        if (!isa<CallOp>(user))
+          continue;
+
+        auto tgtCoord = indexToCoord(layoutMap.lookup(user));
+        auto tgtRow = tgtCoord.first;
+        auto tgtCol = tgtCoord.second;
+
+        // We don't count the cost between tiles that are neighbors.
+        if (!adjacent(srcRow, srcCol, tgtRow, tgtCol)) {
+          rows.push_back(tgtRow);
+          cols.push_back(tgtCol);
+        }
+      }
+
+      // Calculate the cost using Half-Perimeter Wirelength (HPWL).
+      if (!llvm::hasSingleElement(rows)) {
+        auto boxHeight = *std::max_element(rows.begin(), rows.end()) -
+                         *std::min_element(rows.begin(), rows.end());
+        auto boxWidth = *std::max_element(cols.begin(), cols.end()) -
+                        *std::min_element(cols.begin(), cols.end());
+        cost += result.getType().cast<MemRefType>().getNumElements() *
+                (boxHeight + boxWidth);
+      }
+    }
+  }
+  return cost;
+}
+
+/// Apply the current layout to the IR.
+void Placer::applyLayout() const {
+  auto b = Builder(mod);
+  unsigned index = 0;
+  for (auto node : layout) {
+    if (node) {
+      auto mapIndex = layoutMap.lookup(node);
+      assert(mapIndex == index && "disorted layout");
+      auto coord = indexToCoord(index);
+      node->setAttr("aie.row", b.getI64IntegerAttr(coord.first + rowBegin));
+      node->setAttr("aie.col", b.getI64IntegerAttr(coord.second + colBegin));
+    }
+    ++index;
+  }
+}
+
 /// Place all nodes into a Z-style layout.
 void Placer::runNaive() {
-  eraseAllNode();
+  clearLayout();
 
   unsigned tileIdx = 0;
   for (auto node : nodes) {
     auto row = tileIdx / colNum;
     auto col = (row % 2 ? tileIdx % colNum : colNum - 1 - tileIdx % colNum);
-    layout[coordToIndex(row, col)] = node;
+    auto index = row * colNum + col;
+
+    layout[index] = node;
+    layoutMap[node] = index;
     ++tileIdx;
   }
-  // llvm::dbgs() << getLayoutCost() << "\n";
-
   applyLayout();
 }
 
 /// Place all nodes with simulated annealing.
-void Placer::runSimulatedAnnealing() {
-  std::srand(std::time(0));
-  randomlyInitializeLayout();
+void Placer::runSimulatedAnnealing(double startTemp = 10,
+                                   double finalTemp = 0.01,
+                                   unsigned adjustNum = 200,
+                                   unsigned mutatePerTemp = 1000,
+                                   unsigned swapPerMutate = 2) {
+  initLayoutRandomly();
   auto minCost = getLayoutCost();
   auto minLayout = layout;
+  auto minLayoutMap = layoutMap;
 
-  // Set a simulated temperature and start the cooling down.
-  double temperature = getLayoutCost();
-  for (auto i = 0, e = 1000000; i < e; ++i) {
+  // Calculate the start and frozen temperatur and adjustment factor.
+  startTemp *= minCost;
+  finalTemp *= minCost;
+  auto factor = std::pow(finalTemp / startTemp, 1.0 / adjustNum);
+
+  // Set the simulated temperature and start the adjustment.
+  auto temp = startTemp;
+  unsigned counter = 0;
+  while (temp > finalTemp) {
     // Generate a new layout by random nodes swapping.
-    for (auto k = 0, ek = 2; k < ek; ++k)
-      randomlySwapNode();
+    for (unsigned i = 0; i < swapPerMutate; ++i)
+      swapRandomlyOnce();
     auto cost = getLayoutCost();
 
     if (cost > minCost) {
       // If the new solution is worse than the current solution, determine
       // whether to take it.
       auto randNum = (double)std::rand() / (double)RAND_MAX;
-      auto threshold = std::exp((minCost - cost) / temperature);
-      if (randNum > threshold)
+      auto threshold = std::exp((minCost - cost) / temp);
+      if (randNum > threshold) {
         layout = minLayout;
+        layoutMap = minLayoutMap;
+      }
     } else {
       // Otherwise, update the current solution.
       minCost = cost;
       minLayout = layout;
+      minLayoutMap = layoutMap;
     }
 
-    if (i % 1000 == 0) {
-      // Cool down the temperature.
-      temperature = 0.99 * temperature;
-      // llvm::dbgs() << temperature << "\t" << minCost << "\n";
+    // Cool down the temperature.
+    if (counter++ == mutatePerTemp) {
+      // llvm::dbgs() << temp << "\t" << minCost << "\n";
+      temp *= factor;
+      counter = 0;
     }
   }
   layout = minLayout;
-
+  layoutMap = minLayoutMap;
   applyLayout();
 }
 

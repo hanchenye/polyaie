@@ -9,8 +9,7 @@ $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir 1> 2mm
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm algorithm=simulated-annealing" 2mm.phism.mlir 1> 2mm.phism.polyaie.mlir 2> 2mm.phism.polyaie.dot
 $ polyaie-translate -export-host-kernel 2mm.phism.polyaie.mlir > 2mm.host.cpp
 
-$ dot -Tpng 2mm.phism.polyaie.dot > 2mm.phism.polyaie.png
-$ dot -Tpng -Kfdp 2mm.phism.polyaie.dot > 2mm.phism.polyaie.layout.png
+$ dot -Tpng 2mm.phism.polyaie.dot > 2mm.phism.polyaie.png && dot -Tpng -Kfdp 2mm.phism.polyaie.dot > 2mm.phism.polyaie.layout.png
 $ sed -E 's/,\s#map[[:digit:]]//g; /memcpy/d; /alloc/d; /affine\_map/d' 2mm.phism.polyaie.mlir > 2mm.phism.polyaie.mliraie.mlir
 
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh
