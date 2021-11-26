@@ -13,15 +13,9 @@ using namespace polyaie;
 using namespace memrefext;
 using namespace xilinx::AIE;
 
-using TokenInfo = std::tuple<StringAttr, unsigned, unsigned>;
-
 namespace {
 struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   void runOnOperation() override;
-
-  /// Used to hold the token name, token acquire value, and token release value
-  /// for each intermediate result.
-  DenseMap<Value, TokenInfo> tokInfoMap;
 
   /// Map from argument to the corresponding BufferOp.
   DenseMap<BlockArgument, BufferOp> bufMap;
@@ -32,35 +26,27 @@ struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
 };
 } // namespace
 
-static bool createShareBufCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
-                              TokenInfo tokInfo) {
+static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
+                         StringRef tokName, unsigned tokValA, unsigned tokValR,
+                         bool shareSrcTile) {
   auto srcTile = srcBuf.getTileOp();
   auto tgtTile = tgtBuf.getTileOp();
-
-  // Early return if the source and target tile don't share buffers.
-  auto shareTile = getShareableTile(srcTile, tgtTile);
-  if (!shareTile)
-    return false;
 
   // If the shareable tile is source tile, then create memory copy in the end of
   // CoreOp of the source tile. Otherwise, create in the start of CoreOp of the
   // target tile.
-  if (shareTile == srcTile)
+  if (shareSrcTile) {
     b.setInsertionPoint(srcTile.getCoreOp().body().front().getTerminator());
-  else
+    auto useTokOp = b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValR,
+                                         LockAction::Release);
+    b.setInsertionPoint(useTokOp);
+  } else {
     b.setInsertionPointToStart(&tgtTile.getCoreOp().body().front());
-
-  // Generate token acquire and release.
-  auto tokName = std::get<0>(tokInfo).getValue();
-  auto tokValA = std::get<1>(tokInfo);
-  auto tokValR = std::get<2>(tokInfo);
-  b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValA,
-                       LockAction::Acquire);
-  auto useTokOp = b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValR,
-                                       LockAction::Release);
+    b.create<UseTokenOp>(b.getUnknownLoc(), tokName, tokValA,
+                         LockAction::Acquire);
+  }
 
   // Create loop nests to copy data from source to target.
-  b.setInsertionPoint(useTokOp);
   SmallVector<Value, 4> ivs;
   for (auto dimSiz : srcBuf.getType().getShape()) {
     auto loop = b.create<mlir::AffineForOp>(b.getUnknownLoc(), 0, dimSiz);
@@ -69,21 +55,15 @@ static bool createShareBufCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
   }
   auto value = b.create<mlir::AffineLoadOp>(b.getUnknownLoc(), srcBuf, ivs);
   b.create<mlir::AffineStoreOp>(b.getUnknownLoc(), value, tgtBuf, ivs);
-
-  return true;
 }
 
 static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
-                            Block *endBlock, BufferOp buf, TokenInfo tokInfo,
+                            Block *endBlock, BufferOp buf, StringRef tokName,
+                            unsigned tokValA, unsigned tokValR,
                             DMAChan channel) {
   // Create DMA start block.
   b.setInsertionPointToStart(dmaBlock);
   b.create<DMAStartOp>(b.getUnknownLoc(), channel, bdBlock, endBlock);
-
-  // Extract token information.
-  auto tokName = std::get<0>(tokInfo).getValue();
-  auto tokValA = std::get<1>(tokInfo);
-  auto tokValR = std::get<2>(tokInfo);
 
   // Create DMA descripter block.
   b.setInsertionPointToStart(bdBlock);
@@ -102,7 +82,8 @@ static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
   }
 }
 
-static void createOrUpdateMemOp(OpBuilder &b, BufferOp buf, TokenInfo tokInfo,
+static void createOrUpdateMemOp(OpBuilder &b, BufferOp buf, StringRef tokName,
+                                unsigned tokValA, unsigned tokValR,
                                 DMAChan channel) {
   auto tile = buf.getTileOp();
 
@@ -116,7 +97,8 @@ static void createOrUpdateMemOp(OpBuilder &b, BufferOp buf, TokenInfo tokInfo,
     auto predDma = cast<DMAStartOp>(&predDmaBlock.front());
     predDma.setSuccessor(dmaBlock, /*index=*/1);
 
-    fillMemOpBlocks(b, dmaBlock, bdBlock, &endBlock, buf, tokInfo, channel);
+    fillMemOpBlocks(b, dmaBlock, bdBlock, &endBlock, buf, tokName, tokValA,
+                    tokValR, channel);
 
   } else {
     // If MemOp has not been created, create a new one.
@@ -127,11 +109,12 @@ static void createOrUpdateMemOp(OpBuilder &b, BufferOp buf, TokenInfo tokInfo,
     auto &bdBlock = newMem.body().emplaceBlock();
     auto &endBlock = newMem.body().emplaceBlock();
 
-    fillMemOpBlocks(b, &dmaBlock, &bdBlock, &endBlock, buf, tokInfo, channel);
+    fillMemOpBlocks(b, &dmaBlock, &bdBlock, &endBlock, buf, tokName, tokValA,
+                    tokValR, channel);
   }
 }
 
-static Value getResultFromInput(OpOperand &input, FuncOp func = nullptr) {
+static OpResult getResultFromInput(OpOperand &input, FuncOp func = nullptr) {
   auto call = cast<CallOp>(input.getOwner());
   if (!func) {
     auto mod = call->getParentOfType<ModuleOp>();
@@ -143,72 +126,15 @@ static Value getResultFromInput(OpOperand &input, FuncOp func = nullptr) {
   auto idx = llvm::find_if(returnOp.getOperands(), [&](Value operand) {
                return operand == func.getArgument(input.getOperandNumber());
              }).getIndex();
-  return idx == call.getNumResults() ? nullptr : call.getResult(idx);
+
+  if (idx == call.getNumResults())
+    return nullptr;
+  return call.getResult(idx).cast<OpResult>();
 }
 
 void ConvertToAIE::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
-
-  // Generate TokenOp and token release/acquire chain.
-  unsigned tokIdx = 0;
-  for (auto alloc : mod.getOps<memref::AllocOp>()) {
-    for (auto user : alloc->getUsers()) {
-      // Always ignore StoreBufferOps, because the interactions with global
-      // buffer don't need to be implemented with tokens.
-      if (isa<StoreBufferOp>(user))
-        continue;
-
-      // Create a new logical token for the current buffer.
-      b.setInsertionPoint(user);
-      auto tok = b.create<TokenOp>(b.getUnknownLoc(), 0);
-      auto tokName = "token" + std::to_string(tokIdx++);
-      auto tokNameAttr = b.getStringAttr(tokName);
-      tok->setAttr("sym_name", tokNameAttr);
-
-      // Propogate in the whole program to generate the token aquire/release
-      // chain of the current buffer.
-      SmallVector<Value, 32> worklist({cast<LoadBufferOp>(user).buffer()});
-      unsigned tokVal = 1;
-      while (!worklist.empty()) {
-        auto buf = worklist.pop_back_val();
-        auto tokInfo = tokInfoMap.lookup(buf);
-
-        for (auto &use : buf.getUses()) {
-          // Similarly, always ignore StoreBufferOps.
-          if (isa<StoreBufferOp>(use.getOwner()))
-            continue;
-
-          auto call = cast<CallOp>(use.getOwner());
-          auto func = mod.lookupSymbol<FuncOp>(call.callee());
-          auto returnOp = cast<ReturnOp>(func.front().getTerminator());
-
-          auto arg = func.getArgument(use.getOperandNumber());
-          auto memTokVal = tokVal++;
-          tokInfoMap[arg] = {tokNameAttr, std::get<1>(tokInfo), memTokVal};
-
-          // Acquire and release the current token.
-          b.setInsertionPointToStart(&func.front());
-          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, memTokVal,
-                               LockAction::Acquire);
-
-          b.setInsertionPoint(returnOp);
-          auto coreTokVal = tokVal++;
-          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, coreTokVal,
-                               LockAction::Release);
-
-          // Find the result number of the buffer.
-          if (auto resultBuf = getResultFromInput(use, func)) {
-            // Record token name and acquire/release values.
-            tokInfoMap[resultBuf] = {tokNameAttr, coreTokVal, tokVal++};
-
-            // Push back the result buffer into the worklist.
-            worklist.push_back(resultBuf);
-          }
-        }
-      }
-    }
-  }
 
   // Generate TileOp, CoreOp, and BufferOps for each CallOp.
   unsigned bufIdx = 0;
@@ -242,72 +168,152 @@ void ConvertToAIE::runOnOperation() {
     b.create<xilinx::AIE::EndOp>(b.getUnknownLoc());
   }
 
-  // Implement all dependencies between AIEs with FlowOp and MemOp.
-  for (auto call : mod.getOps<CallOp>()) {
-    auto func = mod.lookupSymbol<FuncOp>(call.callee());
-    auto returnOp = cast<ReturnOp>(func.front().getTerminator());
+  // Generate TokenOp and token release/acquire for each buffer propogation
+  // chain (dependency chain). Implement dependencies with direct memory copy
+  // (affine loops) for adjacent AIEs or MM2S-S2MM DMAs (FlowOp and MemOp) for
+  // non-adjacent AIEs.
+  unsigned tokIdx = 0;
+  for (auto alloc : mod.getOps<memref::AllocOp>()) {
+    for (auto user : alloc->getUsers()) {
+      // Here we only need to deal with LoadBufferOps because LoadBufferOps
+      // serve as the start point of each dependency chain. In the contrast,
+      // StoreBufferOps are the end point of dependency chains.
+      if (isa<StoreBufferOp>(user))
+        continue;
 
-    for (auto result : call.getResults()) {
-      // Get the current BufferOp and TileOp.
-      auto srcBuf = bufMap[returnOp.getOperand(result.getResultNumber())
-                               .cast<BlockArgument>()];
-      auto srcTile = srcBuf.getTileOp();
-      auto &srcChanIdx = MM2SChanMap[srcTile];
+      // If the user that consumes the buffer generated by LoadBufferOp doesn't
+      // propoge the buffer to its result, we can early return.
+      auto &firstUse = *cast<LoadBufferOp>(user).buffer().use_begin();
+      auto firstResult = getResultFromInput(firstUse);
+      if (!firstResult)
+        continue;
 
-      // Traverse all users to create MemOp or direct memory copy.
-      bool hasDmaUses = false;
-      for (auto &use : result.getUses()) {
-        // Similarly, we always ignore StoreBufferOp.
-        if (isa<StoreBufferOp>(use.getOwner()))
-          continue;
+      // Create a new TokenOp for the current buffer with an initial value of 0.
+      b.setInsertionPoint(user);
+      auto tok = b.create<TokenOp>(b.getUnknownLoc(), 0);
+      auto tokName = "token" + std::to_string(tokIdx++);
+      tok->setAttr("sym_name", b.getStringAttr(tokName));
 
-        // Retrieve TileOp and BufferOp of the successor.
-        auto tgtCall = cast<CallOp>(use.getOwner());
-        auto tgtFunc = mod.lookupSymbol<FuncOp>(tgtCall.callee());
-        auto tgtArg = tgtFunc.getArgument(use.getOperandNumber());
+      // Used to hold the token name, token acquire value, and token release
+      // value for each intermediate result. We always start the token chain
+      // from the value of 0.
+      DenseMap<Value, unsigned> tokValMap;
+      tokValMap[firstResult] = 0;
 
-        auto tgtBuf = bufMap[tgtArg];
-        auto tgtTile = tgtBuf.getTileOp();
-        auto tgtTokInfo = tokInfoMap[tgtArg];
+      // Propogate the buffer in the whole program to generate the token
+      // aquire/release chain of the current buffer. All unhandled intermediate
+      // results are stacked in the worklist.
+      SmallVector<OpResult, 32> worklist({firstResult});
+      unsigned tokVal = 1;
+      while (!worklist.empty()) {
+        auto result = worklist.pop_back_val();
 
-        // Create direct memory copy if current and successor tiles are adjacent
-        // with each other.
-        if (createShareBufCpy(b, srcBuf, tgtBuf, tgtTokInfo))
-          continue;
+        // Get the BufferOp, TileOp, and MM2S channel index of the source tile.
+        auto srcCall = result.getDefiningOp<CallOp>();
+        auto srcFunc = mod.lookupSymbol<FuncOp>(srcCall.callee());
+        auto srcReturn = cast<ReturnOp>(srcFunc.front().getTerminator());
 
-        // Otherwise, we need to use switch boxes to establish the data delivery
-        // between pred and target tiles.
-        auto &tgtChanIdx = S2MMChanMap[tgtTile];
-        // TODO: Handle more than 2 channels, is it possible?
-        if (tgtChanIdx > 1) {
-          call.emitOpError("has more than two S2MM channels");
-          return signalPassFailure();
+        auto srcBuf = bufMap[srcReturn.getOperand(result.getResultNumber())
+                                 .cast<BlockArgument>()];
+        auto srcTile = srcBuf.getTileOp();
+        auto &srcChanIdx = MM2SChanMap[srcTile];
+
+        // Generate token acquire in the CoreOp if applicable.
+        if (tokValMap.count(result)) {
+          b.setInsertionPointToStart(&srcTile.getCoreOp().body().front());
+          b.create<UseTokenOp>(b.getUnknownLoc(), tokName,
+                               tokValMap.lookup(result), LockAction::Acquire);
+        }
+        // Record the last non-end operation in the CoreOp for later use.
+        auto lastOp = &*std::prev(srcTile.getCoreOp().body().front().end(), 2);
+
+        // Hold the current token value to make use of later.
+        auto coreTokVal = tokVal++;
+        auto srcTokVal = tokVal++;
+
+        // Handle all uses of the result.
+        bool hasMM2S = false;
+        bool hasMemCpy = false;
+        for (auto &use : result.getUses()) {
+          // Similarly, we ignore StoreBufferOps.
+          if (isa<StoreBufferOp>(use.getOwner()))
+            continue;
+
+          // Get TileOp, BufferOp, and S2MM channel index of the target tile.
+          auto tgtCall = cast<CallOp>(use.getOwner());
+          auto tgtFunc = mod.lookupSymbol<FuncOp>(tgtCall.callee());
+
+          auto tgtBuf = bufMap[tgtFunc.getArgument(use.getOperandNumber())];
+          auto tgtTile = tgtBuf.getTileOp();
+          auto &tgtChanIdx = S2MMChanMap[tgtTile];
+
+          // If the buffer is propogated to the target tile's result, push it
+          // into the worklist stack.
+          auto newResult = getResultFromInput(use, tgtFunc);
+          if (newResult)
+            worklist.push_back(newResult);
+
+          // Hold the current token value to make use of later.
+          auto tgtTokVal = tokVal++;
+          if (auto shareTile = getShareableTile(srcTile, tgtTile)) {
+            auto shareSrcTile = shareTile == srcTile;
+
+            // Create direct memory copy between shareable buffers if the source
+            // and target tiles are adjacent with each other.
+            createMemCpy(b, srcBuf, tgtBuf, tokName, coreTokVal, tgtTokVal,
+                         shareSrcTile);
+
+            // Record the release value of the result. Note that only if it's
+            // the source tile that is shared, we will generate token release in
+            // `createMemCpy` and the token value need to be recorded.
+            if (newResult && shareSrcTile)
+              tokValMap[newResult] = tgtTokVal;
+
+            if (shareSrcTile)
+              hasMemCpy = true;
+          } else {
+            // Create FlowOp connecting the source and target tiles. Here, we
+            // always connect the DMA channel of tiles.
+            b.setInsertionPoint(tgtTile.getCoreOp());
+            b.create<FlowOp>(b.getUnknownLoc(), srcTile, WireBundle::DMA,
+                             srcChanIdx, tgtTile, WireBundle::DMA, tgtChanIdx);
+
+            // TODO: Handle more than 2 channels.
+            if (tgtChanIdx > 1) {
+              tgtCall.emitOpError("has more than two S2MM channels");
+              return signalPassFailure();
+            }
+            createOrUpdateMemOp(b, tgtBuf, tokName, coreTokVal, tgtTokVal,
+                                tgtChanIdx++ ? DMAChan::S2MM1 : DMAChan::S2MM0);
+
+            // Record the release value of the result.
+            if (newResult)
+              tokValMap[newResult] = tgtTokVal;
+
+            hasMM2S = true;
+          }
         }
 
-        // Create FlowOp connecting the source srcTile and current srcTile.
-        b.setInsertionPoint(tgtTile.getCoreOp());
-        b.create<FlowOp>(b.getUnknownLoc(), srcTile, WireBundle::DMA,
-                         srcChanIdx, tgtTile, WireBundle::DMA, tgtChanIdx);
-
-        // Create or update MemOp for DMA descripters.
-        createOrUpdateMemOp(b, tgtBuf, tgtTokInfo,
-                            tgtChanIdx ? DMAChan::S2MM1 : DMAChan::S2MM0);
-        ++tgtChanIdx;
-        hasDmaUses = true;
-      }
-
-      if (hasDmaUses) {
-        // TODO: Handle more than 2 channels, is it possible?
-        if (srcChanIdx > 1) {
-          call.emitOpError("has more than two MM2S channels");
-          return signalPassFailure();
+        // Generate token release in the CoreOp if there's no direct memory copy
+        // between shared buffers in the source tile.
+        if (hasMM2S || !hasMemCpy) {
+          b.setInsertionPointAfter(lastOp);
+          b.create<UseTokenOp>(b.getUnknownLoc(), tokName, coreTokVal,
+                               LockAction::Release);
         }
 
-        // Create or update MemOp for MM2S descripters.
-        auto srcTokInfo = tokInfoMap[result];
-        createOrUpdateMemOp(b, srcBuf, srcTokInfo,
-                            srcChanIdx ? DMAChan::MM2S1 : DMAChan::MM2S0);
-        ++srcChanIdx;
+        // If the source and target tile are not adjacent with each other, we
+        // need to create MM2S DMAs to stream the data. Therefore, we need to
+        // generate the MM2S DMA descriptor in the MemOp.
+        if (hasMM2S) {
+          // TODO: Handle more than 2 channels.
+          if (srcChanIdx > 1) {
+            srcCall.emitOpError("has more than two MM2S channels");
+            return signalPassFailure();
+          }
+          createOrUpdateMemOp(b, srcBuf, tokName, coreTokVal, srcTokVal,
+                              srcChanIdx++ ? DMAChan::MM2S1 : DMAChan::MM2S0);
+        }
       }
     }
   }
@@ -358,33 +364,12 @@ void ConvertToAIE::runOnOperation() {
       // b.create<UseLockOp>(b.getUnknownLoc(), lock, 1, LockAction::Release,
       // 0);
     }
-
-    // TODO: This is a quick solution to canonicalize token uses.
-    if (auto coreOp = dyn_cast<CoreOp>(op)) {
-      auto useTknOps = coreOp.body().front().getOps<UseTokenOp>();
-      unsigned idx = 0;
-      SmallVector<Operation *, 2> usesToErase;
-      for (auto useA : useTknOps) {
-        if (!useA.release())
-          continue;
-        for (auto useB : llvm::drop_begin(useTknOps, ++idx)) {
-          if (!useB.acquire() || useA.value() != useB.value() ||
-              useA.tokenName() != useB.tokenName())
-            continue;
-          usesToErase.push_back(useA);
-          usesToErase.push_back(useB);
-          break;
-        }
-      }
-      for (auto use : usesToErase)
-        use->erase();
-    }
   }
 
   PassManager pm(mod.getContext(), "module");
   pm.addPass(createAIEAssignBufferAddressesPass());
   pm.addPass(createAIEPathfinderPass());
-  pm.addPass(createAIECreateLocksPass());
+  // pm.addPass(createAIECreateLocksPass());
   if (failed(pm.run(mod))) {
     emitError(mod.getLoc(), "failed to implement on AIE array");
     return signalPassFailure();
@@ -408,8 +393,8 @@ void ConvertToAIE::runOnOperation() {
         switchBox->dropAllUses();
         switchBox->erase();
       }
-    } else if (isa<CallOp, FuncOp, LoadBufferOp, StoreBufferOp, TokenOp, WireOp,
-                   PLIOOp, ShimMuxOp>(op)) {
+    } else if (isa<CallOp, FuncOp, LoadBufferOp, StoreBufferOp, WireOp, PLIOOp,
+                   ShimMuxOp>(op)) {
       op.dropAllUses();
       op.erase();
     }

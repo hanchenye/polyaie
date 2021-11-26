@@ -52,6 +52,20 @@ unsigned polyaie::getRow(Operation *call) {
   return row;
 }
 
+bool polyaie::adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
+                       unsigned tgtCol) {
+  return (std::abs((int64_t)srcRow - (int64_t)tgtRow) +
+          std::abs((int64_t)srcCol - (int64_t)tgtCol)) == 1;
+}
+bool polyaie::adjacent(CallOp srcCall, CallOp tgtCall) {
+  return adjacent(getRow(srcCall), getCol(srcCall), getRow(tgtCall),
+                  getCol(tgtCall));
+}
+bool polyaie::adjacent(xilinx::AIE::TileOp srcTile,
+                       xilinx::AIE::TileOp tgtTile) {
+  return adjacent(srcTile.row(), srcTile.col(), tgtTile.row(), tgtTile.col());
+}
+
 xilinx::AIE::TileOp polyaie::getShareableTile(xilinx::AIE::TileOp srcTile,
                                               xilinx::AIE::TileOp tgtTile) {
   auto srcCol = srcTile.col();

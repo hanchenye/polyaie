@@ -20,6 +20,11 @@ SmallVector<int64_t, 4> getBufferOffsets(MemRefType type);
 unsigned getCol(Operation *call);
 unsigned getRow(Operation *call);
 
+bool adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
+              unsigned tgtCol);
+bool adjacent(CallOp srcCall, CallOp tgtCall);
+bool adjacent(xilinx::AIE::TileOp srcTile, xilinx::AIE::TileOp tgtTile);
+
 xilinx::AIE::TileOp getShareableTile(xilinx::AIE::TileOp srcTile,
                                      xilinx::AIE::TileOp tgtTile);
 
