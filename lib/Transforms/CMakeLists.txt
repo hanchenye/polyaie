@@ -1,8 +1,9 @@
 add_mlir_library(MLIRPolyAIEPasses
   Preprocess.cpp
+  ReduceBufferSize.cpp
   CreateDataflow.cpp
-  PrintDataflow.cpp
   Placement.cpp
+  PrintDataflow.cpp
   ConvertToAIE.cpp
   SimplifyTokens.cpp
   Postprocess.cpp

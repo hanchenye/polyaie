@@ -30,6 +30,22 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
   ];
 }
 
+def ReduceBufferSize : Pass<"polyaie-reduce-buffer-size", "ModuleOp"> {
+  let summary = "Reduce the buffer size based on loop analysis";
+  let description = [{
+    Through loop analysis, this pass can identify the memory partition that each
+    function has accessed. In this way, the size of memories passed to each
+    function can be reduced in order to save local buffer consumption.
+  }];
+
+  let constructor = "mlir::polyaie::createReduceBufferSizePass()";
+
+  let dependentDialects = [
+    "mlir::AffineDialect", "mlir::StandardOpsDialect",
+    "mlir::memref::MemRefDialect", "mlir::polyaie::memrefext::MemRefExtDialect"
+  ];
+}
+
 def CreateDataflow : Pass<"polyaie-create-dataflow", "ModuleOp"> {
   let summary = "Extract the depedencies and create dataflow";
   let description = [{
@@ -84,7 +100,9 @@ def Placement : Pass<"polyaie-placement", "ModuleOp"> {
 def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
   let summary = "Convert to the logical-level IR of AIE";
   let description = [{
-    Buffer allocation, routing, and physical locks materialization.
+    Lower function calls to AIE tiles and cores, create local buffers, create
+    MemOp and FlowOp to implement the dependencies between AIE tiles, lower
+    buffer load and store operations.
   }];
 
   let constructor = "mlir::polyaie::createConvertToAIEPass()";
