@@ -39,15 +39,17 @@ struct PolyAIEPipelineOptions
 };
 
 std::unique_ptr<Pass> createPreprocessPass();
-std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createCreateDataflowPass();
 std::unique_ptr<Pass> createPlacementPass();
-std::unique_ptr<Pass> createPlacementPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createPrintDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
+std::unique_ptr<Pass> createSimplifyTokensPass();
+std::unique_ptr<Pass> createPostprocessPass();
+
+std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
+std::unique_ptr<Pass> createPlacementPass(const PolyAIEPipelineOptions &opts);
 
 void registerPolyAIEPassPipeline();
-
 void registerPolyAIEPasses();
 
 #define GEN_PASS_CLASSES
