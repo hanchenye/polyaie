@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIETokenAnalysis.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
@@ -19,31 +20,25 @@ struct SimplifyTokens : public polyaie::SimplifyTokensBase<SimplifyTokens> {
 
 void SimplifyTokens::runOnOperation() {
   auto mod = getOperation();
-  auto b = OpBuilder(mod);
-  auto loc = b.getUnknownLoc();
 
-  // Postprocess for host kernel generation. We lower LoadBufferOp and
-  // StoreBufferOp and create lock releases to indicate the completion of the
-  // whole program.
-  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
-    if (auto coreOp = dyn_cast<CoreOp>(op)) {
-      // A quick token uese canonicalization.
-      auto coreTokUses = coreOp.body().getOps<UseTokenOp>();
-      unsigned useIdx = 0;
-      SmallVector<UseTokenOp, 4> usesToErase;
-      for (auto relUse : coreTokUses) {
-        ++useIdx;
-        if (!relUse.release())
-          continue;
-        for (auto acqUse : llvm::drop_begin(coreTokUses, useIdx)) {
-          if (!acqUse.acquire() || relUse.value() != acqUse.value() ||
-              relUse.tokenName() != acqUse.tokenName())
-            continue;
-          usesToErase.push_back(acqUse);
-        }
-      }
-      for (auto use : usesToErase)
-        use.erase();
+  TokenAnalysis TA(mod);
+  TA.runAnalysis();
+  auto tokChains = TA.getTokenChains();
+
+  // Map from token release operation to all token acquire operations that are
+  // chained together.
+  DenseMap<Operation *, SmallVector<Operation *, 4>> chainMap;
+  for (auto pair : tokChains)
+    chainMap[pair.first].push_back(pair.second);
+
+  for (auto pair : chainMap) {
+    // Only if all the release and acquire operations are in the same operation,
+    // they can be safely erased.
+    if (llvm::all_of(pair.second, [&](Operation *op) {
+          return op->getParentOp() == pair.first->getParentOp();
+        })) {
+      pair.first->erase();
+      llvm::for_each(pair.second, [&](Operation *op) { op->erase(); });
     }
   }
 }
