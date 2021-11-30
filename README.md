@@ -2,7 +2,7 @@
 
 ## 2mm Example
 ```sh
-$ python scripts/pb-flow.py --polymer --loop-transforms --dataset MINI example/polybench
+$ python scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim example/polybench
 
 $ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir 1> 2mm.phism.polyaie.mlir 2> 2mm.phism.polyaie.dot
