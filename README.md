@@ -37,9 +37,10 @@ $ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
 <!-- -affine-super-vectorize="virtual-vector-size=32" -->
 
 ## Quick Start
-### 0. Clone this repository
+### 0. Clone PolyAIE
 ```sh
 $ git clone --recursive git@github.com:hanchenye/polyaie.git
+$ cd polyaie
 ```
 
 ### 1. Install MLIR
@@ -59,12 +60,16 @@ $ ninja && ninja check-mlir
 ```
 
 ### 2. Install MLIR-AIE
-Follow the instructions from https://github.com/Xilinx/mlir-aie
+Follow the instructions from https://xilinx.github.io/mlir-aie/.
 ```sh
 $ cd mlir-aie
+
+$ # (Optional) Build VCK190 platform for generating executables.
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh # Your Vitis settings script.
 $ source ~/tools/Xilinx/PetaLinux/settings.sh # Your PetaLinux settings script.
 $ cd platforms/vck190_bare && make all && cd ../..
+
+$ # Build MLIR-AIE compilation flow.
 $ mkdir build && cd build
 $ /usr/bin/cmake -GNinja .. \
     -DLLVM_DIR=${PWD}/../../llvm/build/lib/cmake/llvm \
@@ -94,10 +99,11 @@ $ ninja check-polyaie
 $ export PATH=$PATH:${PWD}/bin
 ```
 
-### 4. Install Phism
+### 4. Clone and install Phism
+Follow the instructions from https://github.com/kumasento/phism.
 ```sh
+$ git clone --recursive git@github.com:kumasento/phism.git
 $ cd phism
-$ git submodule update --init --recursive
 $ ./scripts/build-llvm.sh
 $ ./scripts/build-polygeist.sh
 $ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PWD}/polymer/build/pluto/lib

@@ -6,10 +6,6 @@
 	path = mlir-aie
 	url = git@github.com:hanchenye/mlir-aie.git
 
-[submodule "phism"]
-	path = phism
-	url = git@github.com:kumasento/phism.git
-
 [submodule "cmakeModules"]
 	path = cmakeModules
 	url = git@github.com:Xilinx/cmakeModules.git
