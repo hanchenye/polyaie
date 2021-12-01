@@ -4,7 +4,7 @@
 
 [submodule "mlir-aie"]
 	path = mlir-aie
-	url = git@github.com:Xilinx/mlir-aie.git
+	url = git@github.com:hanchenye/mlir-aie.git
 
 [submodule "phism"]
 	path = phism

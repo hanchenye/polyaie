@@ -1,8 +1,8 @@
-# PolyAIE Project (polyaie)
+# PolyAIE Project
 
 ## 2mm Example
 ```sh
-$ python scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim example/polybench
+$ python phism/scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim phism/example/polybench
 
 $ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir 1> 2mm.phism.polyaie.mlir 2> 2mm.phism.polyaie.dot
@@ -37,52 +37,71 @@ $ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
 <!-- -affine-super-vectorize="virtual-vector-size=32" -->
 
 ## Quick Start
-### 1. Install LLVM and MLIR
+### 0. Clone this repository
 ```sh
-$ git clone https://github.com/llvm/llvm-project $LLVM_DIR
-$ cd llvm-project
-$ git checkout b340cadeacc4f0011cf56e82e0fbca6faa166777
-$ mkdir $LLVM_DIR/build
-$ cd $LLVM_DIR/build
+$ git clone --recursive git@github.com:hanchenye/polyaie.git
+```
+
+### 1. Install MLIR
+```sh
+$ cd llvm
+$ mkdir build && cd build
 $ cmake -G Ninja ../llvm \
     -DLLVM_ENABLE_PROJECTS="mlir" \
-    -DLLVM_TARGETS_TO_BUILD="host" \
-    -DLLVM_ENABLE_ASSERTIONS=ON \
-    -DCMAKE_BUILD_TYPE=DEBUG
-$ ninja
-$ ninja check-mlir
+    -DLLVM_TARGETS_TO_BUILD=host \
+    -DLLVM_LINK_LLVM_DYLIB=ON \
+    -DLLVM_BUILD_UTILS=ON \
+    -DLLVM_INSTALL_UTILS=ON \
+    -DLLVM_USE_LINKER=lld \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++
+$ ninja && ninja check-mlir
 ```
 
 ### 2. Install MLIR-AIE
 Follow the instructions from https://github.com/Xilinx/mlir-aie
 ```sh
-/usr/bin/cmake -GNinja .. \
-    -DLLVM_DIR=/home/hanchenye/workspace/mlir-aie-llvm-project/build/lib/cmake/llvm \
-    -DMLIR_DIR=/home/hanchenye/workspace/mlir-aie-llvm-project/build/lib/cmake/mlir \
-    -DCMAKE_MODULE_PATH=/home/hanchenye/workspace/cmakeModules \
-    -DVitisSysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
-    -DCMAKE_BUILD_TYPE=Debug
-
-    cmd += ['-I%s/usr/include/c++/9.2.0' % opts.sysroot]
-    cmd += ['-I%s/usr/include/c++/9.2.0/aarch64-xilinx-linux' % opts.sysroot]
-    cmd += ['-I%s/usr/include/c++/9.2.0/backward' % opts.sysroot]
-    cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/9.2.0' % opts.sysroot]
-    cmd += ['-B%s/usr/lib/aarch64-xilinx-linux/9.2.0' % opts.sysroot]
-``
+$ cd mlir-aie
+$ source /tools/Xilinx/Vitis/2020.1/settings64.sh # Your Vitis settings script.
+$ source ~/tools/Xilinx/PetaLinux/settings.sh # Your PetaLinux settings script.
+$ cd platforms/vck190_bare && make all && cd ../..
+$ mkdir build && cd build
+$ /usr/bin/cmake -GNinja .. \
+    -DLLVM_DIR=${PWD}/../../llvm/build/lib/cmake/llvm \
+    -DMLIR_DIR=${PWD}/../../llvm/build/lib/cmake/mlir \
+    -DCMAKE_MODULE_PATH=${PWD}/../../cmakeModules \
+    -DVitisSysroot=${PWD}/../platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
+    -DCMAKE_BUILD_TYPE=DEBUG \
+    -DLLVM_USE_LINKER=lld \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++
+$ ninja && ninja check-aie
+```
 
 ### 3. Install PolyAIE
 ```sh
-$ git clone $POLYAIE_DIR
-$ mkdir $POLYAIE_DIR/build
-$ cd $POLYAIE_DIR/build
+$ mkdir build && cd build
 $ /usr/bin/cmake -G Ninja .. \
-    -DMLIR_DIR=$PWD/../../mlir-aie-llvm-project/build/lib/cmake/mlir \
-    -DLLVM_DIR=$PWD/../../mlir-aie-llvm-project/build/lib/cmake/llvm \
-    -DAIE_DIR=$PWD/../../mlir-aie/build/lib/cmake/aie \
+    -DMLIR_DIR=${PWD}/../llvm/build/lib/cmake/mlir \
+    -DLLVM_DIR=${PWD}/../llvm/build/lib/cmake/llvm \
+    -DAIE_DIR=${PWD}/../mlir-aie/build/lib/cmake/aie \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
     -DLLVM_USE_LINKER=lld \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
 $ ninja check-polyaie
+$ export PATH=$PATH:${PWD}/bin
+```
+
+### 4. Install Phism
+```sh
+$ cd phism
+$ git submodule update --init --recursive
+$ ./scripts/build-llvm.sh
+$ ./scripts/build-polygeist.sh
+$ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${PWD}/polymer/build/pluto/lib
+$ ./scripts/build-polymer.sh
+$ ./scripts/build-phism.sh
+$ export PYTHONPATH=$PYTHONPATH:/home/hanchenye/workspace/polyaie/phism
 ```
