@@ -15,6 +15,16 @@ using namespace polyaie;
 using namespace memrefext;
 using namespace xilinx::AIE;
 
+static llvm::cl::opt<bool>
+    debugHostKernel("debug-host-kernel",
+                    llvm::cl::desc("run the host kernel in debug mode"),
+                    llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
+    dryRunHostKernel("dry-run-host-kernel",
+                     llvm::cl::desc("run the host kernel without real data"),
+                     llvm::cl::init(false));
+
 namespace {
 class HostKernelExporter : public ExporterBase {
 public:
@@ -60,14 +70,14 @@ void HostKernelExporter::emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx,
 
   // Generate the loop body.
   if (isWrite) {
-    indent() << "mlir_write_buffer_" << bufName << "("
+    indent() << "mlir_aie_write_buffer_" << bufName << "(_xaie, "
              << (bufRank ? "bufIdx++" : "0") << ", ";
     emitArgValue();
     os << ");\n\n";
   } else {
     indent();
     emitArgValue();
-    os << " = mlir_read_buffer_" << bufName << "("
+    os << " = mlir_aie_read_buffer_" << bufName << "(_xaie, "
        << (bufRank ? "bufIdx++" : "0") << ");\n\n";
   }
 }
@@ -102,26 +112,11 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 10
-#define XAIE_NUM_COLS 40
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
-#define LOCK_TIMEOUT 100
-
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-
+#define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
+#define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 #define MLIR_STACK_OFFSET 4096
 
-namespace {
-XAieGbl_Config *AieConfigPtr;
-XAieGbl AieInst;
-XAieGbl_HwCfg AieConfig;
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
-} // namespace
 
 )XXX";
 
@@ -152,32 +147,24 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
   os << R"XXX(
   printf("Configure AIE array...\n");
 
-  size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-  XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                           XAIE_ADDR_ARRAY_OFF);
-  XAieGbl_HwInit(&AieConfig);
-  AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-  XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+  aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+  mlir_aie_init_device(_xaie);
 
-  mlir_configure_cores();
-  mlir_configure_switchboxes();
-  mlir_configure_dmas();
-  mlir_initialize_locks();
+  mlir_aie_configure_cores(_xaie);
+  mlir_aie_configure_switchboxes(_xaie);
+  mlir_aie_initialize_locks(_xaie);
+  mlir_aie_configure_dmas(_xaie);
 
 
   printf("Initialize buffers...\n");
 
 )XXX";
 
-  // Clear the local memory of all tiles.
+  // Collect tile operations.
   SmallVector<TileOp, 32> tiles;
-  for (auto tile : mod.getOps<TileOp>()) {
-    if (tile.getCoreOp()) {
-      indent() << "ACDC_clear_tile_memory(TileInst[" << tile.col() << "]["
-               << tile.row() << "]);\n";
+  for (auto tile : mod.getOps<TileOp>())
+    if (tile.getCoreOp())
       tiles.push_back(tile);
-    }
-  }
   os << "\n";
 
   // Collect memory copy operations.
@@ -189,50 +176,59 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
     else if (memCpy.target().getDefiningOp<memref::AllocOp>())
       stores.push_back(memCpy);
 
-  // Initialize local memories.
-  indent() << "unsigned bufIdx;\n\n";
-  for (auto memCpy : loads)
-    emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
-               memCpy.target(), /*isWrite=*/true);
+  if (!dryRunHostKernel) {
+    // Clear the local memory of all tiles.
+    for (auto tile : tiles)
+      indent() << "mlir_aie_clear_tile_memory(_xaie, " << tile.col() << ", "
+               << tile.row() << ");\n";
+    os << "\n";
+
+    // Initialize local memories.
+    indent() << "unsigned bufIdx;\n\n";
+    for (auto memCpy : loads)
+      emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
+                 memCpy.target(), /*isWrite=*/true);
+  }
 
   // Start the execution.
   os << R"XXX(
   printf("Start cores...\n");
-  mlir_start_cores();
+  mlir_aie_start_cores(_xaie);
 
 )XXX";
 
+  if (debugHostKernel) {
+    indent() << "sleep(2);\n";
+    indent() << "u8 result[" << tiles.size() << "];\n\n";
+
+    unsigned tileIdx = 0;
+    for (auto tile : tiles)
+      indent() << "result[" << tileIdx++ << "] = mlir_aie_acquire_lock(_xaie, "
+               << tile.col() << ", " << tile.row() << ", 15, 1, 0);\n";
+    os << "\n";
+
+    tileIdx = 0;
+    for (auto tile : tiles)
+      indent() << "printf(\"Tile[" << tile.col() << "][" << tile.row()
+               << "] = \%d\\n\", result[" << tileIdx++ << "]);\n";
+    os << "\n";
+  }
+
   // Check the completion of the program.
-  // TODO: Make this more robust.
-  // for (auto memCpy : stores) {
-  //   auto buf = memCpy.source().getDefiningOp<BufferOp>();
-  //   auto tile = buf.getTileOp();
-  //   indent() << "while (!XAieTile_LockAcquire(&(TileInst[" << tile.col() <<
-  //   "]["
-  //            << tile.row() << "]), 15, 1, LOCK_TIMEOUT)) {}\n";
-  // }
-  // os << "\n";
-
-  indent() << "sleep(2);\n";
-  indent() << "u8 result[" << tiles.size() << "];\n\n";
-
-  unsigned tileIdx = 0;
-  for (auto tile : tiles)
-    indent() << "result[" << tileIdx++ << "] = XAieTile_LockAcquire(&(TileInst["
-             << tile.col() << "][" << tile.row()
-             << "]), 15, 1, LOCK_TIMEOUT);\n";
+  for (auto memCpy : stores) {
+    auto buf = memCpy.source().getDefiningOp<BufferOp>();
+    auto tile = buf.getTileOp();
+    indent() << "while (!mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
+             << tile.row() << ", 15, 1, 0)) {}\n";
+  }
   os << "\n";
 
-  tileIdx = 0;
-  for (auto tile : tiles)
-    indent() << "printf(\"Tile[" << tile.col() << "][" << tile.row()
-             << "] = \%d\\n\", result[" << tileIdx++ << "]);\n";
-  os << "\n";
-
-  // Write back results from local to global memory.
-  for (auto memCpy : stores)
-    emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
-               memCpy.source(), /*isWrite=*/false);
+  if (!dryRunHostKernel) {
+    // Write back results from local to global memory.
+    for (auto memCpy : stores)
+      emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
+                 memCpy.source(), /*isWrite=*/false);
+  }
 
   os << R"XXX(
   printf("Complete compute.\n");

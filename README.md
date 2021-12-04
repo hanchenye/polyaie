@@ -1,37 +1,40 @@
 # PolyAIE Project
 
-## 2mm Example
+## gemver Example
 ```sh
 $ python phism/scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim phism/example/polybench
 
-$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
-$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" 2mm.phism.mlir 1> 2mm.phism.polyaie.mlir 2> 2mm.phism.polyaie.dot
-$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm algorithm=simulated-annealing" 2mm.phism.mlir 1> 2mm.phism.polyaie.mlir 2> 2mm.phism.polyaie.dot
-$ polyaie-translate -export-host-kernel 2mm.phism.polyaie.mlir > 2mm.host.cpp
+$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' gemver.pre.kern.plmr.ca.lt.mlir > gemver.phism.mlir
+$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemver" gemver.phism.mlir 1> gemver.phism.polyaie.mlir 2> gemver.phism.polyaie.dot
+$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemver algorithm=simulated-annealing" gemver.phism.mlir 1> gemver.phism.polyaie.mlir 2> gemver.phism.polyaie.dot
+$ polyaie-translate -export-host-kernel gemver.phism.polyaie.mlir > gemver.host.cpp
 
-$ dot -Tpng 2mm.phism.polyaie.dot > 2mm.phism.polyaie.png && dot -Tpng -Kfdp 2mm.phism.polyaie.dot > 2mm.phism.polyaie.layout.png
-$ sed -E 's/,\s#map[[:digit:]]//g; /memcpy/d; /alloc/d; /affine\_map/d' 2mm.phism.polyaie.mlir > 2mm.phism.polyaie.mliraie.mlir
+$ dot -Tpng gemver.phism.polyaie.dot > gemver.phism.polyaie.png && dot -Tpng -Kfdp gemver.phism.polyaie.dot > gemver.phism.polyaie.layout.png
+$ sed -E 's/,\s#map[[:digit:]]+//g; /memcpy/d; /alloc/d; /affine\_map/d' gemver.phism.polyaie.mlir > gemver.phism.polyaie.mliraie.mlir
 
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh
-$ /home/hanchenye/workspace/mlir-aie/build/bin/aiecc.py \
-    --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
-    2mm.phism.polyaie.mliraie.mlir \
-    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ -I${PWD} \
-    /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp \
-    polybench.cpp 2mm.host.cpp 2mm.cpp -o 2mm.elf
+$ /home/hanchenye/workspace/polyaie/mlir-aie/build/bin/aiecc.py -j10 \
+    --sysroot=/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
+    gemver.phism.polyaie.mliraie.mlir \
+    -I/home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/ \
+    -I/home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/ -I${PWD} \
+    /home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/polybench.cpp \
+    /home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/test_library.cpp \
+    gemver.cpp -o gemver.elf
 
-$ /home/hanchenye/workspace/mlir-aie-llvm-project/build/bin/clang \
-    --target=aarch64-linux-gnu -std=c++11 \
-    --sysroot=/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
-    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0 \
-    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/aarch64-xilinx-linux \
-    -I/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/backward \
-    -L/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
-    -B/home/hanchenye/workspace/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
+$ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \
+    --sysroot=/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
+    -I/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0 \
+    -I/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/aarch64-xilinx-linux \
+    -I/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/backward \
+    -L/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
+    -B/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
     -Iacdc_project -fuse-ld=lld -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
-    -I/home/hanchenye/workspace/mlir-aie/build/runtime_lib/ -I${PWD} \
-    /home/hanchenye/workspace/mlir-aie/build/runtime_lib/test_library.cpp \
-    polybench.cpp 2mm.host.cpp 2mm.cpp -o 2mm.elf
+    -I/home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/ \
+    -I/home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/ -I${PWD} \
+    /home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/polybench.cpp \
+    /home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/test_library.cpp \
+    gemver.cpp -o gemver.elf
 ```
 
 <!-- -affine-super-vectorize="virtual-vector-size=32" -->
