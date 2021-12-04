@@ -41,6 +41,7 @@ struct PolyAIEPipelineOptions
 std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createReduceBufferSizePass();
 std::unique_ptr<Pass> createCreateDataflowPass();
+std::unique_ptr<OperationPass<FuncOp>> createDetectReductionPass();
 std::unique_ptr<Pass> createPlacementPass();
 std::unique_ptr<Pass> createPrintDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();

@@ -9,8 +9,8 @@ $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemver" gemver.phism.mlir 
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemver algorithm=simulated-annealing" gemver.phism.mlir 1> gemver.phism.polyaie.mlir 2> gemver.phism.polyaie.dot
 $ polyaie-translate -export-host-kernel gemver.phism.polyaie.mlir > gemver.host.cpp
 
-$ dot -Tpng gemver.phism.polyaie.dot > gemver.phism.polyaie.png && dot -Tpng -Kfdp gemver.phism.polyaie.dot > gemver.phism.polyaie.layout.png
-$ sed -E 's/,\s#map[[:digit:]]+//g; /memcpy/d; /alloc/d; /affine\_map/d' gemver.phism.polyaie.mlir > gemver.phism.polyaie.mliraie.mlir
+$ dot -Tpng gemver.phism.polyaie.dot > gemver.phism.polyaie.df.png && dot -Tpng -Kfdp gemver.phism.polyaie.dot > gemver.phism.polyaie.layout.png
+$ sed -E '/memcpy/d; /alloc/d' gemver.phism.polyaie.mlir > gemver.phism.polyaie.mliraie.mlir
 
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh
 $ /home/hanchenye/workspace/polyaie/mlir-aie/build/bin/aiecc.py -j10 \

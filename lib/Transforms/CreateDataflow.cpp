@@ -76,14 +76,39 @@ void CreateDataflow::runOnOperation() {
     }
   }
 
-  // As long as the buffer is used by operations other than a StoreBufferOp, the
-  // StoreBufferOp can be identified as redundant.
-  // FIXME: If a buffer is accessed by a function but not updated in the end,
-  // the buffer will be identified as redundant. But actually this is not the
-  // case, we should store all buffers that are updated back.
-  for (auto storeOp : llvm::make_early_inc_range(mod.getOps<StoreBufferOp>())) {
-    if (!llvm::hasSingleElement(storeOp.buffer().getUsers()))
-      storeOp.erase();
+  auto b = OpBuilder(mod);
+  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
+    // As long as the buffer is used by operations other than a StoreBufferOp,
+    // the StoreBufferOp can be identified as redundant.
+    // FIXME: If a buffer is accessed by a function but not updated in the end,
+    // the buffer will be identified as redundant. But actually this is not the
+    // case, we should store all buffers that are updated back.
+    if (auto storeOp = dyn_cast<StoreBufferOp>(op))
+      if (!llvm::hasSingleElement(storeOp.buffer().getUsers()))
+        storeOp.erase();
+
+    // Remove layout map from all memories.
+    if (auto loadOp = dyn_cast<LoadBufferOp>(op)) {
+      // Update the type of load buffer operations.
+      auto type = loadOp.getType();
+      loadOp.getResult().setType(
+          MemRefType::get(type.getShape(), type.getElementType()));
+
+    } else if (auto call = dyn_cast<CallOp>(op)) {
+      auto func = mod.lookupSymbol<FuncOp>(call.callee());
+
+      // Update the type of functions.
+      for (auto arg : func.getArguments()) {
+        auto type = arg.getType().cast<MemRefType>();
+        arg.setType(MemRefType::get(type.getShape(), type.getElementType()));
+      }
+      auto resultTypes = func.front().getTerminator()->getOperandTypes();
+      func.setType(b.getFunctionType(func.getArgumentTypes(), resultTypes));
+
+      // Update the type of calls.
+      for (auto resultAndType : llvm::zip(call.getResults(), resultTypes))
+        std::get<0>(resultAndType).setType(std::get<1>(resultAndType));
+    }
   }
 }
 

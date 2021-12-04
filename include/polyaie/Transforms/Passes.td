@@ -75,6 +75,16 @@ def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
   ];
 }
 
+def DetectReduction : FunctionPass<"polyaie-detect-reduction"> {
+  let summary = "Detect reductions in affine.for";
+  let constructor = "mlir::polyaie::createDetectReductionPass()";
+
+  let dependentDialects = [
+    "mlir::AffineDialect", "mlir::StandardOpsDialect",
+    "mlir::memref::MemRefDialect"
+  ];
+}
+
 def Placement : Pass<"polyaie-placement", "ModuleOp"> {
   let summary = "Place function calls to a physical location";
   let description = [{

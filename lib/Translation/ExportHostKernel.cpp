@@ -40,7 +40,7 @@ void HostKernelExporter::emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx,
   auto bufType = buf.getType().dyn_cast<MemRefType>();
   auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
   auto bufRank = bufType.getRank();
-  auto bufOffsets = getBufferOffsets(bufType);
+  auto bufOffsets = isWrite ? memCpy.sourceOffsets() : memCpy.targetOffsets();
 
   // Generate the loop head.
   // TODO: Make this more robust. Now we assume we won't read and write buffer
@@ -60,7 +60,7 @@ void HostKernelExporter::emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx,
     for (ivIdx = 0; ivIdx < bufRank; ++ivIdx) {
       reduceIndent();
       os << "[idx" << ivIdx;
-      auto offset = bufOffsets[ivIdx];
+      auto offset = bufOffsets[ivIdx].cast<IntegerAttr>().getInt();
       if (offset)
         os << " + " << offset << "]";
       else
