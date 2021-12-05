@@ -36,6 +36,12 @@ struct PolyAIEPipelineOptions
       llvm::cl::desc("Specify the placement algorithm, possible values are: "
                      "naive(default), simulated-annealing"),
       llvm::cl::init("naive")};
+
+  /// Configure the vectorization and convert-to-aie pass.
+  Option<int64_t> vectorizeSize{
+      *this, "vec-size",
+      llvm::cl::desc("Specify the size of super vectorization"),
+      llvm::cl::init(8)};
 };
 
 std::unique_ptr<Pass> createPreprocessPass();

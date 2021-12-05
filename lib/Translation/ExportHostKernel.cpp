@@ -139,9 +139,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
       os << "[" << dimSize << "]";
     if (alloc != allocs.back())
       os << ",\n";
-    else
-      os << ") {\n";
   }
+  os << ") {\n";
 
   // Generate the kernel body.
   os << R"XXX(

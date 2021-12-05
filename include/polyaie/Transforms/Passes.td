@@ -115,6 +115,11 @@ def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
     buffer load and store operations.
   }];
 
+  let options = [
+    Option<"vecSize", "vec-size", "int64_t",
+           /*default=*/"8", "Specify the size of super vectorization">
+  ];
+
   let constructor = "mlir::polyaie::createConvertToAIEPass()";
 
   let dependentDialects = [
