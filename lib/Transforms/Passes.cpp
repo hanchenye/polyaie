@@ -27,8 +27,10 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(polyaie::createReduceBufferSizePass());
         pm.addPass(polyaie::createCreateDataflowPass());
-        pm.addPass(polyaie::createDetectReductionPass());
-        pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
+        if (opts.vectorizeSize != 1) {
+          pm.addPass(polyaie::createDetectReductionPass());
+          pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
+        }
         pm.addPass(mlir::createAffineLoopNormalizePass());
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());

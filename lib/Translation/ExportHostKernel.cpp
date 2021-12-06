@@ -137,10 +137,9 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
     indent() << emitType(type.getElementType()) << " arg" << argIdx++;
     for (auto dimSize : type.getShape())
       os << "[" << dimSize << "]";
-    if (alloc != allocs.back())
-      os << ",\n";
+    os << ",\n";
   }
-  os << ") {\n";
+  indent() << "unsigned iter_num = 1) {\n";
 
   // Generate the kernel body.
   os << R"XXX(
@@ -189,21 +188,40 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
                  memCpy.target(), /*isWrite=*/true);
   }
 
-  // Start the execution.
+  // Create counters and start the execution.
+  indent() << "unsigned counters[" << stores.size() << "];\n";
+  indent() << "auto kernel_complete = [&]() {";
+
   os << R"XXX(
+    for (auto counter : counters)
+      printf("%d, ", counter);
+    printf("\n");
+    for (auto counter : counters)
+      if (counter < iter_num)
+        return false;
+    return true;
+  };
+
+  for (auto &counter : counters)
+    counter = 0;
+
+
   printf("Start cores...\n");
   mlir_aie_start_cores(_xaie);
 
 )XXX";
 
   if (debugHostKernel) {
-    indent() << "sleep(2);\n";
+    indent() << "sleep(1);\n";
     indent() << "u8 result[" << tiles.size() << "];\n\n";
 
     unsigned tileIdx = 0;
-    for (auto tile : tiles)
+    for (auto tile : tiles) {
       indent() << "result[" << tileIdx++ << "] = mlir_aie_acquire_lock(_xaie, "
                << tile.col() << ", " << tile.row() << ", 15, 1, 0);\n";
+      indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
+               << tile.row() << ", 15, 0, 0);\n";
+    }
     os << "\n";
 
     tileIdx = 0;
@@ -213,14 +231,37 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
     os << "\n";
   }
 
-  // Check the completion of the program.
-  for (auto memCpy : stores) {
-    auto buf = memCpy.source().getDefiningOp<BufferOp>();
-    auto tile = buf.getTileOp();
-    indent() << "while (!mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
-             << tile.row() << ", 15, 1, 0)) {}\n";
+  // Iterate for iter_num times.
+  indent() << "while(!kernel_complete()) {\n";
+  addIndent();
+
+  for (auto tile : tiles) {
+    indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
+             << tile.row() << ", 15, 1, 0)) {\n";
+    addIndent();
+
+    indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
+             << tile.row() << ", 15, 0, 0);\n";
+    indent() << "XAieTile_CoreControl(&(_xaie->TileInst[" << tile.col() << "]["
+             << tile.row() << "]), XAIE_DISABLE, XAIE_RESETENABLE);\n";
+    indent() << "XAieTile_CoreControl(&(_xaie->TileInst[" << tile.col() << "]["
+             << tile.row() << "]), XAIE_ENABLE, XAIE_RESETDISABLE);\n";
+
+    unsigned storeIdx = 0;
+    for (auto memCpy : stores) {
+      if (memCpy.source().getDefiningOp<BufferOp>().getTileOp() == tile) {
+        indent() << "if (counters[" << storeIdx << "] < iter_num)\n";
+        addIndent();
+        indent() << "++counters[" << storeIdx << "];\n";
+        reduceIndent();
+      }
+      ++storeIdx;
+    }
+    reduceIndent();
+    indent() << "}\n";
   }
-  os << "\n";
+  reduceIndent();
+  indent() << "}\n\n";
 
   if (!dryRunHostKernel) {
     // Write back results from local to global memory.
