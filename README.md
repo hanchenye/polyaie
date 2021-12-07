@@ -1,26 +1,26 @@
 # PolyAIE Project
 
-## gemver Example
+## gemm Example
 ```sh
 $ python phism/scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim phism/example/polybench
 
-$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' gemver.pre.kern.plmr.ca.lt.mlir > gemver.phism.mlir
-$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemver" gemver.phism.mlir 1> gemver.phism.polyaie.mlir 2> gemver.phism.polyaie.dot
-$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemver algorithm=simulated-annealing" gemver.phism.mlir 1> gemver.phism.polyaie.mlir 2> gemver.phism.polyaie.dot
-$ polyaie-translate -export-host-kernel -debug-host-kernel=true gemver.phism.polyaie.mlir > gemver.host.cpp
+$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' gemm.pre.kern.plmr.ca.lt.mlir > gemm.phism.mlir
+$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemm" gemm.phism.mlir 1> gemm.phism.polyaie.mlir 2> gemm.phism.polyaie.dot
+$ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing vec-size=1" gemm.phism.mlir 1> gemm.phism.polyaie.mlir 2> gemm.phism.polyaie.dot
+$ polyaie-translate -export-host-kernel -debug-host-kernel=true gemm.phism.polyaie.mlir > gemm.host.cpp
 
-$ dot -Tpng gemver.phism.polyaie.dot > gemver.phism.polyaie.df.png && dot -Tpng -Kfdp gemver.phism.polyaie.dot > gemver.phism.polyaie.layout.png
-$ sed -E '/memcpy/d; /alloc/d' gemver.phism.polyaie.mlir > gemver.phism.polyaie.mliraie.mlir
+$ dot -Tpng gemm.phism.polyaie.dot > gemm.phism.polyaie.df.png && dot -Tpng -Kfdp gemm.phism.polyaie.dot > gemm.phism.polyaie.layout.png
+$ sed -E '/memcpy/d; /alloc/d' gemm.phism.polyaie.mlir > gemm.phism.polyaie.mliraie.mlir
 
 $ source /tools/Xilinx/Vitis/2020.1/settings64.sh
 $ /home/hanchenye/workspace/polyaie/mlir-aie/build/bin/aiecc.py -j10 \
     --sysroot=/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
-    gemver.phism.polyaie.mliraie.mlir \
+    gemm.phism.polyaie.mliraie.mlir \
     -I/home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/ \
     -I/home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/ -I${PWD} \
     /home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/polybench.cpp \
     /home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/test_library.cpp \
-    gemver.cpp -o gemver.elf
+    gemm.cpp -o gemm.elf
 
 $ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \
     --sysroot=/home/hanchenye/workspace/polyaie/mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
@@ -34,7 +34,7 @@ $ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \
     -I/home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/ -I${PWD} \
     /home/hanchenye/workspace/polyaie/tmp/polybench-small/utilities/polybench.cpp \
     /home/hanchenye/workspace/polyaie/mlir-aie/build/runtime_lib/test_library.cpp \
-    gemver.cpp -o gemver.elf
+    gemm.cpp -o gemm.elf
 ```
 
 ## 2mm Example

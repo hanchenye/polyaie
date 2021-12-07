@@ -68,17 +68,58 @@ void Postprocess::runOnOperation() {
     }
   }
 
-  // Remove unused TileOp and insert a lock release to each remained TileOp to
-  // indicate the completion of the core.
+  // Traverse all tile operations in the IR.
   for (auto tile : llvm::make_early_inc_range(mod.getOps<TileOp>())) {
-    if (tile.result().use_empty())
+    if (tile.result().use_empty()) {
+      // Remove unused TileOp.
       tile.erase();
-    else if (auto core = tile.getCoreOp()) {
+
+    } else if (auto core = tile.getCoreOp()) {
+      // Transform CoreOps from:
+      // AIE.core(%tile) {
+      //   ...
+      //   AIE.end
+      // }
+      //
+      // To:
+      // AIE.core(%tile) {
+      //   br ^body
+      // ^body:
+      //   AIE.useLock(%lock15, Acquire, 0, 0)
+      //   ...
+      //   AIE.useLock(%lock15, Release, 15, 0)
+      //   br ^body
+      // ^end:
+      //   AIE.end
+      // }
+      //
+      // Such that the AIE can restart itself automatically and the ARM host can
+      // control the execution of AIEs through lock 15.
+
       b.setInsertionPointAfter(tile);
       auto lock = b.create<LockOp>(loc, tile, 15);
 
-      b.setInsertionPoint(core.body().front().getTerminator());
+      // Create a new entry block.
+      auto &coreBlock = core.body().front();
+      b.createBlock(&coreBlock);
+      b.create<BranchOp>(loc, &coreBlock);
+
+      // Create a new end block with a single AIE::EndOp in it.
+      auto &endBlock = core.body().emplaceBlock();
+      b.setInsertionPointToEnd(&endBlock);
+      b.create<EndOp>(loc);
+
+      // Create a new branch operation as the terminator of the core block. This
+      // brach operation should point to the core block itself. Also create the
+      // lock acquire and release accordingly.
+      b.setInsertionPointToStart(&coreBlock);
+      b.create<UseLockOp>(loc, lock, 0, LockAction::Acquire, 0);
+
+      coreBlock.getTerminator()->erase();
+      b.setInsertionPointToEnd(&coreBlock);
       b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
+      auto condTrue = b.create<ConstantOp>(loc, b.getBoolAttr(true));
+      b.create<CondBranchOp>(loc, condTrue, &coreBlock, &endBlock);
     }
   }
 }

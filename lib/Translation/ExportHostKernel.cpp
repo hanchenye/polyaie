@@ -194,9 +194,6 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   os << R"XXX(
     for (auto counter : counters)
-      printf("%d, ", counter);
-    printf("\n");
-    for (auto counter : counters)
       if (counter < iter_num)
         return false;
     return true;
@@ -211,26 +208,6 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
 )XXX";
 
-  if (debugHostKernel) {
-    indent() << "sleep(1);\n";
-    indent() << "u8 result[" << tiles.size() << "];\n\n";
-
-    unsigned tileIdx = 0;
-    for (auto tile : tiles) {
-      indent() << "result[" << tileIdx++ << "] = mlir_aie_acquire_lock(_xaie, "
-               << tile.col() << ", " << tile.row() << ", 15, 1, 0);\n";
-      indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
-               << tile.row() << ", 15, 0, 0);\n";
-    }
-    os << "\n";
-
-    tileIdx = 0;
-    for (auto tile : tiles)
-      indent() << "printf(\"Tile[" << tile.col() << "][" << tile.row()
-               << "] = \%d\\n\", result[" << tileIdx++ << "]);\n";
-    os << "\n";
-  }
-
   // Iterate for iter_num times.
   indent() << "while(!kernel_complete()) {\n";
   addIndent();
@@ -242,10 +219,9 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
     indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 0, 0);\n";
-    indent() << "XAieTile_CoreControl(&(_xaie->TileInst[" << tile.col() << "]["
-             << tile.row() << "]), XAIE_DISABLE, XAIE_RESETENABLE);\n";
-    indent() << "XAieTile_CoreControl(&(_xaie->TileInst[" << tile.col() << "]["
-             << tile.row() << "]), XAIE_ENABLE, XAIE_RESETDISABLE);\n";
+    if (debugHostKernel)
+      indent() << "printf(\"[" << tile.col() << "][" << tile.row()
+               << "]=1, \");\n";
 
     unsigned storeIdx = 0;
     for (auto memCpy : stores) {
@@ -258,8 +234,16 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
       ++storeIdx;
     }
     reduceIndent();
-    indent() << "}\n";
+
+    if (debugHostKernel)
+      indent() << "} else printf(\"[" << tile.col() << "][" << tile.row()
+               << "]=0, \");\n";
+    else
+      indent() << "}\n";
   }
+
+  if (debugHostKernel)
+    indent() << "printf(\"\\n--------------------\\n\");\n";
   reduceIndent();
   indent() << "}\n\n";
 
