@@ -56,6 +56,8 @@ std::unique_ptr<Pass> createPostprocessPass();
 
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
 std::unique_ptr<Pass> createPlacementPass(const PolyAIEPipelineOptions &opts);
+std::unique_ptr<Pass>
+createConvertToAIEPass(const PolyAIEPipelineOptions &opts);
 
 void registerPolyAIEPassPipeline();
 void registerPolyAIEPasses();

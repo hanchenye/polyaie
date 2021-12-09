@@ -15,6 +15,12 @@ using namespace xilinx::AIE;
 
 namespace {
 struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
+  ConvertToAIE() = default;
+  ConvertToAIE(const ConvertToAIE &) {}
+  ConvertToAIE(const PolyAIEPipelineOptions &opts) {
+    vecSize = opts.vectorizeSize;
+  }
+
   void runOnOperation() override;
 
   /// Map from argument to the corresponding BufferOp.
@@ -46,7 +52,7 @@ static Block *getCoreBlock(BufferOp buf) {
 
 static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
                          StringRef tokName, unsigned tokValA, unsigned tokValR,
-                         bool shareSrcTile) {
+                         bool shareSrcTile, int64_t vecSize) {
   auto loc = b.getUnknownLoc();
 
   // If the shareable tile is source tile, then create memory copy in the end of
@@ -63,14 +69,28 @@ static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
   b.setInsertionPoint(useOp);
 
   // Create loop nests to copy data from source to target.
+  auto rank = std::max(srcBuf.getType().getRank(), (int64_t)1);
   SmallVector<Value, 4> ivs;
-  for (auto dimSiz : srcBuf.getType().getShape()) {
-    auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSiz);
+  unsigned loopIdx = 0;
+  for (auto dimSize : srcBuf.getType().getShape()) {
+    // The last loop level should has a step of "vecSize".
+    auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize,
+                                            ++loopIdx == rank ? vecSize : 1);
     b.setInsertionPointToStart(loop.getBody());
     ivs.push_back(loop.getInductionVar());
   }
-  auto value = b.create<mlir::AffineLoadOp>(loc, srcBuf, ivs);
-  b.create<mlir::AffineStoreOp>(loc, value, tgtBuf, ivs);
+
+  // Create affine load/store operations or vector transfer read/write
+  // operations according to the value of vector size.
+  if (vecSize == 1) {
+    auto value = b.create<mlir::AffineLoadOp>(loc, srcBuf, ivs);
+    b.create<mlir::AffineStoreOp>(loc, value, tgtBuf, ivs);
+  } else {
+    auto vecType =
+        VectorType::get({vecSize}, srcBuf.getType().getElementType());
+    auto value = b.create<vector::TransferReadOp>(loc, vecType, srcBuf, ivs);
+    b.create<vector::TransferWriteOp>(loc, value, tgtBuf, ivs);
+  }
 }
 
 static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
@@ -254,7 +274,7 @@ void ConvertToAIE::runOnOperation() {
             // Create direct memory copy between shareable buffers if the source
             // and target tiles are adjacent with each other.
             createMemCpy(b, srcBuf, tgtBuf, tokName, coreTokVal, memTokVal,
-                         shareTile == srcTile);
+                         shareTile == srcTile, vecSize);
           } else {
             // Create FlowOp connecting the source and target tiles. Here, we
             // always connect the DMA channel of tiles.
@@ -328,4 +348,8 @@ void ConvertToAIE::runOnOperation() {
 
 std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {
   return std::make_unique<ConvertToAIE>();
+}
+std::unique_ptr<Pass>
+polyaie::createConvertToAIEPass(const PolyAIEPipelineOptions &opts) {
+  return std::make_unique<ConvertToAIE>(opts);
 }
