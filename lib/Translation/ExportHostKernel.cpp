@@ -166,13 +166,20 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   os << "\n";
 
   // Collect memory copy operations.
-  SmallVector<memrefext::MemCpyOp, 32> loads;
-  SmallVector<memrefext::MemCpyOp, 32> stores;
+  DenseMap<Operation *, SmallVector<memrefext::MemCpyOp, 8>> loadsMap;
+  DenseMap<Operation *, SmallVector<memrefext::MemCpyOp, 8>> storesMap;
+  SmallPtrSet<Value, 2> resultMems;
+
   for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
-    if (memCpy.source().getDefiningOp<memref::AllocOp>())
-      loads.push_back(memCpy);
-    else if (memCpy.target().getDefiningOp<memref::AllocOp>())
-      stores.push_back(memCpy);
+    if (memCpy.source().getDefiningOp<memref::AllocOp>()) {
+      auto tile = memCpy.target().getDefiningOp<BufferOp>().getTileOp();
+      loadsMap[tile].push_back(memCpy);
+
+    } else if (memCpy.target().getDefiningOp<memref::AllocOp>()) {
+      auto tile = memCpy.source().getDefiningOp<BufferOp>().getTileOp();
+      storesMap[tile].push_back(memCpy);
+      resultMems.insert(memCpy.target());
+    }
 
   if (!dryRunHostKernel) {
     // Clear the local memory of all tiles.
@@ -183,16 +190,17 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
     // Initialize local memories.
     indent() << "unsigned bufIdx;\n\n";
-    for (auto memCpy : loads)
-      emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
-                 memCpy.target(), /*isWrite=*/true);
+    for (auto tile : tiles)
+      for (auto memCpy : loadsMap[tile])
+        emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
+                   memCpy.target(), /*isWrite=*/true);
   }
 
   // Create counters and start the execution.
-  indent() << "unsigned counters[" << stores.size() << "];\n";
-  indent() << "auto kernel_complete = [&]() {";
+  indent() << "unsigned counters[" << tiles.size() << "];\n";
 
   os << R"XXX(
+  auto kernel_complete = [&]() {
     for (auto counter : counters)
       if (counter < iter_num)
         return false;
@@ -212,27 +220,29 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   indent() << "while(!kernel_complete()) {\n";
   addIndent();
 
+  unsigned tileIdx = 0;
   for (auto tile : tiles) {
     indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 1, 0)) {\n";
     addIndent();
 
+    indent() << "if (++counters[" << tileIdx++ << "] < iter_num) {\n";
+    addIndent();
+
+    if (!dryRunHostKernel)
+      for (auto memCpy : loadsMap[tile])
+        if (resultMems.count(memCpy.source()))
+          emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
+                     memCpy.target(), /*isWrite=*/true);
+
     indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 0, 0);\n";
+    reduceIndent();
+    indent() << "}\n";
+
     if (debugHostKernel)
       indent() << "printf(\"[" << tile.col() << "][" << tile.row()
                << "]=1, \");\n";
-
-    unsigned storeIdx = 0;
-    for (auto memCpy : stores) {
-      if (memCpy.source().getDefiningOp<BufferOp>().getTileOp() == tile) {
-        indent() << "if (counters[" << storeIdx << "] < iter_num)\n";
-        addIndent();
-        indent() << "++counters[" << storeIdx << "];\n";
-        reduceIndent();
-      }
-      ++storeIdx;
-    }
     reduceIndent();
 
     if (debugHostKernel)
@@ -249,9 +259,10 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   if (!dryRunHostKernel) {
     // Write back results from local to global memory.
-    for (auto memCpy : stores)
-      emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
-                 memCpy.source(), /*isWrite=*/false);
+    for (auto tile : tiles)
+      for (auto memCpy : storesMap[tile])
+        emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
+                   memCpy.source(), /*isWrite=*/false);
   }
 
   os << R"XXX(
