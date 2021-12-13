@@ -36,7 +36,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createConvertToAIEPass(opts));
         pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         pm.addPass(xilinx::AIE::createAIECreateLocksPass());
-        // pm.addPass(polyaie::createDoubleBufferPass());
+        pm.addPass(polyaie::createDoubleBufferPass());
         pm.addPass(polyaie::createPostprocessPass());
       });
 }

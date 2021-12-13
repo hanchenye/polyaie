@@ -22,7 +22,8 @@ struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   void runOnOperation() override;
 
   /// Map from argument to the corresponding BufferOp.
-  DenseMap<BlockArgument, BufferOp> bufMap;
+  DenseMap<BlockArgument, BufferOp> inputBufMap;
+  DenseMap<BlockArgument, BufferOp> resultBufMap;
 };
 } // namespace
 
@@ -48,6 +49,34 @@ static Block *getCoreBlock(BufferOp buf) {
   return &buf.getTileOp().getCoreOp().body().front();
 }
 
+static void createLoopNest(OpBuilder &b, Value srcBuf, Value tgtBuf,
+                           int64_t vecSize) {
+  auto loc = b.getUnknownLoc();
+  auto type = srcBuf.getType().cast<MemRefType>();
+  auto rank = std::max(type.getRank(), (int64_t)1);
+
+  SmallVector<Value, 4> ivs;
+  unsigned loopIdx = 0;
+  for (auto dimSize : type.getShape()) {
+    // The last loop level should has a step of "vecSize".
+    auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize,
+                                            ++loopIdx == rank ? vecSize : 1);
+    b.setInsertionPointToStart(loop.getBody());
+    ivs.push_back(loop.getInductionVar());
+  }
+
+  // Create affine load/store operations or vector transfer read/write
+  // operations according to the value of vector size.
+  if (vecSize == 1) {
+    auto value = b.create<mlir::AffineLoadOp>(loc, srcBuf, ivs);
+    b.create<mlir::AffineStoreOp>(loc, value, tgtBuf, ivs);
+  } else {
+    auto vecType = VectorType::get({vecSize}, type.getElementType());
+    auto value = b.create<vector::TransferReadOp>(loc, vecType, srcBuf, ivs);
+    b.create<vector::TransferWriteOp>(loc, value, tgtBuf, ivs);
+  }
+}
+
 static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
                          StringRef tokName, unsigned tokValA, unsigned tokValR,
                          bool shareSrcTile, int64_t vecSize) {
@@ -67,28 +96,7 @@ static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
   b.setInsertionPoint(useOp);
 
   // Create loop nests to copy data from source to target.
-  auto rank = std::max(srcBuf.getType().getRank(), (int64_t)1);
-  SmallVector<Value, 4> ivs;
-  unsigned loopIdx = 0;
-  for (auto dimSize : srcBuf.getType().getShape()) {
-    // The last loop level should has a step of "vecSize".
-    auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize,
-                                            ++loopIdx == rank ? vecSize : 1);
-    b.setInsertionPointToStart(loop.getBody());
-    ivs.push_back(loop.getInductionVar());
-  }
-
-  // Create affine load/store operations or vector transfer read/write
-  // operations according to the value of vector size.
-  if (vecSize == 1) {
-    auto value = b.create<mlir::AffineLoadOp>(loc, srcBuf, ivs);
-    b.create<mlir::AffineStoreOp>(loc, value, tgtBuf, ivs);
-  } else {
-    auto vecType =
-        VectorType::get({vecSize}, srcBuf.getType().getElementType());
-    auto value = b.create<vector::TransferReadOp>(loc, vecType, srcBuf, ivs);
-    b.create<vector::TransferWriteOp>(loc, value, tgtBuf, ivs);
-  }
+  createLoopNest(b, srcBuf, tgtBuf, vecSize);
 }
 
 static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
@@ -153,16 +161,29 @@ void ConvertToAIE::runOnOperation() {
   for (auto call : mod.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = cast<ReturnOp>(func.front().getTerminator());
-    b.setInsertionPointAfter(call);
 
     // Generate TileOp based on the placement results.
+    b.setInsertionPoint(call);
     auto tile = b.create<TileOp>(loc, getCol(call), getRow(call));
+
+    // Generate a BufferOp for each returned value, and create a memory copy to
+    // avoid the data pollution between predecessors and successors.
+    for (auto operand : returnOp.getOperands()) {
+      b.setInsertionPoint(call);
+      auto bufType = operand.getType().cast<MemRefType>();
+      auto buf = b.create<BufferOp>(loc, bufType, tile);
+      resultBufMap[operand.cast<BlockArgument>()] = buf;
+
+      b.setInsertionPoint(returnOp);
+      createLoopNest(b, operand, buf, vecSize);
+    }
 
     // Generate a BufferOp for each argument of the function.
     for (auto arg : func.getArguments()) {
+      b.setInsertionPoint(call);
       auto buf = b.create<BufferOp>(loc, arg.getType(), tile);
       arg.replaceAllUsesExcept(buf, returnOp);
-      bufMap[arg] = buf;
+      inputBufMap[arg] = buf;
     }
 
     // Generate a CoreOp and inline the contents of the function.
@@ -212,7 +233,7 @@ void ConvertToAIE::runOnOperation() {
       tok->setAttr("sym_name", b.getStringAttr(tokName));
 
       // Generate the first token acquire.
-      b.setInsertionPointToStart(getCoreBlock(bufMap[firstArg]));
+      b.setInsertionPointToStart(getCoreBlock(inputBufMap[firstArg]));
       b.create<UseTokenOp>(loc, tokName, 0, LockAction::Acquire);
 
       // Propogate the buffer in the whole program to generate the token
@@ -224,7 +245,7 @@ void ConvertToAIE::runOnOperation() {
         // Get the BufferOp, TileOp, and MM2S channel index of the source tile.
         auto srcArg = worklist.pop_back_val();
 
-        auto srcBuf = bufMap[srcArg];
+        auto srcBuf = inputBufMap[srcArg];
         auto srcTile = srcBuf.getTileOp();
         auto &srcChanIdx = MM2SChanMap[srcTile];
 
@@ -238,6 +259,7 @@ void ConvertToAIE::runOnOperation() {
         auto srcResult = getResultFromArg(srcArg);
         if (!srcResult)
           continue;
+        srcBuf = resultBufMap[srcArg];
 
         // Handle all uses of the result.
         auto hasMM2S = false;
@@ -251,7 +273,7 @@ void ConvertToAIE::runOnOperation() {
           auto tgtArg = mod.lookupSymbol<FuncOp>(tgtCall.callee())
                             .getArgument(use.getOperandNumber());
 
-          auto tgtBuf = bufMap[tgtArg];
+          auto tgtBuf = inputBufMap[tgtArg];
           auto tgtTile = tgtBuf.getTileOp();
           auto &tgtChanIdx = S2MMChanMap[tgtTile];
 
@@ -312,7 +334,7 @@ void ConvertToAIE::runOnOperation() {
       auto &use = *loadOp.buffer().use_begin();
       auto call = cast<CallOp>(use.getOwner());
       auto func = mod.lookupSymbol<FuncOp>(call.callee());
-      auto buf = bufMap[func.getArgument(use.getOperandNumber())];
+      auto buf = inputBufMap[func.getArgument(use.getOperandNumber())];
       auto rank = std::max(loadOp.getType().getRank(), (int64_t)1);
 
       b.setInsertionPoint(loadOp);
@@ -326,8 +348,8 @@ void ConvertToAIE::runOnOperation() {
       auto call = storeOp.buffer().getDefiningOp<CallOp>();
       auto func = mod.lookupSymbol<FuncOp>(call.callee());
       auto returnOp = cast<ReturnOp>(func.front().getTerminator());
-      auto buf = bufMap[returnOp.getOperand(result.getResultNumber())
-                            .cast<BlockArgument>()];
+      auto buf = resultBufMap[returnOp.getOperand(result.getResultNumber())
+                                  .cast<BlockArgument>()];
       auto rank = std::max(
           storeOp.memory().getType().cast<MemRefType>().getRank(), (int64_t)1);
 

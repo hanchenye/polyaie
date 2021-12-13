@@ -29,6 +29,7 @@ struct BufferExtraction
 void BufferExtraction::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
+  auto loc = b.getUnknownLoc();
 
   for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
@@ -49,8 +50,7 @@ void BufferExtraction::runOnOperation() {
       // memory. We assume single-element memory will never be updated.
       if (argType.getRank() == 0) {
         b.setInsertionPoint(call);
-        auto buf = b.create<LoadBufferOp>(b.getUnknownLoc(), argType,
-                                          b.getI64ArrayAttr({0}),
+        auto buf = b.create<LoadBufferOp>(loc, argType, b.getI64ArrayAttr({0}),
                                           b.getI64ArrayAttr({1}), mem);
         call.setOperand(arg.getArgNumber(), buf);
         inputTypes.push_back(argType);
@@ -165,8 +165,8 @@ void BufferExtraction::runOnOperation() {
       auto bufLengthsAttr = b.getI64ArrayAttr(bufLengths);
 
       b.setInsertionPoint(call);
-      auto buf = b.create<LoadBufferOp>(b.getUnknownLoc(), bufType,
-                                        bufOffsetsAttr, bufLengthsAttr, mem);
+      auto buf = b.create<LoadBufferOp>(loc, bufType, bufOffsetsAttr,
+                                        bufLengthsAttr, mem);
       call.setOperand(arg.getArgNumber(), buf);
       inputTypes.push_back(bufType);
       // `arg` is now representing the internal buffer.
@@ -215,8 +215,7 @@ void BufferExtraction::runOnOperation() {
     b.setInsertionPointAfter(newCall);
     for (auto zip : llvm::zip(newCall.getResults(), resultMems)) {
       auto bufType = std::get<0>(zip).getType().cast<MemRefType>();
-      b.create<StoreBufferOp>(b.getUnknownLoc(),
-                              b.getI64ArrayAttr(getBufferOffsets(bufType)),
+      b.create<StoreBufferOp>(loc, b.getI64ArrayAttr(getBufferOffsets(bufType)),
                               b.getI64ArrayAttr(bufType.getShape()),
                               std::get<1>(zip), std::get<0>(zip));
     }
