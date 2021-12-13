@@ -221,17 +221,17 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   unsigned storeIdx = 0;
   for (auto store : stores) {
     auto tile = store.source().getDefiningOp<BufferOp>().getTileOp();
-    // indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
-    //          << tile.row() << ", 15, 1, 0))\n";
-    indent() << "if (XAieTile_CoreReadStatusDone(&(_xaie->TileInst["
-             << tile.col() << "][" << tile.row() << "])))\n";
+    indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
+             << tile.row() << ", 15, 1, 0))\n";
+    // indent() << "if (XAieTile_CoreReadStatusDone(&(_xaie->TileInst["
+    //          << tile.col() << "][" << tile.row() << "])))\n";
     addIndent();
     indent() << "results[" << storeIdx++ << "] = true;\n";
     reduceIndent();
   }
 
   for (auto load : loads) {
-    if (!load->getAttr("polyaie.refresh_buf"))
+    if (!load->getAttr("polyaie.load_each_iter"))
       continue;
 
     auto tile = load.target().getDefiningOp<BufferOp>().getTileOp();

@@ -109,16 +109,15 @@ void Postprocess::runOnOperation() {
       buf->setAttr("sym_name", b.getStringAttr(bufName));
 
     } else if (auto store = dyn_cast<memrefext::MemCpyOp>(op)) {
-      // // TODO: A temporary solution.
-      // if (auto buf = store.source().getDefiningOp<BufferOp>()) {
-      //   auto tile = buf.getTileOp();
-      //   auto &coreBlock = tile.getCoreOp().body().front();
+      if (auto buf = store.source().getDefiningOp<BufferOp>()) {
+        auto tile = buf.getTileOp();
+        auto &coreBlock = tile.getCoreOp().body().front();
 
-      //   b.setInsertionPointAfter(tile);
-      //   auto lock = b.create<LockOp>(loc, tile, 15);
-      //   b.setInsertionPoint(coreBlock.getTerminator());
-      //   b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
-      // }
+        b.setInsertionPointAfter(tile);
+        auto lock = b.create<LockOp>(loc, tile, 15);
+        b.setInsertionPoint(coreBlock.getTerminator());
+        b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
+      }
     }
   }
 }
