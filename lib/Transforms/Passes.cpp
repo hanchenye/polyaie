@@ -36,7 +36,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createPrintDataflowPass());
         pm.addPass(polyaie::createConvertToAIEPass(opts));
         // pm.addPass(polyaie::createSimplifyTokensPass());
-        pm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
+        // pm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
         pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         pm.addPass(xilinx::AIE::createAIECreateLocksPass());
         pm.addPass(polyaie::createPostprocessPass());

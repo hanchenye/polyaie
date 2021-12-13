@@ -1,10 +1,12 @@
 # PolyAIE Project
 
+15958114660
+
 ## gemm Example
 ```sh
-$ python phism/scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim phism/example/polybench
+$ python scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim example/polybench
 
-$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' gemm.pre.kern.plmr.ca.lt.mlir > gemm.phism.mlir
+$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g; s/llvm.linkage[[:space:]]=[[:space:]]#llvm.linkage<external>,[[:space:]]//g' gemm.pre.kern.plmr.ca.lt.mlir > gemm.phism.mlir
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing vec-size=1" gemm.phism.mlir 1> gemm.phism.polyaie.mlir 2> gemm.phism.polyaie.dot
 $ polyaie-translate -export-host-kernel -debug-host-kernel=false -dry-run-host-kernel=true gemm.phism.polyaie.mlir > gemm.host.cpp
 
@@ -38,7 +40,7 @@ $ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \
 
 ## 2mm Example
 ```sh
-$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
+$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g; s/llvm.linkage[[:space:]]=[[:space:]]#llvm.linkage<external>,[[:space:]]//g' 2mm.pre.kern.plmr.ca.lt.mlir > 2mm.phism.mlir
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm algorithm=simulated-annealing vec-size=1" 2mm.phism.mlir 1> 2mm.phism.polyaie.mlir 2> 2mm.phism.polyaie.dot
 $ polyaie-translate -export-host-kernel -debug-host-kernel=false -dry-run-host-kernel=true 2mm.phism.polyaie.mlir > 2mm.host.cpp
 

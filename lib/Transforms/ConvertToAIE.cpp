@@ -152,7 +152,6 @@ void ConvertToAIE::runOnOperation() {
   auto loc = b.getUnknownLoc();
 
   // Generate TileOp, CoreOp, and BufferOps for each CallOp.
-  unsigned bufIdx = 0;
   for (auto call : mod.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = cast<ReturnOp>(func.front().getTerminator());
@@ -164,9 +163,6 @@ void ConvertToAIE::runOnOperation() {
     // Generate a BufferOp for each argument of the function.
     for (auto arg : func.getArguments()) {
       auto buf = b.create<BufferOp>(loc, arg.getType(), tile);
-      auto bufName = "buf" + std::to_string(bufIdx++);
-      buf->setAttr("sym_name", b.getStringAttr(bufName));
-
       arg.replaceAllUsesExcept(buf, returnOp);
       bufMap[arg] = buf;
     }

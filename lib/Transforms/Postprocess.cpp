@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "polyaie/Transforms/Passes.h"
@@ -75,51 +76,49 @@ void Postprocess::runOnOperation() {
       tile.erase();
 
     } else if (auto core = tile.getCoreOp()) {
-      // Transform CoreOps from:
-      // AIE.core(%tile) {
-      //   ...
-      //   AIE.end
-      // }
-      //
-      // To:
-      // AIE.core(%tile) {
-      //   br ^body
-      // ^body:
-      //   AIE.useLock(%lock15, Acquire, 0, 0)
-      //   ...
-      //   AIE.useLock(%lock15, Release, 15, 0)
-      //   br ^body
-      // ^end:
-      //   AIE.end
-      // }
-      //
-      // Such that the AIE can restart itself automatically and the ARM host can
-      // control the execution of AIEs through lock 15.
-
+      // Iterate the body of each AIE for N times, where N is loaded from an
+      // index-typed local buffer.
       b.setInsertionPointAfter(tile);
-      auto lock = b.create<LockOp>(loc, tile, 15);
+      auto iterNumBuf =
+          b.create<BufferOp>(loc, MemRefType::get({}, b.getI32Type()), tile);
+      iterNumBuf->setAttr("polyaie.iter_num_buf", b.getUnitAttr());
 
-      // Create a new entry block.
-      auto &coreBlock = core.body().front();
-      b.createBlock(&coreBlock);
-      b.create<BranchOp>(loc, &coreBlock);
+      // Create a loop iterating for N times.
+      b.setInsertionPointToStart(&core.body().front());
+      auto one = b.create<ConstantOp>(loc, b.getIndexAttr(1));
+      auto zero = b.create<ConstantOp>(loc, b.getIndexAttr(0));
+      auto iterNum = b.create<IndexCastOp>(
+          loc, b.create<memref::LoadOp>(loc, iterNumBuf), b.getIndexType());
+      auto loop = b.create<scf::ForOp>(loc, zero, iterNum, one);
 
-      // Create a new end block with a single AIE::EndOp in it.
-      auto &endBlock = core.body().emplaceBlock();
-      b.setInsertionPointToEnd(&endBlock);
-      b.create<EndOp>(loc);
+      // Inline all operations except the terminator in the original block into
+      // the loop.
+      auto &loopOps = loop.getBody()->getOperations();
+      auto &blockOps = core.body().front().getOperations();
+      loopOps.splice(loopOps.begin(), blockOps, std::next(blockOps.begin(), 5),
+                     std::prev(blockOps.end()));
+    }
+  }
 
-      // Create a new branch operation as the terminator of the core block. This
-      // brach operation should point to the core block itself. Also create the
-      // lock acquire and release accordingly.
-      b.setInsertionPointToStart(&coreBlock);
-      b.create<UseLockOp>(loc, lock, 0, LockAction::Acquire, 0);
+  // Create symbol name for all BufferOp and create lock releases to indicate
+  // the completion of the whole program.
+  unsigned bufIdx = 0;
+  for (auto &op : mod.getBody()->getOperations()) {
+    if (auto buf = dyn_cast<BufferOp>(op)) {
+      auto bufName = "buf" + std::to_string(bufIdx++);
+      buf->setAttr("sym_name", b.getStringAttr(bufName));
 
-      coreBlock.getTerminator()->erase();
-      b.setInsertionPointToEnd(&coreBlock);
-      b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
-      auto condTrue = b.create<ConstantOp>(loc, b.getBoolAttr(true));
-      b.create<CondBranchOp>(loc, condTrue, &coreBlock, &endBlock);
+    } else if (auto store = dyn_cast<memrefext::MemCpyOp>(op)) {
+      // // TODO: A temporary solution.
+      // if (auto buf = store.source().getDefiningOp<BufferOp>()) {
+      //   auto tile = buf.getTileOp();
+      //   auto &coreBlock = tile.getCoreOp().body().front();
+
+      //   b.setInsertionPointAfter(tile);
+      //   auto lock = b.create<LockOp>(loc, tile, 15);
+      //   b.setInsertionPoint(coreBlock.getTerminator());
+      //   b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
+      // }
     }
   }
 }

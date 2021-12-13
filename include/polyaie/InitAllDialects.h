@@ -10,6 +10,7 @@
 #include "aie/AIEDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/IR/Dialect.h"
 #include "polyaie/MemRefExt/MemRefExt.h"
@@ -22,6 +23,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<
     mlir::AffineDialect,
+    mlir::scf::SCFDialect,
     mlir::StandardOpsDialect,
     mlir::math::MathDialect,
     mlir::memref::MemRefDialect,

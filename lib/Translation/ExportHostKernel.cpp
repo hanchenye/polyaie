@@ -30,17 +30,17 @@ class HostKernelExporter : public ExporterBase {
 public:
   explicit HostKernelExporter(ExporterState &state) : ExporterBase(state) {}
   void exportHostKernel(ModuleOp mod);
-  void emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx, Value arg,
-                  Value buf, bool isWrite);
+  void emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx, bool isWrite);
 };
 } // namespace
 
 void HostKernelExporter::emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx,
-                                    Value arg, Value buf, bool isWrite) {
+                                    bool isWrite) {
+  auto buf = isWrite ? memCpy.target() : memCpy.source();
+  auto bufOffsets = isWrite ? memCpy.sourceOffsets() : memCpy.targetOffsets();
   auto bufType = buf.getType().dyn_cast<MemRefType>();
   auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
   auto bufRank = bufType.getRank();
-  auto bufOffsets = isWrite ? memCpy.sourceOffsets() : memCpy.targetOffsets();
 
   // Generate the loop head.
   // TODO: Make this more robust. Now we assume we won't read and write buffer
@@ -163,23 +163,15 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   for (auto tile : mod.getOps<TileOp>())
     if (tile.getCoreOp())
       tiles.push_back(tile);
-  os << "\n";
 
   // Collect memory copy operations.
-  DenseMap<Operation *, SmallVector<memrefext::MemCpyOp, 8>> loadsMap;
-  DenseMap<Operation *, SmallVector<memrefext::MemCpyOp, 8>> storesMap;
-  SmallPtrSet<Value, 2> resultMems;
-
+  SmallVector<memrefext::MemCpyOp, 8> loads;
+  SmallVector<memrefext::MemCpyOp, 8> stores;
   for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
-    if (memCpy.source().getDefiningOp<memref::AllocOp>()) {
-      auto tile = memCpy.target().getDefiningOp<BufferOp>().getTileOp();
-      loadsMap[tile].push_back(memCpy);
-
-    } else if (memCpy.target().getDefiningOp<memref::AllocOp>()) {
-      auto tile = memCpy.source().getDefiningOp<BufferOp>().getTileOp();
-      storesMap[tile].push_back(memCpy);
-      resultMems.insert(memCpy.target());
-    }
+    if (memCpy.source().getDefiningOp<memref::AllocOp>())
+      loads.push_back(memCpy);
+    else if (memCpy.target().getDefiningOp<memref::AllocOp>())
+      stores.push_back(memCpy);
 
   if (!dryRunHostKernel) {
     // Clear the local memory of all tiles.
@@ -190,25 +182,31 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
     // Initialize local memories.
     indent() << "unsigned bufIdx;\n\n";
-    for (auto tile : tiles)
-      for (auto memCpy : loadsMap[tile])
-        emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
-                   memCpy.target(), /*isWrite=*/true);
+    for (auto load : loads)
+      emitMemCpy(load, argIdxMap[load.source()], /*isWrite=*/true);
   }
 
-  // Create counters and start the execution.
-  indent() << "unsigned counters[" << tiles.size() << "];\n";
+  // Configure the iteration number buffer of each AIE.
+  for (auto buf : mod.getOps<BufferOp>())
+    if (buf->getAttr("polyaie.iter_num_buf"))
+      indent() << "mlir_aie_write_buffer_" << buf.name().getValue()
+               << "(_xaie, 0, iter_num);\n";
+  os << "\n";
+
+  // Create a "results" array to indicate the completion of the kernel and then
+  // start the execution.
+  indent() << "bool results[" << stores.size() << "];\n";
 
   os << R"XXX(
-  auto kernel_complete = [&]() {
-    for (auto counter : counters)
-      if (counter < iter_num)
-        return false;
-    return true;
-  };
+  for (auto &result : results)
+    result = false;
 
-  for (auto &counter : counters)
-    counter = 0;
+  auto kernel_complete = [&]() {
+    bool flag = true;
+    for (auto result : results)
+      flag &= result;
+    return flag;
+  };
 
 
   printf("Start cores...\n");
@@ -216,53 +214,47 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
 )XXX";
 
-  // Iterate for iter_num times.
+  // Iterate until all elements in "results" are set.
   indent() << "while(!kernel_complete()) {\n";
   addIndent();
 
-  unsigned tileIdx = 0;
-  for (auto tile : tiles) {
+  unsigned storeIdx = 0;
+  for (auto store : stores) {
+    auto tile = store.source().getDefiningOp<BufferOp>().getTileOp();
+    // indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
+    //          << tile.row() << ", 15, 1, 0))\n";
+    indent() << "if (XAieTile_CoreReadStatusDone(&(_xaie->TileInst["
+             << tile.col() << "][" << tile.row() << "])))\n";
+    addIndent();
+    indent() << "results[" << storeIdx++ << "] = true;\n";
+    reduceIndent();
+  }
+
+  for (auto load : loads) {
+    if (!load->getAttr("polyaie.refresh_buf"))
+      continue;
+
+    auto tile = load.target().getDefiningOp<BufferOp>().getTileOp();
     indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 1, 0)) {\n";
     addIndent();
 
-    indent() << "if (++counters[" << tileIdx++ << "] < iter_num) {\n";
-    addIndent();
-
     if (!dryRunHostKernel)
-      for (auto memCpy : loadsMap[tile])
-        if (resultMems.count(memCpy.source()))
-          emitMemCpy(memCpy, argIdxMap[memCpy.source()], memCpy.source(),
-                     memCpy.target(), /*isWrite=*/true);
+      emitMemCpy(load, argIdxMap[load.source()], /*isWrite=*/true);
 
     indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 0, 0);\n";
     reduceIndent();
     indent() << "}\n";
-
-    if (debugHostKernel)
-      indent() << "printf(\"[" << tile.col() << "][" << tile.row()
-               << "]=1, \");\n";
-    reduceIndent();
-
-    if (debugHostKernel)
-      indent() << "} else printf(\"[" << tile.col() << "][" << tile.row()
-               << "]=0, \");\n";
-    else
-      indent() << "}\n";
   }
 
-  if (debugHostKernel)
-    indent() << "printf(\"\\n--------------------\\n\");\n";
   reduceIndent();
   indent() << "}\n\n";
 
   if (!dryRunHostKernel) {
     // Write back results from local to global memory.
-    for (auto tile : tiles)
-      for (auto memCpy : storesMap[tile])
-        emitMemCpy(memCpy, argIdxMap[memCpy.target()], memCpy.target(),
-                   memCpy.source(), /*isWrite=*/false);
+    for (auto memCpy : stores)
+      emitMemCpy(memCpy, argIdxMap[memCpy.target()], /*isWrite=*/false);
   }
 
   os << R"XXX(
