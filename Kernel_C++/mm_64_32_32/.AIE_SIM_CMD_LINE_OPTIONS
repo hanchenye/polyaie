@@ -1,0 +1,4 @@
+aiesimulator
+--pkg-dir=./Work
+--dump-vcd foo
+--profile
