@@ -17,9 +17,7 @@ namespace {
 struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   ConvertToAIE() = default;
   ConvertToAIE(const ConvertToAIE &) {}
-  ConvertToAIE(const PolyAIEPipelineOptions &opts) {
-    vecSize = opts.vectorizeSize;
-  }
+  ConvertToAIE(const PolyAIEOptions &opts) { vecSize = opts.vectorizeSize; }
 
   void runOnOperation() override;
 
@@ -230,7 +228,7 @@ void ConvertToAIE::runOnOperation() {
         auto srcTile = srcBuf.getTileOp();
         auto &srcChanIdx = MM2SChanMap[srcTile];
 
-        // Generate token release in the CoreOp,Hold the current token value to
+        // Generate token release in the CoreOp, hold the current token value to
         // make use of later.
         auto coreTokVal = tokVal++;
         b.setInsertionPoint(getCoreBlock(srcBuf)->getTerminator());
@@ -346,6 +344,6 @@ std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {
   return std::make_unique<ConvertToAIE>();
 }
 std::unique_ptr<Pass>
-polyaie::createConvertToAIEPass(const PolyAIEPipelineOptions &opts) {
+polyaie::createConvertToAIEPass(const PolyAIEOptions &opts) {
   return std::make_unique<ConvertToAIE>(opts);
 }

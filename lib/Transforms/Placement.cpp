@@ -238,9 +238,7 @@ namespace {
 struct Placement : public polyaie::PlacementBase<Placement> {
   Placement() = default;
   Placement(const Placement &) {}
-  Placement(const PolyAIEPipelineOptions &opts) {
-    algorithm = opts.placementAlgorithm;
-  }
+  Placement(const PolyAIEOptions &opts) { algorithm = opts.placementAlgorithm; }
 
   void runOnOperation() override {
     Placer placer(getOperation());
@@ -258,7 +256,6 @@ struct Placement : public polyaie::PlacementBase<Placement> {
 std::unique_ptr<Pass> polyaie::createPlacementPass() {
   return std::make_unique<Placement>();
 }
-std::unique_ptr<Pass>
-polyaie::createPlacementPass(const PolyAIEPipelineOptions &opts) {
+std::unique_ptr<Pass> polyaie::createPlacementPass(const PolyAIEOptions &opts) {
   return std::make_unique<Placement>(opts);
 }

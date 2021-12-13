@@ -22,8 +22,7 @@ class Pass;
 namespace mlir {
 namespace polyaie {
 
-struct PolyAIEPipelineOptions
-    : public PassPipelineOptions<PolyAIEPipelineOptions> {
+struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
   /// Configure the preprocess pass.
   Option<std::string> preprocessTopFuncName{
       *this, "top-func-name",
@@ -45,18 +44,17 @@ struct PolyAIEPipelineOptions
 };
 
 std::unique_ptr<Pass> createPreprocessPass();
-std::unique_ptr<Pass> createReduceBufferSizePass();
+std::unique_ptr<Pass> createPreprocessPass(const PolyAIEOptions &opts);
+std::unique_ptr<Pass> createBufferExtractionPass();
 std::unique_ptr<Pass> createCreateDataflowPass();
 std::unique_ptr<OperationPass<FuncOp>> createDetectReductionPass();
 std::unique_ptr<Pass> createPlacementPass();
+std::unique_ptr<Pass> createPlacementPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createPrintDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
+std::unique_ptr<Pass> createConvertToAIEPass(const PolyAIEOptions &opts);
+std::unique_ptr<Pass> createDoubleBufferPass();
 std::unique_ptr<Pass> createPostprocessPass();
-
-std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
-std::unique_ptr<Pass> createPlacementPass(const PolyAIEPipelineOptions &opts);
-std::unique_ptr<Pass>
-createConvertToAIEPass(const PolyAIEPipelineOptions &opts);
 
 void registerPolyAIEPassPipeline();
 void registerPolyAIEPasses();

@@ -18,14 +18,14 @@ namespace {
 } // namespace
 
 void polyaie::registerPolyAIEPassPipeline() {
-  PassPipelineRegistration<PolyAIEPipelineOptions>(
+  PassPipelineRegistration<PolyAIEOptions>(
       "polyaie-pipeline", "Compile to AIE array",
-      [](OpPassManager &pm, const PolyAIEPipelineOptions &opts) {
+      [](OpPassManager &pm, const PolyAIEOptions &opts) {
         pm.addPass(polyaie::createPreprocessPass(opts));
         pm.addPass(mlir::createAffineLoopNormalizePass());
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());
-        pm.addPass(polyaie::createReduceBufferSizePass());
+        pm.addPass(polyaie::createBufferExtractionPass());
         pm.addPass(polyaie::createCreateDataflowPass());
         if (opts.vectorizeSize != 1) {
           pm.addPass(polyaie::createDetectReductionPass());
@@ -36,6 +36,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createConvertToAIEPass(opts));
         pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         pm.addPass(xilinx::AIE::createAIECreateLocksPass());
+        // pm.addPass(polyaie::createDoubleBufferPass());
         pm.addPass(polyaie::createPostprocessPass());
       });
 }

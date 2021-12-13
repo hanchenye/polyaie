@@ -13,8 +13,8 @@ using namespace polyaie;
 using namespace memrefext;
 
 namespace {
-struct ReduceBufferSize
-    : public polyaie::ReduceBufferSizeBase<ReduceBufferSize> {
+struct BufferExtraction
+    : public polyaie::BufferExtractionBase<BufferExtraction> {
   void runOnOperation() override;
 };
 } // namespace
@@ -26,7 +26,7 @@ struct ReduceBufferSize
 /// function stores data to a buffer, we (1) return the buffer as the result of
 /// the function and (2) create a corresponding StoreBufferOp to store the tile
 /// in the buffer back to the original memref.
-void ReduceBufferSize::runOnOperation() {
+void BufferExtraction::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
 
@@ -223,6 +223,6 @@ void ReduceBufferSize::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> polyaie::createReduceBufferSizePass() {
-  return std::make_unique<ReduceBufferSize>();
+std::unique_ptr<Pass> polyaie::createBufferExtractionPass() {
+  return std::make_unique<BufferExtraction>();
 }

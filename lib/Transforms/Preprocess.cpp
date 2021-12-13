@@ -251,7 +251,7 @@ namespace {
 struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
   Preprocess() = default;
   Preprocess(const Preprocess &) {}
-  Preprocess(const PolyAIEPipelineOptions &opts) {
+  Preprocess(const PolyAIEOptions &opts) {
     topFuncName = opts.preprocessTopFuncName;
   }
 
@@ -282,6 +282,6 @@ std::unique_ptr<Pass> polyaie::createPreprocessPass() {
   return std::make_unique<Preprocess>();
 }
 std::unique_ptr<Pass>
-polyaie::createPreprocessPass(const PolyAIEPipelineOptions &opts) {
+polyaie::createPreprocessPass(const PolyAIEOptions &opts) {
   return std::make_unique<Preprocess>(opts);
 }
