@@ -30,13 +30,10 @@ void polyaie::registerPolyAIEPassPipeline() {
         if (opts.vectorizeSize != 1) {
           pm.addPass(polyaie::createDetectReductionPass());
           pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
-          // pm.addPass(mlir::createAffineLoopInvariantCodeMotionPass());
         }
         pm.addPass(polyaie::createPlacementPass(opts));
         pm.addPass(polyaie::createPrintDataflowPass());
         pm.addPass(polyaie::createConvertToAIEPass(opts));
-        // pm.addPass(polyaie::createSimplifyTokensPass());
-        // pm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass());
         pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         pm.addPass(xilinx::AIE::createAIECreateLocksPass());
         pm.addPass(polyaie::createPostprocessPass());

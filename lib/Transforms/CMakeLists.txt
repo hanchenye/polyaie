@@ -6,7 +6,6 @@ add_mlir_library(MLIRPolyAIEPasses
   Placement.cpp
   PrintDataflow.cpp
   ConvertToAIE.cpp
-  SimplifyTokens.cpp
   Postprocess.cpp
   Passes.cpp
 

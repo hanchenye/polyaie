@@ -128,20 +128,6 @@ def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
   ];
 }
 
-def SimplifyTokens : Pass<"polyaie-simplify-tokens", "ModuleOp"> {
-  let summary = "Simplify token uses in the IR";
-  let description = [{
-    Remove redundant token release or acquires.
-  }];
-
-  let constructor = "mlir::polyaie::createSimplifyTokensPass()";
-
-  let dependentDialects = [
-    "mlir::AffineDialect", "mlir::StandardOpsDialect",
-    "mlir::memref::MemRefDialect", "xilinx::AIE::AIEDialect"
-  ];
-}
-
 def Postprocess : Pass<"polyaie-postprocess", "ModuleOp"> {
   let summary = "Postprocess the AIE-level IR";
   let description = [{

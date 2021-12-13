@@ -51,7 +51,6 @@ std::unique_ptr<OperationPass<FuncOp>> createDetectReductionPass();
 std::unique_ptr<Pass> createPlacementPass();
 std::unique_ptr<Pass> createPrintDataflowPass();
 std::unique_ptr<Pass> createConvertToAIEPass();
-std::unique_ptr<Pass> createSimplifyTokensPass();
 std::unique_ptr<Pass> createPostprocessPass();
 
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEPipelineOptions &opts);
