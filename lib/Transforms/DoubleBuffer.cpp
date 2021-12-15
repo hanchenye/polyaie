@@ -40,6 +40,7 @@ void DoubleBuffer::runOnOperation() {
   // Traverse all tile operations in the IR.
   for (auto core : llvm::make_early_inc_range(mod.getOps<CoreOp>())) {
     auto tile = core.getTileOp();
+    b.setInsertionPointAfter(tile);
 
     // Collect all locks and buffers associated with the tile.
     SmallVector<LockOp, 8> locks;
@@ -54,15 +55,16 @@ void DoubleBuffer::runOnOperation() {
     // Duplicate each lock and store them in the map.
     auto lockIdx = locks.size();
     for (auto lock : locks) {
-      b.setInsertionPoint(lock);
       auto newLock = b.create<LockOp>(loc, tile, lockIdx++);
       lockAndBufMap[lock] = newLock;
     }
 
     // Duplicate each buffer and store them in the map.
     for (auto buf : bufs) {
-      b.setInsertionPoint(buf);
-      auto newBuf = b.create<BufferOp>(loc, buf.getType(), tile);
+      if (!buf->getAttr("polyaie.double_buf"))
+        continue;
+      auto newBuf = buf.clone();
+      b.insert(newBuf);
       lockAndBufMap[buf] = newBuf;
 
       // Annotate buffers with "ping" or "pong" mark.
@@ -73,10 +75,12 @@ void DoubleBuffer::runOnOperation() {
       for (auto &use : llvm::make_early_inc_range(buf->getUses())) {
         auto user = use.getOwner();
         if (isa<memrefext::MemCpyOp>(user)) {
+          auto insertPoint = b.saveInsertionPoint();
           b.setInsertionPoint(user);
           auto newMemCpy = user->clone();
           newMemCpy->setOperand(use.getOperandNumber(), newBuf);
           b.insert(newMemCpy);
+          b.restoreInsertionPoint(insertPoint);
         }
       }
     }

@@ -22,8 +22,8 @@ struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
   void runOnOperation() override;
 
   /// Map from argument to the corresponding BufferOp.
-  DenseMap<BlockArgument, BufferOp> inputBufMap;
-  DenseMap<BlockArgument, BufferOp> resultBufMap;
+  DenseMap<Value, BufferOp> inputBufMap;
+  DenseMap<Value, BufferOp> resultBufMap;
 };
 } // namespace
 
@@ -172,7 +172,7 @@ void ConvertToAIE::runOnOperation() {
       b.setInsertionPoint(call);
       auto bufType = operand.getType().cast<MemRefType>();
       auto buf = b.create<BufferOp>(loc, bufType, tile);
-      resultBufMap[operand.cast<BlockArgument>()] = buf;
+      resultBufMap[operand] = buf;
 
       b.setInsertionPoint(returnOp);
       createLoopNest(b, operand, buf, vecSize);
@@ -197,6 +197,13 @@ void ConvertToAIE::runOnOperation() {
 
     b.setInsertionPointToEnd(&coreBlock);
     b.create<xilinx::AIE::EndOp>(loc);
+  }
+
+  // Annotate resulting buffers as double buffer.
+  // TODO: This is just for experimental purpose.
+  for (auto pair : resultBufMap) {
+    inputBufMap[pair.first]->setAttr("polyaie.double_buf", b.getUnitAttr());
+    pair.second->setAttr("polyaie.double_buf", b.getUnitAttr());
   }
 
   /// Used to hold the channel number of each TileOp.
@@ -348,8 +355,7 @@ void ConvertToAIE::runOnOperation() {
       auto call = storeOp.buffer().getDefiningOp<CallOp>();
       auto func = mod.lookupSymbol<FuncOp>(call.callee());
       auto returnOp = cast<ReturnOp>(func.front().getTerminator());
-      auto buf = resultBufMap[returnOp.getOperand(result.getResultNumber())
-                                  .cast<BlockArgument>()];
+      auto buf = resultBufMap[returnOp.getOperand(result.getResultNumber())];
       auto rank = std::max(
           storeOp.memory().getType().cast<MemRefType>().getRank(), (int64_t)1);
 
