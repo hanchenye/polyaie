@@ -32,6 +32,7 @@ void Postprocess::runOnOperation() {
 
   // Traverse all operations.
   unsigned bufIdx = 0;
+  SmallPtrSet<Operation *, 16> leafTiles;
   for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
     if (auto buf = dyn_cast<BufferOp>(op)) {
       // Create symbol name for each BufferOp.
@@ -48,16 +49,10 @@ void Postprocess::runOnOperation() {
       constant.erase();
 
     } else if (auto store = dyn_cast<memrefext::MemCpyOp>(op)) {
-      // Create lock releases to indicate the completion of the whole program.
-      if (auto buf = store.source().getDefiningOp<BufferOp>()) {
-        auto tile = buf.getTileOp();
-        auto &coreBlock = tile.getCoreOp().body().front();
+      // Collect leaf tiles in the program.
+      if (auto buf = store.source().getDefiningOp<BufferOp>())
+        leafTiles.insert(buf.getTileOp());
 
-        b.setInsertionPointAfter(tile);
-        auto lock = b.create<LockOp>(loc, tile, 15);
-        b.setInsertionPoint(coreBlock.getTerminator());
-        b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
-      }
     } else if (auto switchBox = dyn_cast<SwitchboxOp>(op)) {
       // Remove empty switch boxes.
       if (&switchBox.getBody()->front() ==
@@ -85,10 +80,20 @@ void Postprocess::runOnOperation() {
     }
   }
 
-  // Finally, remove unused TileOp.
-  for (auto tile : llvm::make_early_inc_range(mod.getOps<TileOp>()))
+  // Create lock releases to leaf tiles in order to indicate the completion of
+  // the program. Also, remove unused tiles.
+  for (auto tile : llvm::make_early_inc_range(mod.getOps<TileOp>())) {
     if (tile.result().use_empty())
       tile.erase();
+    else if (leafTiles.count(tile)) {
+      tile->setAttr("polyaie.leaf_tile", b.getUnitAttr());
+
+      b.setInsertionPointAfter(tile);
+      auto lock = b.create<LockOp>(loc, tile, 15);
+      b.setInsertionPoint(tile.getCoreOp().body().front().getTerminator());
+      b.create<UseLockOp>(loc, lock, 1, LockAction::Release, 0);
+    }
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createPostprocessPass() {

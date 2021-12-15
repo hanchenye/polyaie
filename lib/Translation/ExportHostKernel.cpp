@@ -16,11 +16,6 @@ using namespace memrefext;
 using namespace xilinx::AIE;
 
 static llvm::cl::opt<bool>
-    debugHostKernel("debug-host-kernel",
-                    llvm::cl::desc("run the host kernel in debug mode"),
-                    llvm::cl::init(false));
-
-static llvm::cl::opt<bool>
     dryRunHostKernel("dry-run-host-kernel",
                      llvm::cl::desc("run the host kernel without real data"),
                      llvm::cl::init(false));
@@ -167,11 +162,16 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   // Collect memory copy operations.
   SmallVector<memrefext::MemCpyOp, 8> loads;
   SmallVector<memrefext::MemCpyOp, 8> stores;
+  SmallPtrSet<Operation *, 16> leafTiles;
   for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
-    if (memCpy.source().getDefiningOp<memref::AllocOp>())
+    if (memCpy.target().getDefiningOp<BufferOp>())
       loads.push_back(memCpy);
-    else if (memCpy.target().getDefiningOp<memref::AllocOp>())
-      stores.push_back(memCpy);
+    else if (auto buf = memCpy.source().getDefiningOp<BufferOp>()) {
+      // FIXME: We are only collecting results from pong buffers here.
+      if (buf->getAttr("polyaie.pong_buf"))
+        stores.push_back(memCpy);
+      leafTiles.insert(buf.getTileOp());
+    }
 
   if (!dryRunHostKernel) {
     // Clear the local memory of all tiles.
@@ -195,7 +195,7 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   // Create a "results" array to indicate the completion of the kernel and then
   // start the execution.
-  indent() << "bool results[" << stores.size() << "];\n";
+  indent() << "bool results[" << leafTiles.size() << "];\n";
 
   os << R"XXX(
   for (auto &result : results)
@@ -218,15 +218,15 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   indent() << "while(!kernel_complete()) {\n";
   addIndent();
 
-  unsigned storeIdx = 0;
-  for (auto store : stores) {
-    auto tile = store.source().getDefiningOp<BufferOp>().getTileOp();
+  unsigned tileIdx = 0;
+  for (auto op : leafTiles) {
+    auto tile = cast<TileOp>(op);
     indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 1, 0))\n";
     // indent() << "if (XAieTile_CoreReadStatusDone(&(_xaie->TileInst["
     //          << tile.col() << "][" << tile.row() << "])))\n";
     addIndent();
-    indent() << "results[" << storeIdx++ << "] = true;\n";
+    indent() << "results[" << tileIdx++ << "] = true;\n";
     reduceIndent();
   }
 
