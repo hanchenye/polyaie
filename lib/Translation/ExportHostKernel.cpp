@@ -155,23 +155,23 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   // Collect tile operations.
   SmallVector<TileOp, 32> tiles;
-  for (auto tile : mod.getOps<TileOp>())
+  SmallPtrSet<Operation *, 16> leafTiles;
+  for (auto tile : mod.getOps<TileOp>()) {
     if (tile.getCoreOp())
       tiles.push_back(tile);
+    if (tile->getAttr("polyaie.leaf_tile"))
+      leafTiles.insert(tile);
+  }
 
   // Collect memory copy operations.
   SmallVector<memrefext::MemCpyOp, 8> loads;
   SmallVector<memrefext::MemCpyOp, 8> stores;
-  SmallPtrSet<Operation *, 16> leafTiles;
+
   for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
     if (memCpy.target().getDefiningOp<BufferOp>())
       loads.push_back(memCpy);
-    else if (auto buf = memCpy.source().getDefiningOp<BufferOp>()) {
-      // FIXME: We are only collecting results from pong buffers here.
-      if (buf->getAttr("polyaie.pong_buf"))
-        stores.push_back(memCpy);
-      leafTiles.insert(buf.getTileOp());
-    }
+    else if (auto buf = memCpy.source().getDefiningOp<BufferOp>())
+      stores.push_back(memCpy);
 
   if (!dryRunHostKernel) {
     // Clear the local memory of all tiles.

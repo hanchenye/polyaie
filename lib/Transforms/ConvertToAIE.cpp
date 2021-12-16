@@ -199,13 +199,6 @@ void ConvertToAIE::runOnOperation() {
     b.create<xilinx::AIE::EndOp>(loc);
   }
 
-  // Annotate resulting buffers as double buffer.
-  // TODO: This is just for experimental purpose.
-  for (auto pair : resultBufMap) {
-    inputBufMap[pair.first]->setAttr("polyaie.double_buf", b.getUnitAttr());
-    pair.second->setAttr("polyaie.double_buf", b.getUnitAttr());
-  }
-
   /// Used to hold the channel number of each TileOp.
   DenseMap<Operation *, unsigned> MM2SChanMap;
   DenseMap<Operation *, unsigned> S2MMChanMap;
