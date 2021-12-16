@@ -166,27 +166,30 @@ void ConvertToAIE::runOnOperation() {
     b.setInsertionPoint(call);
     auto tile = b.create<TileOp>(loc, getCol(call), getRow(call));
 
+    // Generate a BufferOp for each argument of the function.
+    for (auto arg : func.getArguments()) {
+      auto buf = b.create<BufferOp>(loc, arg.getType(), tile);
+      arg.replaceAllUsesExcept(buf, returnOp);
+      inputBufMap[arg] = buf;
+    }
+
     // Generate a BufferOp for each returned value, and create a memory copy to
     // avoid the data pollution between predecessors and successors.
     for (auto operand : returnOp.getOperands()) {
       b.setInsertionPoint(call);
       auto bufType = operand.getType().cast<MemRefType>();
       auto buf = b.create<BufferOp>(loc, bufType, tile);
-      resultBufMap[operand] = buf;
+      auto localBuf = inputBufMap[operand];
 
-      b.setInsertionPoint(returnOp);
-      createLoopNest(b, operand, buf, vecSize);
-    }
+      inputBufMap[operand] = buf;
+      resultBufMap[operand] = localBuf;
 
-    // Generate a BufferOp for each argument of the function.
-    for (auto arg : func.getArguments()) {
-      b.setInsertionPoint(call);
-      auto buf = b.create<BufferOp>(loc, arg.getType(), tile);
-      arg.replaceAllUsesExcept(buf, returnOp);
-      inputBufMap[arg] = buf;
+      b.setInsertionPointToStart(&func.front());
+      createLoopNest(b, buf, localBuf, vecSize);
     }
 
     // Generate a CoreOp and inline the contents of the function.
+    b.setInsertionPoint(call);
     auto core = b.create<CoreOp>(loc, tile);
     auto &coreBlock = core.body().emplaceBlock();
 
