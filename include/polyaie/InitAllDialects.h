@@ -9,6 +9,7 @@
 
 #include "aie/AIEDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
@@ -25,6 +26,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     mlir::AffineDialect,
     mlir::scf::SCFDialect,
     mlir::StandardOpsDialect,
+    mlir::arith::ArithmeticDialect,
     mlir::math::MathDialect,
     mlir::memref::MemRefDialect,
     polyaie::memrefext::MemRefExtDialect,

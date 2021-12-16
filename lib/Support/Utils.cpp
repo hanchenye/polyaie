@@ -13,12 +13,12 @@ using namespace polyaie;
 
 /// Inference the buffer offsets from the input `type`.
 SmallVector<int64_t, 4> polyaie::getBufferOffsets(MemRefType type) {
-  auto affineMaps = type.getAffineMaps();
-  if (affineMaps.empty())
+  auto layoutMap = type.getLayout().getAffineMap();
+  if (!layoutMap)
     return SmallVector<int64_t, 4>(type.getRank(), 0);
 
   SmallVector<int64_t, 4> offsets;
-  for (auto expr : affineMaps.back().getResults()) {
+  for (auto expr : layoutMap.getResults()) {
     // If the expression is a dimension value, the offset is 0.
     if (expr.getKind() == AffineExprKind::DimId) {
       offsets.push_back(0);

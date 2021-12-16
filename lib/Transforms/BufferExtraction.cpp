@@ -152,15 +152,10 @@ void BufferExtraction::runOnOperation() {
       }
 
       // Construct the buffer type and create the LoadBufferOp.
-      // TODO: Support memrefs with layout map? How?
-      if (!argType.getAffineMaps().empty()) {
-        call.emitOpError("memory isn't expected to have layout map");
-        return signalPassFailure();
-      }
       auto bufAffineMap = AffineMap::get(map.getNumResults(), 0, bufAffineExprs,
                                          map.getContext());
       auto bufType =
-          MemRefType::get(bufLengths, argType.getElementType(), {bufAffineMap});
+          MemRefType::get(bufLengths, argType.getElementType(), bufAffineMap);
       auto bufOffsetsAttr = b.getI64ArrayAttr(bufOffsets);
       auto bufLengthsAttr = b.getI64ArrayAttr(bufLengths);
 

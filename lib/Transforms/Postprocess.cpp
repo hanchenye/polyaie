@@ -39,11 +39,11 @@ void Postprocess::runOnOperation() {
       auto bufName = "buf" + std::to_string(bufIdx++);
       buf->setAttr("sym_name", b.getStringAttr(bufName));
 
-    } else if (auto constant = dyn_cast<ConstantOp>(op)) {
+    } else if (auto constant = dyn_cast<arith::ConstantOp>(op)) {
       // Localize constant operation to the usage block.
       for (auto &use : llvm::make_early_inc_range(constant->getUses())) {
         b.setInsertionPoint(use.getOwner());
-        auto localConstant = cast<ConstantOp>(b.clone(*constant));
+        auto localConstant = cast<arith::ConstantOp>(b.clone(*constant));
         use.set(localConstant.getResult());
       }
       constant.erase();

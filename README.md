@@ -81,7 +81,7 @@ $ export PYTHONPATH=$PYTHONPATH:/home/hanchenye/workspace/polyaie/phism
 $ python scripts/pb-flow.py --polymer --loop-transforms --dataset SMALL --skip-vitis --skip-csim example/polybench
 
 $ export POLYAIE_ROOT=/home/hanchenye/workspace/polyaie
-$ sed -E 's/arith.//g; s/f64/f32/g; s/andi/and/g; s/alloca/alloc/g; s/llvm.linkage[[:space:]]=[[:space:]]#llvm.linkage<external>,[[:space:]]//g' gemm.pre.kern.plmr.ca.lt.mlir > gemm.phism.mlir
+$ sed -E 's/f64/f32/g; s/alloca/alloc/g' gemm.pre.kern.plmr.ca.lt.mlir > gemm.phism.mlir
 $ polyaie-opt -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing vec-size=1" gemm.phism.mlir 1> gemm.phism.polyaie.mlir 2> gemm.phism.polyaie.dot
 $ polyaie-translate -export-host-kernel -dry-run-host-kernel=false gemm.phism.polyaie.mlir > gemm.host.cpp
 $ dot -Tpng gemm.phism.polyaie.dot > gemm.phism.polyaie.df.png && dot -Tpng -Kfdp gemm.phism.polyaie.dot > gemm.phism.polyaie.layout.png

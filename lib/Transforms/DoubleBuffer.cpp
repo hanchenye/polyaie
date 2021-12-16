@@ -94,9 +94,9 @@ void DoubleBuffer::runOnOperation() {
 
     // Create a loop iterating for N times.
     b.setInsertionPointToStart(&core.body().front());
-    auto one = b.create<ConstantOp>(loc, b.getIndexAttr(1));
-    auto zero = b.create<ConstantOp>(loc, b.getIndexAttr(0));
-    auto iterNum = b.create<IndexCastOp>(
+    auto one = b.create<arith::ConstantOp>(loc, b.getIndexAttr(1));
+    auto zero = b.create<arith::ConstantOp>(loc, b.getIndexAttr(0));
+    auto iterNum = b.create<arith::IndexCastOp>(
         loc, b.create<memref::LoadOp>(loc, iterNumBuf), b.getIndexType());
     auto loop = b.create<scf::ForOp>(loc, zero, iterNum, one);
 
@@ -115,9 +115,9 @@ void DoubleBuffer::runOnOperation() {
 
   //   // Create an IfOp to branch ping/pong computing phase.
   //   auto iv = loop.getInductionVar();
-  //   auto two = b.create<ConstantOp>(loc, b.getIndexAttr(2));
+  //   auto two = b.create<arith::ConstantOp>(loc, b.getIndexAttr(2));
   //   auto modTwo = b.create<UnsignedRemIOp>(loc, iv, two);
-  //   auto zero = b.create<ConstantOp>(loc, b.getIndexAttr(0));
+  //   auto zero = b.create<arith::ConstantOp>(loc, b.getIndexAttr(0));
   //   auto cond = b.create<CmpIOp>(loc, CmpIPredicate::eq, modTwo, zero);
   //   auto ifOp = b.create<scf::IfOp>(loc, cond, /*withElseRegion=*/true);
 

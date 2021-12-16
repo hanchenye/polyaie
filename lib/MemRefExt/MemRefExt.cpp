@@ -62,4 +62,4 @@ static LogicalResult verify(StoreBufferOp op) {
 #include "polyaie/MemRefExt/MemRefExt.cpp.inc"
 #undef GET_OP_CLASSES
 
-// #include "polyaie/MemRefExt/MemRefExtDialect.cpp.inc"
+#include "polyaie/MemRefExt/MemRefExtDialect.cpp.inc"

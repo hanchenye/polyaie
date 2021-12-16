@@ -58,7 +58,7 @@ static LogicalResult unrollAllLoops(FuncOp func) {
         hasFullyUnrolled = false;
     });
 
-    PassManager pm(func.getContext(), "func");
+    PassManager pm(func.getContext(), "builtin.func");
     pm.addPass((createSimplifyAffineStructuresPass()));
     pm.addPass((createCanonicalizerPass()));
     (void)pm.run(func);
@@ -89,13 +89,13 @@ static void duplicateSubFuncs(FuncOp func) {
     // Set up a new name.
     auto newName = call.callee().str() + "_AIE" + std::to_string(callIdx);
     newCallee.setName(newName);
-    call->setAttr("callee", b.getSymbolRefAttr(newName));
+    call->setAttr("callee", SymbolRefAttr::get(newCallee));
 
     // Localize the constant into the new callee.
     SmallVector<unsigned, 8> argsToErase;
     auto operandsToErase = llvm::BitVector();
     for (unsigned i = 0, e = call.getNumOperands(); i < e; ++i) {
-      if (auto param = call.getOperand(i).getDefiningOp<ConstantOp>()) {
+      if (auto param = call.getOperand(i).getDefiningOp<arith::ConstantOp>()) {
         // Replace function argument with a constant number if applicable.
         b.setInsertionPointToStart(&newCallee.front());
         auto newParam = param.clone();
@@ -200,7 +200,7 @@ static void inlineFuncIntoModule(FuncOp func) {
   func.erase();
 
   // Canonicalize the whole module.
-  PassManager pm(mod.getContext(), "module");
+  PassManager pm(mod.getContext(), "builtin.module");
   pm.addPass(createCanonicalizerPass());
   (void)pm.run(mod);
 
@@ -232,7 +232,7 @@ static void removeRedundantFuncs(ModuleOp mod) {
 
     // Canonicalize the function to remove other redundant operations after
     // loops removal.
-    PassManager pm(func.getContext(), "func");
+    PassManager pm(func.getContext(), "builtin.func");
     pm.addPass(createCanonicalizerPass());
     (void)pm.run(func);
 

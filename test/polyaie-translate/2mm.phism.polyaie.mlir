@@ -22,7 +22,7 @@ module @kernel_2mm  {
     affine.for %arg0 = 0 to 16 {
       affine.for %arg1 = 0 to 24 {
         %37 = affine.load %9[%arg0, %arg1] : memref<16x24xf32>
-        %38 = mulf %37, %36 : f32
+        %38 = arith.mulf %37, %36 : f32
         affine.store %38, %9[%arg0, %arg1] : memref<16x24xf32>
       }
     }
@@ -45,7 +45,7 @@ module @kernel_2mm  {
   %15 = AIE.buffer(%13) {address = 4096 : i32, sym_name = "buf2"} : memref<16x18xf32>
   %16 = AIE.core(%13)  {
     AIE.useLock(%14, Acquire, 0, 0)
-    %cst = constant 0.000000e+00 : f32
+    %cst = arith.constant 0.000000e+00 : f32
     affine.for %arg0 = 0 to 16 {
       affine.for %arg1 = 0 to 18 {
         affine.store %cst, %15[%arg0, %arg1] : memref<16x18xf32>
@@ -78,10 +78,10 @@ module @kernel_2mm  {
         affine.for %arg2 = 0 to 18 {
           %37 = affine.load %19[%arg0, %arg2] : memref<16x18xf32>
           %38 = affine.load %22[%arg0, %arg1] : memref<16x22xf32>
-          %39 = mulf %36, %38 : f32
+          %39 = arith.mulf %36, %38 : f32
           %40 = affine.load %20[%arg1, %arg2] : memref<22x18xf32>
-          %41 = mulf %39, %40 : f32
-          %42 = addf %37, %41 : f32
+          %41 = arith.mulf %39, %40 : f32
+          %42 = arith.addf %37, %41 : f32
           affine.store %42, %19[%arg0, %arg2] : memref<16x18xf32>
         }
       }
@@ -112,8 +112,8 @@ module @kernel_2mm  {
           %36 = affine.load %27[%arg0, %arg2] : memref<16x24xf32>
           %37 = affine.load %29[%arg0, %arg1] : memref<16x18xf32>
           %38 = affine.load %28[%arg1, %arg2] : memref<18x24xf32>
-          %39 = mulf %37, %38 : f32
-          %40 = addf %36, %39 : f32
+          %39 = arith.mulf %37, %38 : f32
+          %40 = arith.addf %36, %39 : f32
           affine.store %40, %27[%arg0, %arg2] : memref<16x24xf32>
         }
       }
