@@ -29,7 +29,7 @@ python pb-flow.py ${DIR}/polybench \
 
 # Run polyaie to generate the AIE IR of GEMM.
 polyaie-opt ${GEMM_DIR}/gemm.pre.kern.plmr.ca.lt.mlir \
-  -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing vec-size=1" \
+  -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing" \
   1> ${GEMM_DIR}/gemm.polyaie.mlir \
   2> ${GEMM_DIR}/gemm.polyaie.dot
 

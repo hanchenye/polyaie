@@ -1,4 +1,4 @@
-// RUN: polyaie-opt %s -polyaie-pipeline="top-func-name=kernel_2mm algorithm=naive" | FileCheck %s
+// RUN: polyaie-opt %s -polyaie-pipeline="top-func-name=kernel_2mm" | FileCheck %s
 
 // CHECK: module @kernel_2mm
 

@@ -43,9 +43,19 @@ def CreateDataflow : Pass<"polyaie-create-dataflow", "ModuleOp"> {
   let constructor = "mlir::polyaie::createCreateDataflowPass()";
 }
 
-def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
-  let summary = "Print dataflow into a DOT graph";
-  let constructor = "mlir::polyaie::createPrintDataflowPass()";
+def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
+  let summary = "Substitute each function body with an external kernel";
+  let description = [{
+    This is a highly experimental pass. We need to figure out how to let the
+    compiler know which external kernel to link for each tile.
+  }];
+  let constructor = "mlir::polyaie::createLinkExternKernelPass()";
+
+  let options = [
+    Option<"objectFile", "object-file", "std::string",
+           /*default=*/"\"kernel.o\"", "Specify the path of the pre-compiled "
+           "object file of external kernels">
+  ];
 }
 
 def DetectReduction : FunctionPass<"polyaie-detect-reduction"> {
@@ -63,10 +73,15 @@ def Placement : Pass<"polyaie-placement", "ModuleOp"> {
   let constructor = "mlir::polyaie::createPlacementPass()";
 
   let options = [
-    Option<"algorithm", "algorithm", "std::string",
-           /*default=*/"\"naive\"", "Specify the placement algorithm, possible "
-           "values are: naive(default), simulated-annealing">
+    Option<"algorithm", "algorithm", "std::string", /*default=*/"\"naive\"",
+           "Specify the placement algorithm, possible values are: "
+           "naive(default), simulated-annealing">
   ];
+}
+
+def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
+  let summary = "Print dataflow into a DOT graph";
+  let constructor = "mlir::polyaie::createPrintDataflowPass()";
 }
 
 def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
@@ -79,8 +94,8 @@ def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
   let constructor = "mlir::polyaie::createConvertToAIEPass()";
 
   let options = [
-    Option<"vecSize", "vec-size", "int64_t",
-           /*default=*/"8", "Specify the size of super vectorization">
+    Option<"vecSize", "vec-size", "int64_t", /*default=*/"1",
+           "Specify the size of super vectorization">
   ];
 }
 

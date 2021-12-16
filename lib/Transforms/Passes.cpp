@@ -27,6 +27,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(polyaie::createBufferExtractionPass());
         pm.addPass(polyaie::createCreateDataflowPass());
+        if (opts.enableLinkExternKernel)
+          pm.addPass(polyaie::createLinkExternKernelPass(opts));
         if (opts.vectorizeSize != 1) {
           pm.addPass(polyaie::createDetectReductionPass());
           pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
