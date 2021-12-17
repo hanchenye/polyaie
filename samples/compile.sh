@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-DRY_RUN=true
+DRY_RUN=false
 
 # Get the absolute path of the current directory.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"

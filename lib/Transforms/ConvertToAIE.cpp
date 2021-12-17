@@ -191,6 +191,8 @@ void ConvertToAIE::runOnOperation() {
     // Generate a CoreOp and inline the contents of the function.
     b.setInsertionPoint(call);
     auto core = b.create<CoreOp>(loc, tile);
+    if (auto objectFile = func->getAttr("polyaie.link_with"))
+      core->setAttr("link_with", objectFile);
     auto &coreBlock = core.body().emplaceBlock();
 
     auto &funcOps = func.front().getOperations();
