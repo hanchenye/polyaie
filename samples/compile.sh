@@ -5,6 +5,8 @@ set -o pipefail
 set -o nounset
 
 DRY_RUN=false
+EXTERN_KERNEL=true
+OBJECT_FILE=
 
 # Get the absolute path of the current directory.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
@@ -29,7 +31,7 @@ python pb-flow.py ${DIR}/polybench \
 
 # Run polyaie to generate the AIE IR of GEMM.
 polyaie-opt ${GEMM_DIR}/gemm.pre.kern.plmr.ca.lt.mlir \
-  -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing" \
+  -polyaie-pipeline="top-func-name=kernel_gemm algorithm=simulated-annealing enable-link-extern-kernel=${EXTERN_KERNEL} object-file=${OBJECT_FILE}" \
   1> ${GEMM_DIR}/gemm.polyaie.mlir \
   2> ${GEMM_DIR}/gemm.polyaie.dot
 

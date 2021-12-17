@@ -25,10 +25,22 @@ struct LinkExternKernel
     auto loc = b.getUnknownLoc();
 
     auto firstFunc = *mod.getOps<FuncOp>().begin();
-    auto kernelType = firstFunc.getType();
+    auto kernelType = b.getFunctionType(firstFunc.getType().getInputs(), {});
+    b.setInsertionPointToStart(mod.getBody());
 
-    for (auto func : mod.getOps<FuncOp>()) {
-      if (func.getType() != kernelType) {
+    // Create the kernel based on the type of the first function.
+    if (objectFile != "")
+      b.create<FuncOp>(loc, "kernel", kernelType);
+    else {
+      auto kernel = firstFunc.clone();
+      b.insert(kernel);
+      kernel.setName("kernel");
+      kernel.front().getTerminator()->eraseOperands(0, kernel.getNumResults());
+      kernel.setType(kernelType);
+    }
+
+    for (auto func : llvm::drop_begin(mod.getOps<FuncOp>(), 1)) {
+      if (func.getType() != firstFunc.getType()) {
         func.emitOpError("All functions must have the same type");
         return signalPassFailure();
       }
@@ -42,16 +54,11 @@ struct LinkExternKernel
         }
 
       b.setInsertionPointToStart(&func.front());
-      b.create<CallOp>(loc, "kernel", kernelType.getResults(),
-                       func.getArguments());
+      b.create<CallOp>(loc, "kernel", TypeRange({}), func.getArguments());
 
-      func->setAttr("polyaie.link_with", b.getStringAttr(objectFile));
+      if (objectFile != "")
+        func->setAttr("polyaie.link_with", b.getStringAttr(objectFile));
     }
-
-    // Create the kernel as a private function.
-    b.setInsertionPointToStart(mod.getBody());
-    auto kernel = b.create<FuncOp>(loc, "kernel", kernelType);
-    kernel.setPrivate();
   }
 };
 } // namespace

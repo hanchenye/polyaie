@@ -72,7 +72,7 @@ void Postprocess::runOnOperation() {
         lock->erase();
       }
     } else if (auto func = dyn_cast<FuncOp>(op)) {
-      if (!func.isPrivate())
+      if (!func.isPrivate() && llvm::hasSingleElement(func.front()))
         func.erase();
 
     } else if (isa<CallOp, LoadBufferOp, StoreBufferOp, TokenOp, WireOp, PLIOOp,
