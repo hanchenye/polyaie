@@ -26,19 +26,14 @@ struct LinkExternKernel
 
     auto firstFunc = *mod.getOps<FuncOp>().begin();
     auto kernelType = b.getFunctionType(firstFunc.getType().getInputs(), {});
-    b.setInsertionPointToStart(mod.getBody());
 
-    // Create the kernel based on the type of the first function.
-    if (objectFile != "") {
-      auto kernel = b.create<FuncOp>(loc, "kernel", kernelType);
-      kernel.setPrivate();
-    } else {
-      auto kernel = firstFunc.clone();
-      b.insert(kernel);
-      kernel.setName("kernel");
-      kernel.front().getTerminator()->eraseOperands(0, kernel.getNumResults());
-      kernel.setType(kernelType);
-    }
+    // Create the non-private reference kernel function.
+    b.setInsertionPointToStart(mod.getBody());
+    auto kernel = firstFunc.clone();
+    b.insert(kernel);
+    kernel.setName("kernel");
+    kernel.front().getTerminator()->eraseOperands(0, kernel.getNumResults());
+    kernel.setType(kernelType);
 
     for (auto func : llvm::drop_begin(mod.getOps<FuncOp>(), 1)) {
       if (func.getType() != firstFunc.getType()) {
@@ -55,10 +50,19 @@ struct LinkExternKernel
         }
 
       b.setInsertionPointToStart(&func.front());
-      b.create<CallOp>(loc, "kernel", TypeRange({}), func.getArguments());
-
-      if (objectFile != "")
+      if (objectFile != "") {
+        b.create<CallOp>(loc, "extern_kernel", TypeRange({}),
+                         func.getArguments());
         func->setAttr("polyaie.link_with", b.getStringAttr(objectFile));
+      } else
+        b.create<CallOp>(loc, "kernel", TypeRange({}), func.getArguments());
+    }
+
+    // Create the private external kernel function.
+    b.setInsertionPointToStart(mod.getBody());
+    if (objectFile != "") {
+      auto kernel = b.create<FuncOp>(loc, "extern_kernel", kernelType);
+      kernel.setPrivate();
     }
   }
 };
