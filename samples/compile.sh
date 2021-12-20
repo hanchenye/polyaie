@@ -6,7 +6,8 @@ set -o nounset
 
 DRY_RUN=false
 EXTERN_KERNEL=true
-OBJECT_FILE=
+OBJECT_FILE="kernel.o"
+VITIS_DIR=/tools/Xilinx/Vitis/2020.1
 
 # Get the absolute path of the current directory.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
@@ -60,8 +61,9 @@ cp ${UTIL_DIR}/polybench.c ${UTIL_DIR}/polybench.cpp
 
 
 # Generate the executables on VCK190.
-source /tools/Xilinx/Vitis/2020.1/settings64.sh
+source ${VITIS_DIR}/settings64.sh
 cd ${GEMM_DIR}
+${VITIS_DIR}/cardano/bin/xchesscc -p me -P ${VITIS_DIR}/cardano/data/cervino/lib -c ${GEMM_DIR}/kernel.cc
 ${MLIRAIE_DIR}/build/bin/aiecc.py -j10 \
   --sysroot=${MLIRAIE_DIR}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
   ${GEMM_DIR}/gemm.polyaie.mliraie.mlir \

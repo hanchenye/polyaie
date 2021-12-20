@@ -29,9 +29,10 @@ struct LinkExternKernel
     b.setInsertionPointToStart(mod.getBody());
 
     // Create the kernel based on the type of the first function.
-    if (objectFile != "")
-      b.create<FuncOp>(loc, "kernel", kernelType);
-    else {
+    if (objectFile != "") {
+      auto kernel = b.create<FuncOp>(loc, "kernel", kernelType);
+      kernel.setPrivate();
+    } else {
       auto kernel = firstFunc.clone();
       b.insert(kernel);
       kernel.setName("kernel");
