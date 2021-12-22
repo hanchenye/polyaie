@@ -63,7 +63,7 @@ cp ${UTIL_DIR}/polybench.c ${UTIL_DIR}/polybench.cpp
 # Generate the executables on VCK190.
 source ${VITIS_DIR}/settings64.sh
 cd ${GEMM_DIR}
-${VITIS_DIR}/cardano/bin/xchesscc -p me -P ${VITIS_DIR}/cardano/data/cervino/lib -c ${GEMM_DIR}/kernel.cc
+${VITIS_DIR}/cardano/bin/xchesscc -p me -P ${VITIS_DIR}/cardano/data/cervino/lib -I${VITIS_DIR}/cardano/include -c ${GEMM_DIR}/kernel.cc
 ${MLIRAIE_DIR}/build/bin/aiecc.py -j10 \
   --sysroot=${MLIRAIE_DIR}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
   ${GEMM_DIR}/gemm.polyaie.mliraie.mlir \

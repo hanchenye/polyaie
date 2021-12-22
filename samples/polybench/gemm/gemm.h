@@ -62,7 +62,7 @@
 #endif
 
 #ifdef DATA_TYPE_IS_INT
-#define DATA_TYPE int
+#define DATA_TYPE int32_t
 #define DATA_PRINTF_MODIFIER "%d "
 #endif
 

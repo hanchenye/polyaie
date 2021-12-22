@@ -37,10 +37,10 @@ void init_array(int ni, int nj, int nk, DATA_TYPE *alpha, DATA_TYPE *beta,
       C[i][j] = 0.0;
   for (i = 0; i < ni; i++)
     for (j = 0; j < nk; j++)
-      A[i][j] = (DATA_TYPE)(i * (j + 1) % nk) / nk;
+      A[i][j] = (DATA_TYPE)(i * (j + 1) % 10); /* nk) / nk; */
   for (i = 0; i < nk; i++)
     for (j = 0; j < nj; j++)
-      B[i][j] = (DATA_TYPE)(i * (j + 2) % nj) / nj;
+      B[i][j] = (DATA_TYPE)(i * (j + 2) % 10); /* nj) / nj; */
 }
 
 /* DCE code. Must scan the entire live-out data.
@@ -74,7 +74,7 @@ void kernel_gemm(int ni, int nj, int nk,
   for (i = 0; i < _PB_NI; i++) {
     for (k = 0; k < _PB_NK; k++) {
       for (j = 0; j < _PB_NJ; j++) {
-        C[i][j] += A[i][k] * B[k][j];
+        C[j][i] += A[k][i] * B[j][k];
       }
     }
   }
