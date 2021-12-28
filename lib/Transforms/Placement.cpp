@@ -64,8 +64,8 @@ private:
 Placer::Placer(ModuleOp mod)
     : mod(mod), nodes(mod.getOps<CallOp>().begin(), mod.getOps<CallOp>().end()),
       rowBegin(2), colBegin(0),
-      rowNum(std::min((unsigned)sqrt(nodes.size()), (unsigned)8)),
-      colNum(std::min((unsigned)(1.5 * nodes.size() / rowNum), (unsigned)40)) {
+      rowNum(std::min((unsigned)sqrt(nodes.size()), (unsigned)7)),
+      colNum(std::min((unsigned)(1.5 * nodes.size() / rowNum), (unsigned)50)) {
 
   assert(rowNum * colNum >= nodes.size() && "AIEs are not enough");
   layout.resize(rowNum * colNum);

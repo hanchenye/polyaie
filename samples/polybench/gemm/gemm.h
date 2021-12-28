@@ -32,7 +32,7 @@
 #endif
 
 #ifdef MEDIUM_DATASET
-#define NI 256
+#define NI 128
 #define NJ 256
 #define NK 256
 #endif

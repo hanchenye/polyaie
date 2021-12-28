@@ -24,7 +24,7 @@ module @kernel_2mm  {
     %46 = memref.load %8[] : memref<i32>
     %47 = arith.index_cast %46 : i32 to index
     scf.for %arg0 = %c0 to %47 step %c1 {
-      AIE.useLock(%9, Acquire, 0, 0)
+      AIE.useLock(%9, Acquire, 0)
       affine.for %arg1 = 0 to 16 {
         affine.for %arg2 = 0 to 24 {
           %49 = affine.load %12[%arg1, %arg2] : memref<16x24xf32>
@@ -39,16 +39,16 @@ module @kernel_2mm  {
           affine.store %50, %10[%arg1, %arg2] : memref<16x24xf32>
         }
       }
-      AIE.useLock(%9, Release, 1, 0)
+      AIE.useLock(%9, Release, 1)
     }
     AIE.end
   }
   %14 = AIE.mem(%7)  {
     %46 = AIE.dmaStart(MM2S0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.useLock(%9, Acquire, 1, 0)
+    AIE.useLock(%9, Acquire, 1)
     AIE.dmaBd(<%10 : memref<16x24xf32>, 0, 384>, 0)
-    AIE.useLock(%9, Release, 0, 0)
+    AIE.useLock(%9, Release, 0)
     br ^bb1
   ^bb2:  // pred: ^bb0
     AIE.end
@@ -66,7 +66,7 @@ module @kernel_2mm  {
     %46 = memref.load %16[] : memref<i32>
     %47 = arith.index_cast %46 : i32 to index
     scf.for %arg0 = %c0 to %47 step %c1 {
-      AIE.useLock(%17, Acquire, 0, 0)
+      AIE.useLock(%17, Acquire, 0)
       affine.for %arg1 = 0 to 16 {
         affine.for %arg2 = 0 to 18 {
           %48 = affine.load %19[%arg1, %arg2] : memref<16x18xf32>
@@ -78,7 +78,7 @@ module @kernel_2mm  {
           affine.store %cst, %18[%arg1, %arg2] : memref<16x18xf32>
         }
       }
-      AIE.useLock(%17, Release, 1, 0)
+      AIE.useLock(%17, Release, 1)
     }
     AIE.end
   }
@@ -98,15 +98,15 @@ module @kernel_2mm  {
     %46 = memref.load %22[] : memref<i32>
     %47 = arith.index_cast %46 : i32 to index
     scf.for %arg0 = %c0 to %47 step %c1 {
-      AIE.useLock(%17, Acquire, 1, 0)
+      AIE.useLock(%17, Acquire, 1)
       affine.for %arg1 = 0 to 16 {
         affine.for %arg2 = 0 to 18 {
           %49 = affine.load %18[%arg1, %arg2] : memref<16x18xf32>
           affine.store %49, %27[%arg1, %arg2] : memref<16x18xf32>
         }
       }
-      AIE.useLock(%17, Release, 0, 0)
-      AIE.useLock(%32, Acquire, 0, 0)
+      AIE.useLock(%17, Release, 0)
+      AIE.useLock(%32, Acquire, 0)
       affine.for %arg1 = 0 to 16 {
         affine.for %arg2 = 0 to 18 {
           %49 = affine.load %27[%arg1, %arg2] : memref<16x18xf32>
@@ -127,7 +127,7 @@ module @kernel_2mm  {
           }
         }
       }
-      AIE.useLock(%32, Release, 1, 0)
+      AIE.useLock(%32, Release, 1)
     }
     AIE.end
   }
@@ -147,15 +147,15 @@ module @kernel_2mm  {
     %46 = memref.load %31[] : memref<i32>
     %47 = arith.index_cast %46 : i32 to index
     scf.for %arg0 = %c0 to %47 step %c1 {
-      AIE.useLock(%33, Acquire, 1, 0)
-      AIE.useLock(%32, Acquire, 1, 0)
+      AIE.useLock(%33, Acquire, 1)
+      AIE.useLock(%32, Acquire, 1)
       affine.for %arg1 = 0 to 16 {
         affine.for %arg2 = 0 to 18 {
           %48 = affine.load %23[%arg1, %arg2] : memref<16x18xf32>
           affine.store %48, %36[%arg1, %arg2] : memref<16x18xf32>
         }
       }
-      AIE.useLock(%32, Release, 0, 0)
+      AIE.useLock(%32, Release, 0)
       affine.for %arg1 = 0 to 16 {
         affine.for %arg2 = 0 to 24 {
           %48 = affine.load %37[%arg1, %arg2] : memref<16x24xf32>
@@ -174,17 +174,17 @@ module @kernel_2mm  {
           }
         }
       }
-      AIE.useLock(%33, Release, 0, 0)
+      AIE.useLock(%33, Release, 0)
     }
-    AIE.useLock(%30, Release, 1, 0)
+    AIE.useLock(%30, Release, 1)
     AIE.end
   }
   %39 = AIE.mem(%29)  {
     %46 = AIE.dmaStart(S2MM0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.useLock(%33, Acquire, 0, 0)
+    AIE.useLock(%33, Acquire, 0)
     AIE.dmaBd(<%37 : memref<16x24xf32>, 0, 384>, 0)
-    AIE.useLock(%33, Release, 1, 0)
+    AIE.useLock(%33, Release, 1)
     br ^bb1
   ^bb2:  // pred: ^bb0
     AIE.end
