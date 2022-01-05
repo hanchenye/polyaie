@@ -17,7 +17,7 @@ target_link_libraries(polyaie-translate
   ${translation_libs}
   AIE
   CIRCTHandshake
-  MLIRMemRefExt
+  MLIRDataflow
   MLIRPolyAIEExporters
   MLIRPolyAIESupport
   )

@@ -4,29 +4,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef POLYAIE_MEMREFEXT_MEMREFEXT_TD
-#define POLYAIE_MEMREFEXT_MEMREFEXT_TD
+#ifndef POLYAIE_DATAFLOW_DATAFLOW_TD
+#define POLYAIE_DATAFLOW_DATAFLOW_TD
 
 include "mlir/IR/OpBase.td"
 
-def MemRefExtDialect : Dialect {
-  let name = "memrefext";
+def DataflowDialect : Dialect {
+  let name = "dataflow";
   let summary = "A extension of the MLIR MemRef dialect";
   let description = [{
     This dialect contains operations and attributes that are useful in the
     PolyAIE compilation flow.
   }];
-  let cppNamespace = "::mlir::polyaie::memrefext";
+  let cppNamespace = "::mlir::polyaie::dataflow";
 }
 
-class MemRefExtOp<string mnemonic, list<OpTrait> traits = []> :
-    Op<MemRefExtDialect, mnemonic, traits>;
+class DataflowOp<string mnemonic, list<OpTrait> traits = []> :
+    Op<DataflowDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // Buffer Load/Store Operation
 //===----------------------------------------------------------------------===//
 
-def LoadBufferOp : MemRefExtOp<"load_buffer",
+def LoadBufferOp : DataflowOp<"load_buffer",
     [SameOperandsAndResultElementType]> {
   let summary = "load buffer operation";
   let description = [{
@@ -40,7 +40,7 @@ def LoadBufferOp : MemRefExtOp<"load_buffer",
   let verifier = [{ return ::verify(*this); }];
 }
 
-def StoreBufferOp : MemRefExtOp<"store_buffer", [SameOperandsElementType]> {
+def StoreBufferOp : DataflowOp<"store_buffer", [SameOperandsElementType]> {
   let summary = "store buffer operation";
   let description = [{
     This operation stores data from buffer to memory.
@@ -56,7 +56,7 @@ def StoreBufferOp : MemRefExtOp<"store_buffer", [SameOperandsElementType]> {
 // General Memory Copy Operation
 //===----------------------------------------------------------------------===//
 
-def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
+def MemCpyOp : DataflowOp<"memcpy", [SameOperandsElementType]> {
   let summary = "memory copy operation";
   let description = [{
     This operation represents a general memory copy from source to target. All
@@ -70,4 +70,4 @@ def MemCpyOp : MemRefExtOp<"memcpy", [SameOperandsElementType]> {
   // let verifier = [{ return ::verify(*this); }];
 }
 
-#endif // POLYAIE_MEMREFEXT_MEMREFEXT_TD
+#endif // POLYAIE_DATAFLOW_DATAFLOW_TD

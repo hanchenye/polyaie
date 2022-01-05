@@ -10,7 +10,7 @@
 
 using namespace mlir;
 using namespace polyaie;
-using namespace memrefext;
+using namespace dataflow;
 using namespace xilinx::AIE;
 
 namespace {
@@ -48,7 +48,7 @@ void Postprocess::runOnOperation() {
       }
       constant.erase();
 
-    } else if (auto store = dyn_cast<memrefext::MemCpyOp>(op)) {
+    } else if (auto store = dyn_cast<dataflow::MemCpyOp>(op)) {
       // Collect leaf tiles in the program.
       if (auto buf = store.source().getDefiningOp<BufferOp>())
         leafTiles.insert(buf.getTileOp());

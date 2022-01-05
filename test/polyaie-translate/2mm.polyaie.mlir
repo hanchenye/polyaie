@@ -10,8 +10,8 @@ module @kernel_2mm  {
   %4 = memref.alloc() : memref<22x18xf32>
   %5 = memref.alloc() : memref<18x24xf32>
   %6 = memref.alloc() : memref<16x24xf32>
-  "memrefext.memcpy"(%12, %6) {lengths = [16, 24], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
-  "memrefext.memcpy"(%11, %1) {lengths = [1], sourceOffsets = [0], targetOffsets = [0]} : (memref<f32>, memref<f32>) -> ()
+  "dataflow.memcpy"(%12, %6) {lengths = [16, 24], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
+  "dataflow.memcpy"(%11, %1) {lengths = [1], sourceOffsets = [0], targetOffsets = [0]} : (memref<f32>, memref<f32>) -> ()
   %7 = AIE.tile(2, 2)
   %8 = AIE.buffer(%7) {polyaie.iter_num_buf, sym_name = "buf0"} : memref<i32>
   %9 = AIE.lock(%7, 0)
@@ -53,7 +53,7 @@ module @kernel_2mm  {
   ^bb2:  // pred: ^bb0
     AIE.end
   }
-  "memrefext.memcpy"(%19, %2) {lengths = [16, 18], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x18xf32>, memref<16x18xf32>) -> ()
+  "dataflow.memcpy"(%19, %2) {lengths = [16, 18], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x18xf32>, memref<16x18xf32>) -> ()
   %15 = AIE.tile(1, 2)
   %16 = AIE.buffer(%15) {polyaie.iter_num_buf, sym_name = "buf4"} : memref<i32>
   %17 = AIE.lock(%15, 0)
@@ -82,9 +82,9 @@ module @kernel_2mm  {
     }
     AIE.end
   }
-  "memrefext.memcpy"(%24, %4) {lengths = [22, 18], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<22x18xf32>, memref<22x18xf32>) -> ()
-  "memrefext.memcpy"(%25, %0) {lengths = [1], sourceOffsets = [0], targetOffsets = [0]} : (memref<f32>, memref<f32>) -> ()
-  "memrefext.memcpy"(%26, %3) {lengths = [16, 22], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x22xf32>, memref<16x22xf32>) -> ()
+  "dataflow.memcpy"(%24, %4) {lengths = [22, 18], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<22x18xf32>, memref<22x18xf32>) -> ()
+  "dataflow.memcpy"(%25, %0) {lengths = [1], sourceOffsets = [0], targetOffsets = [0]} : (memref<f32>, memref<f32>) -> ()
+  "dataflow.memcpy"(%26, %3) {lengths = [16, 22], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x22xf32>, memref<16x22xf32>) -> ()
   %21 = AIE.tile(0, 2)
   %22 = AIE.buffer(%21) {polyaie.iter_num_buf, sym_name = "buf7"} : memref<i32>
   %23 = AIE.buffer(%21) {sym_name = "buf8"} : memref<16x18xf32>
@@ -131,7 +131,7 @@ module @kernel_2mm  {
     }
     AIE.end
   }
-  "memrefext.memcpy"(%35, %5) {lengths = [18, 24], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<18x24xf32>, memref<18x24xf32>) -> ()
+  "dataflow.memcpy"(%35, %5) {lengths = [18, 24], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<18x24xf32>, memref<18x24xf32>) -> ()
   %29 = AIE.tile(0, 3) {polyaie.leaf_tile}
   %30 = AIE.lock(%29, 15)
   %31 = AIE.buffer(%29) {polyaie.iter_num_buf, sym_name = "buf13"} : memref<i32>
@@ -189,7 +189,7 @@ module @kernel_2mm  {
   ^bb2:  // pred: ^bb0
     AIE.end
   }
-  "memrefext.memcpy"(%6, %34) {lengths = [16, 24], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
+  "dataflow.memcpy"(%6, %34) {lengths = [16, 24], sourceOffsets = [0, 0], targetOffsets = [0, 0]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
   %40 = AIE.tile(1, 3)
   %41 = AIE.tile(2, 3)
   %42 = AIE.switchbox(%29)  {

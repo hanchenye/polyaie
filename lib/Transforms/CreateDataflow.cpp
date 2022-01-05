@@ -4,12 +4,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polyaie/MemRefExt/MemRefExt.h"
+#include "polyaie/Dataflow/Dataflow.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
 using namespace polyaie;
-using namespace memrefext;
+using namespace dataflow;
 
 namespace {
 struct CreateDataflow : public polyaie::CreateDataflowBase<CreateDataflow> {

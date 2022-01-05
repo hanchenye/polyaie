@@ -4,21 +4,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polyaie/MemRefExt/MemRefExt.h"
+#include "polyaie/Dataflow/Dataflow.h"
 #include "mlir/IR/Builders.h"
 
 using namespace mlir;
 using namespace polyaie;
-using namespace memrefext;
+using namespace dataflow;
 
-void MemRefExtDialect::initialize() {
+void DataflowDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "polyaie/MemRefExt/MemRefExt.cpp.inc"
+#include "polyaie/Dataflow/Dataflow.cpp.inc"
       >();
 }
 
-#include "polyaie/MemRefExt/MemRefExtEnums.cpp.inc"
+#include "polyaie/Dataflow/DataflowEnums.cpp.inc"
 
 template <class OpType>
 static LogicalResult verifyLoadStoreBufferOp(OpType op) {
@@ -59,7 +59,7 @@ static LogicalResult verify(StoreBufferOp op) {
 }
 
 #define GET_OP_CLASSES
-#include "polyaie/MemRefExt/MemRefExt.cpp.inc"
+#include "polyaie/Dataflow/Dataflow.cpp.inc"
 #undef GET_OP_CLASSES
 
-#include "polyaie/MemRefExt/MemRefExtDialect.cpp.inc"
+#include "polyaie/Dataflow/DataflowDialect.cpp.inc"

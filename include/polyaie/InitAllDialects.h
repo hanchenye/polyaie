@@ -15,7 +15,7 @@
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/IR/Dialect.h"
-#include "polyaie/MemRefExt/MemRefExt.h"
+#include "polyaie/Dataflow/Dataflow.h"
 
 namespace mlir {
 namespace polyaie {
@@ -30,7 +30,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     mlir::arith::ArithmeticDialect,
     mlir::math::MathDialect,
     mlir::memref::MemRefDialect,
-    polyaie::memrefext::MemRefExtDialect,
+    polyaie::dataflow::DataflowDialect,
     mlir::vector::VectorDialect,
     mlir::LLVM::LLVMDialect,
     xilinx::AIE::AIEDialect,

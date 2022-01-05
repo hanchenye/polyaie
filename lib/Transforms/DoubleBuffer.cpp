@@ -10,7 +10,7 @@
 
 using namespace mlir;
 using namespace polyaie;
-using namespace memrefext;
+using namespace dataflow;
 using namespace xilinx::AIE;
 
 namespace {
@@ -74,7 +74,7 @@ void DoubleBuffer::runOnOperation() {
     //   // Duplicate MemCpyOps as well for each buffer.
     //   for (auto &use : llvm::make_early_inc_range(buf->getUses())) {
     //     auto user = use.getOwner();
-    //     if (isa<memrefext::MemCpyOp>(user)) {
+    //     if (isa<dataflow::MemCpyOp>(user)) {
     //       auto insertPoint = b.saveInsertionPoint();
     //       b.setInsertionPoint(user);
     //       auto newMemCpy = user->clone();

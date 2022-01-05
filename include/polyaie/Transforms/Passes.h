@@ -12,7 +12,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Pass/Pass.h"
-#include "polyaie/MemRefExt/MemRefExt.h"
+#include "polyaie/Dataflow/Dataflow.h"
 #include <memory>
 
 namespace mlir {

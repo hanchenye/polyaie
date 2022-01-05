@@ -12,7 +12,7 @@
 
 using namespace mlir;
 using namespace polyaie;
-using namespace memrefext;
+using namespace dataflow;
 using namespace xilinx::AIE;
 
 static llvm::cl::opt<bool>
@@ -25,11 +25,11 @@ class HostKernelExporter : public ExporterBase {
 public:
   explicit HostKernelExporter(ExporterState &state) : ExporterBase(state) {}
   void exportHostKernel(ModuleOp mod);
-  void emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx, bool isWrite);
+  void emitMemCpy(dataflow::MemCpyOp memCpy, unsigned argIdx, bool isWrite);
 };
 } // namespace
 
-void HostKernelExporter::emitMemCpy(memrefext::MemCpyOp memCpy, unsigned argIdx,
+void HostKernelExporter::emitMemCpy(dataflow::MemCpyOp memCpy, unsigned argIdx,
                                     bool isWrite) {
   auto buf = isWrite ? memCpy.target() : memCpy.source();
   auto bufOffsets = isWrite ? memCpy.sourceOffsets() : memCpy.targetOffsets();
@@ -164,10 +164,10 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   }
 
   // Collect memory copy operations.
-  SmallVector<memrefext::MemCpyOp, 8> loads;
-  SmallVector<memrefext::MemCpyOp, 8> stores;
+  SmallVector<dataflow::MemCpyOp, 8> loads;
+  SmallVector<dataflow::MemCpyOp, 8> stores;
 
-  for (auto memCpy : mod.getOps<memrefext::MemCpyOp>())
+  for (auto memCpy : mod.getOps<dataflow::MemCpyOp>())
     if (memCpy.target().getDefiningOp<BufferOp>())
       loads.push_back(memCpy);
     else if (auto buf = memCpy.source().getDefiningOp<BufferOp>())

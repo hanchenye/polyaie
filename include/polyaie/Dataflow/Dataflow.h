@@ -4,16 +4,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef POLYAIE_MEMREFEXT_MEMREFEXT_H
-#define POLYAIE_MEMREFEXT_MEMREFEXT_H
+#ifndef POLYAIE_DATAFLOW_DATAFLOW_H
+#define POLYAIE_DATAFLOW_DATAFLOW_H
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpImplementation.h"
 
-#include "polyaie/MemRefExt/MemRefExtDialect.h.inc"
-#include "polyaie/MemRefExt/MemRefExtEnums.h.inc"
+#include "polyaie/Dataflow/DataflowDialect.h.inc"
+#include "polyaie/Dataflow/DataflowEnums.h.inc"
 
 #define GET_OP_CLASSES
-#include "polyaie/MemRefExt/MemRefExt.h.inc"
+#include "polyaie/Dataflow/Dataflow.h.inc"
 
-#endif // POLYAIE_MEMREFEXT_MEMREFEXT_H
+#endif // POLYAIE_DATAFLOW_DATAFLOW_H

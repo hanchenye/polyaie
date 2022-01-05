@@ -12,7 +12,7 @@ target_link_libraries(polyaie-opt
   AIE
   CIRCTHandshake
   CIRCTHandshakeTransforms
-  MLIRMemRefExt
+  MLIRDataflow
   MLIRPolyAIEPasses
   MLIRPolyAIESupport
   )

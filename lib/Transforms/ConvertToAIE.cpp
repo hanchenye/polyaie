@@ -10,7 +10,7 @@
 
 using namespace mlir;
 using namespace polyaie;
-using namespace memrefext;
+using namespace dataflow;
 using namespace xilinx::AIE;
 
 namespace {
@@ -340,7 +340,7 @@ void ConvertToAIE::runOnOperation() {
       auto rank = std::max(loadOp.getType().getRank(), (int64_t)1);
 
       b.setInsertionPoint(loadOp);
-      b.create<memrefext::MemCpyOp>(
+      b.create<dataflow::MemCpyOp>(
           loc, b.getI64ArrayAttr(SmallVector<int64_t>(rank, 0)),
           loadOp.offsets(), loadOp.lengths(), buf, loadOp.memory());
 
@@ -355,7 +355,7 @@ void ConvertToAIE::runOnOperation() {
           storeOp.memory().getType().cast<MemRefType>().getRank(), (int64_t)1);
 
       b.setInsertionPoint(storeOp);
-      b.create<memrefext::MemCpyOp>(
+      b.create<dataflow::MemCpyOp>(
           loc, storeOp.offsets(),
           b.getI64ArrayAttr(SmallVector<int64_t>(rank, 0)), storeOp.lengths(),
           storeOp.memory(), buf);
