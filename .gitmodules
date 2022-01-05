@@ -1,6 +1,6 @@
-[submodule "llvm"]
-	path = llvm
-	url = git@github.com:llvm/llvm-project.git
+[submodule "circt"]
+	path = circt
+	url = git@github.com:hanchenye/circt.git
 
 [submodule "mlir-aie"]
 	path = mlir-aie

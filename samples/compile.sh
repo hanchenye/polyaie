@@ -5,7 +5,7 @@ set -o pipefail
 set -o nounset
 
 DRY_RUN=false
-EXTERN_KERNEL=true
+EXTERN_KERNEL=false
 OBJECT_FILE="kernel.o"
 VITIS_DIR=/tools/Xilinx/Vitis/2020.1
 
