@@ -71,6 +71,7 @@ $ mkdir build && cd build
 $ /usr/bin/cmake -G Ninja .. \
     -DLLVM_DIR=$PWD/../circt/llvm/build/lib/cmake/llvm \
     -DMLIR_DIR=$PWD/../circt/llvm/build/lib/cmake/mlir \
+    -DCIRCT_DIR=$PWD/../circt/build/lib/cmake/circt \
     -DAIE_DIR=$PWD/../mlir-aie/build/lib/cmake/aie \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \

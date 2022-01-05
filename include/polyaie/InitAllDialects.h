@@ -8,6 +8,7 @@
 #define POLYAIE_INITALLDIALECTS_H
 
 #include "aie/AIEDialect.h"
+#include "circt/Dialect/Handshake/HandshakeDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -32,7 +33,8 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     polyaie::memrefext::MemRefExtDialect,
     mlir::vector::VectorDialect,
     mlir::LLVM::LLVMDialect,
-    xilinx::AIE::AIEDialect
+    xilinx::AIE::AIEDialect,
+    circt::handshake::HandshakeDialect
   >();
   // clang-format on
 }
