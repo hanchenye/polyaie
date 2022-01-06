@@ -127,7 +127,8 @@ public:
     assert(inputs.size() == 1);
     auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
     assert(inputType && inputType.getElementType() == type);
-    return b.create<mlir::AffineLoadOp>(loc, inputs[0], ValueRange({}));
+    auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
+    return b.create<mlir::AffineLoadOp>(loc, inputs[0], zero.getResult());
   }
 
   static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
@@ -143,7 +144,7 @@ public:
     // Convert all scalar to memref.
     addConversion([](Type type) -> Type {
       if (!type.isa<MemRefType>())
-        return MemRefType::get({}, type);
+        return MemRefType::get({1}, type);
       return type;
     });
     // Load the original scalar from memref.

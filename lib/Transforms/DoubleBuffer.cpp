@@ -89,15 +89,16 @@ void DoubleBuffer::runOnOperation() {
     // index-typed local buffer.
     b.setInsertionPointAfter(tile);
     auto iterNumBuf =
-        b.create<BufferOp>(loc, MemRefType::get({}, b.getI32Type()), tile);
+        b.create<BufferOp>(loc, MemRefType::get({1}, b.getI32Type()), tile);
     iterNumBuf->setAttr("polyaie.iter_num_buf", b.getUnitAttr());
 
     // Create a loop iterating for N times.
     b.setInsertionPointToStart(&core.body().front());
-    auto one = b.create<arith::ConstantOp>(loc, b.getIndexAttr(1));
-    auto zero = b.create<arith::ConstantOp>(loc, b.getIndexAttr(0));
+    auto one = b.create<arith::ConstantIndexOp>(loc, 1);
+    auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
     auto iterNum = b.create<arith::IndexCastOp>(
-        loc, b.create<memref::LoadOp>(loc, iterNumBuf), b.getIndexType());
+        loc, b.create<memref::LoadOp>(loc, iterNumBuf, zero.getResult()),
+        b.getIndexType());
     auto loop = b.create<scf::ForOp>(loc, zero, iterNum, one);
 
     // Inline all operations except the terminator in the original block into
@@ -115,9 +116,9 @@ void DoubleBuffer::runOnOperation() {
 
   //   // Create an IfOp to branch ping/pong computing phase.
   //   auto iv = loop.getInductionVar();
-  //   auto two = b.create<arith::ConstantOp>(loc, b.getIndexAttr(2));
+  //   auto two = b.create<arith::ConstantIndexOp>(loc, 2);
   //   auto modTwo = b.create<UnsignedRemIOp>(loc, iv, two);
-  //   auto zero = b.create<arith::ConstantOp>(loc, b.getIndexAttr(0));
+  //   auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
   //   auto cond = b.create<CmpIOp>(loc, CmpIPredicate::eq, modTwo, zero);
   //   auto ifOp = b.create<scf::IfOp>(loc, cond, /*withElseRegion=*/true);
 
