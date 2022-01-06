@@ -21,11 +21,8 @@ struct BufferExtraction
 
 /// This pass reduces the sizes of memrefs passed to each function: (1) conduct
 /// loop analysis to determine which tile of a memref is accessed in a function,
-/// (2) create a corresponding LoadBufferOp to load the tile out from the
-/// original memref, and (3) pass the loaded buffer to the function. Also, if a
-/// function stores data to a buffer, we (1) return the buffer as the result of
-/// the function and (2) create a corresponding StoreBufferOp to store the tile
-/// in the buffer back to the original memref.
+/// (2) create a corresponding SubViewOp to load the tile out from the original
+/// memref and replace all uses.
 void BufferExtraction::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
@@ -44,18 +41,10 @@ void BufferExtraction::runOnOperation() {
         emitError(func.getLoc(), "function must be fully bufferized");
         return signalPassFailure();
       }
-      auto mem = call.getOperand(arg.getArgNumber());
 
-      // Create a LoadBufferOp with the same type to buffer any single-element
-      // memory. We assume single-element memory will never be updated.
-      if (argType.getRank() == 0) {
-        b.setInsertionPoint(call);
-        auto buf = b.create<LoadBufferOp>(loc, argType, b.getI64ArrayAttr({0}),
-                                          b.getI64ArrayAttr({1}), mem);
-        call.setOperand(arg.getArgNumber(), buf);
-        inputTypes.push_back(argType);
+      // Bypass single-element memories.
+      if (argType.getRank() == 0 || argType.getNumElements() == 1)
         continue;
-      }
 
       // We assume that after the compilation of phism, all users have the same
       // memory access pattern. Therefore, we only collect the operands and
@@ -95,19 +84,18 @@ void BufferExtraction::runOnOperation() {
         dimSizeMap[idx++] = loop.getConstantUpperBound();
       }
 
-      // Collect the buffer lengths, offsets, and layout affine expressions.
-      // Also, collect the memory access affine expressions for affine load and
-      // store operations.
+      // Collect the buffer sizes, offsets, strides, and layout affine
+      // expressions. Also, collect the memory access affine expressions for
+      // affine load and store operations.
       SmallVector<AffineExpr, 4> symbolRepls;
       for (unsigned i = 0, e = map.getNumInputs(); i < e; ++i)
         if (i >= map.getNumDims())
           symbolRepls.push_back(b.getAffineDimExpr(i));
 
-      SmallVector<int64_t, 4> bufLengths;
+      SmallVector<int64_t, 4> bufSizes;
       SmallVector<int64_t, 4> bufOffsets;
-      SmallVector<AffineExpr, 4> bufAffineExprs;
+      SmallVector<int64_t, 4> bufStrides;
       SmallVector<AffineExpr, 4> accessAffineExprs;
-      unsigned position = 0;
       for (auto expr : map.getResults()) {
         // Replace symbols with dims because is seems Polygeist will make all
         // memory operation's inputs symbols.
@@ -116,16 +104,15 @@ void BufferExtraction::runOnOperation() {
         // We assume all memory indices are in th form of `dim(n) + m`, where
         // `m` as the offset could be any constant number.
         if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
-          bufLengths.push_back(dimSizeMap[dimExpr.getPosition()]);
+          bufSizes.push_back(dimSizeMap[dimExpr.getPosition()]);
           bufOffsets.push_back(0);
-          bufAffineExprs.push_back(b.getAffineDimExpr(position++));
+          bufStrides.push_back(1);
           accessAffineExprs.push_back(dimExpr);
 
         } else if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-          bufLengths.push_back(1);
+          bufSizes.push_back(1);
           bufOffsets.push_back(constExpr.getValue());
-          bufAffineExprs.push_back(b.getAffineDimExpr(position++) +
-                                   constExpr.getValue());
+          bufStrides.push_back(1);
           accessAffineExprs.push_back(b.getAffineConstantExpr(0));
 
         } else if (auto binaryExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
@@ -139,10 +126,9 @@ void BufferExtraction::runOnOperation() {
           auto dimExprLHS = binaryExpr.getLHS().cast<AffineDimExpr>();
           auto constExprRHS = binaryExpr.getRHS().cast<AffineConstantExpr>();
 
-          bufLengths.push_back(dimSizeMap[dimExprLHS.getPosition()]);
+          bufSizes.push_back(dimSizeMap[dimExprLHS.getPosition()]);
           bufOffsets.push_back(constExprRHS.getValue());
-          bufAffineExprs.push_back(b.getAffineDimExpr(position++) +
-                                   constExprRHS.getValue());
+          bufStrides.push_back(1);
           accessAffineExprs.push_back(dimExprLHS);
 
         } else {
@@ -151,68 +137,18 @@ void BufferExtraction::runOnOperation() {
         }
       }
 
-      // Construct the buffer type and create the LoadBufferOp.
-      auto bufAffineMap = AffineMap::get(map.getNumResults(), 0, bufAffineExprs,
-                                         map.getContext());
-      auto bufType =
-          MemRefType::get(bufLengths, argType.getElementType(), bufAffineMap);
-      auto bufOffsetsAttr = b.getI64ArrayAttr(bufOffsets);
-      auto bufLengthsAttr = b.getI64ArrayAttr(bufLengths);
-
-      b.setInsertionPoint(call);
-      auto buf = b.create<LoadBufferOp>(loc, bufType, bufOffsetsAttr,
-                                        bufLengthsAttr, mem);
-      call.setOperand(arg.getArgNumber(), buf);
-      inputTypes.push_back(bufType);
-      // `arg` is now representing the internal buffer.
-      arg.setType(bufType);
+      // Construct the buffer type and create the SubViewOp.
+      b.setInsertionPointToStart(&func.front());
+      auto buf = b.create<memref::SubViewOp>(loc, arg, bufOffsets, bufSizes,
+                                             bufStrides);
+      arg.replaceAllUsesExcept(buf.getResult(), buf);
 
       // Update memory access maps of all affine load and store operations.
       auto accessAffineMap = AffineMap::get(
           map.getNumInputs(), 0, accessAffineExprs, map.getContext());
-      auto accessMapAttr = AffineMapAttr::get(accessAffineMap);
-      bool hasStore = false;
-      for (auto user : arg.getUsers()) {
-        if (auto loadOp = dyn_cast<mlir::AffineLoadOp>(user)) {
-          loadOp->setAttr(loadOp.getMapAttrName(), accessMapAttr);
-        } else if (auto storeOp = dyn_cast<mlir::AffineStoreOp>(user)) {
-          storeOp->setAttr(storeOp.getMapAttrName(), accessMapAttr);
-          hasStore = true;
-        }
-      }
-
-      // We need to return the local buffer if it is updated.
-      if (hasStore) {
-        resultBufs.push_back(arg);
-        resultMems.push_back(mem);
-      }
-    }
-
-    // Update callee function type.
-    SmallVector<Type, 2> resultTypes;
-    for (auto result : resultBufs)
-      resultTypes.push_back(result.getType());
-    func.setType(b.getFunctionType(inputTypes, resultTypes));
-
-    // Update return operation.
-    auto returnOp = cast<mlir::ReturnOp>(func.front().getTerminator());
-    b.setInsertionPoint(returnOp);
-    b.create<mlir::ReturnOp>(returnOp.getLoc(), resultBufs);
-    returnOp.erase();
-
-    // Update call operation with new operands and results.
-    b.setInsertionPoint(call);
-    auto newCall = b.create<CallOp>(call.getLoc(), func, call.getOperands());
-    call.erase();
-
-    // If there are store operations, create a StoreBufferOp to store buffer
-    // back to memory after the function call.
-    b.setInsertionPointAfter(newCall);
-    for (auto zip : llvm::zip(newCall.getResults(), resultMems)) {
-      auto bufType = std::get<0>(zip).getType().cast<MemRefType>();
-      b.create<StoreBufferOp>(loc, b.getI64ArrayAttr(getBufferOffsets(bufType)),
-                              b.getI64ArrayAttr(bufType.getShape()),
-                              std::get<1>(zip), std::get<0>(zip));
+      for (auto user : buf->getUsers())
+        if (isa<mlir::AffineLoadOp, mlir::AffineStoreOp>(user))
+          user->setAttr("map", AffineMapAttr::get(accessAffineMap));
     }
   }
 }
