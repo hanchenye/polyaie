@@ -43,7 +43,7 @@ def HoistSubView : Pass<"polyaie-hoist-subview", "ModuleOp"> {
   let summary = "Hoist subviews out of sub-functions";
   let description = [{
     Hoist subviews such that each sub-function consumes subviews rather than the
-    original global memories.
+    original global memories. This is an inter-procedural pass.
   }];
   let constructor = "mlir::polyaie::createHoistSubViewPass()";
 }

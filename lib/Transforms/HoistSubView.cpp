@@ -13,11 +13,66 @@ using namespace dataflow;
 
 namespace {
 struct HoistSubView : public polyaie::HoistSubViewBase<HoistSubView> {
+  // Hold the subviews list of each global memory.
+  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
+
   void runOnOperation() override;
 };
 } // namespace
 
-void HoistSubView::runOnOperation() { auto mod = getOperation(); }
+void HoistSubView::runOnOperation() {
+  auto mod = getOperation();
+  auto b = OpBuilder(mod);
+
+  for (auto call : mod.getOps<CallOp>()) {
+    auto func = mod.lookupSymbol<FuncOp>(call.callee());
+    auto inputTypes = SmallVector<Type, 8>(func.getArgumentTypes().begin(),
+                                           func.getArgumentTypes().end());
+
+    for (auto subview :
+         llvm::make_early_inc_range(func.getOps<memref::SubViewOp>())) {
+      // Only if the source of the current subview is an argument, there's a
+      // chance to hoist the subview out of the current sub-function.
+      auto arg = subview.source().dyn_cast<BlockArgument>();
+      if (!arg)
+        continue;
+
+      // Replace uses of the current subview with the argument in order to
+      // prepare for the hoisting.
+      inputTypes[arg.getArgNumber()] = subview.getType();
+      arg.setType(subview.getType());
+      subview.replaceAllUsesWith(arg);
+
+      // Get the existing subviews of the current memory.
+      auto memory = call.getOperand(arg.getArgNumber());
+      auto &subviews = subviewsMap[memory];
+
+      // Find if there exists an subview that has the same type with the current
+      // subview.
+      auto existSubview =
+          std::find_if(subviews.begin(), subviews.end(), [&](Value v) {
+            return v.getType() == subview.getType();
+          });
+
+      // If the subview already exists, we can safely erase the curren subview.
+      // Otherwise, we need to move it to outside.
+      if (existSubview != subviews.end())
+        subview.erase();
+      else {
+        subview.sourceMutable().assign(memory);
+        subview->moveAfter(memory.getDefiningOp());
+        subviews.push_back(subview.result());
+        existSubview = &subviews.back();
+      }
+
+      // Set the corresponding call operand to the subview.
+      call.setOperand(arg.getArgNumber(), *existSubview);
+    }
+
+    // Update the function type.
+    func.setType(b.getFunctionType(inputTypes, func.getType().getResults()));
+  }
+}
 
 std::unique_ptr<Pass> polyaie::createHoistSubViewPass() {
   return std::make_unique<HoistSubView>();
