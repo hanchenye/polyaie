@@ -48,9 +48,23 @@ def HoistMemrefSubview : Pass<"polyaie-hoist-memref-subview", "ModuleOp"> {
   let constructor = "mlir::polyaie::createHoistMemrefSubviewPass()";
 }
 
-def ExplicitizeDependency : Pass<"polyaie-explicitize-dependency", "ModuleOp"> {
-  let summary = "Make dependency explicit";
-  let constructor = "mlir::polyaie::createExplicitizeDependencyPass()";
+def MemrefArgToResult : Pass<"polyaie-memref-arg-to-result", "ModuleOp"> {
+  let summary = "Return state-changed memrefs as results";
+  let constructor = "mlir::polyaie::createMemrefArgToResultPass()";
+}
+
+def ExtractMemrefDependency :
+      Pass<"polyaie-extract-memref-dependency", "ModuleOp"> {
+  let summary = "Make memref dependency explicit";
+  let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
+}
+
+def PromoteMemrefResult : FunctionPass<"polyaie-promote-memref-result"> {
+  let summary = "Promote memref results to local buffers";
+  let description = [{
+    Promote each memref that is returned by the function to a local buffer.
+  }];
+  let constructor = "mlir::polyaie::createPromoteMemrefResultPass()";
 }
 
 def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {

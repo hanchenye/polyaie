@@ -11,16 +11,13 @@ using namespace polyaie;
 using namespace dataflow;
 
 namespace {
-struct ExplicitizeDependency
-    : public polyaie::ExplicitizeDependencyBase<ExplicitizeDependency> {
-  // Hold the subviews list (or itself) of each global memory.
-  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
-
+struct MemrefArgToResult
+    : public polyaie::MemrefArgToResultBase<MemrefArgToResult> {
   void runOnOperation() override;
 };
 } // namespace
 
-void ExplicitizeDependency::runOnOperation() {
+void MemrefArgToResult::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
 
@@ -62,38 +59,9 @@ void ExplicitizeDependency::runOnOperation() {
     call.replaceAllUsesWith(
         newCall.getResults().take_front(call.getNumResults()));
     call.erase();
-
-    // A map from a returned value to its function result.
-    // FIXME: We assume that each value is not returned more than once.
-    DenseMap<Value, Value> resultMap;
-    for (auto zip : llvm::zip(returnOperands, newCall.getResults()))
-      resultMap[std::get<0>(zip)] = std::get<1>(zip);
-
-    // Create explicit dependencies.
-    for (auto arg : func.getArguments()) {
-      // Get the existing subviews list of the current memory.
-      auto memory = newCall.getOperand(arg.getArgNumber());
-      if (auto subview = memory.getDefiningOp<memref::SubViewOp>())
-        memory = subview.source();
-      auto &subviews = subviewsMap[memory];
-
-      // Figure out if there exists an subview that has the same type.
-      auto existSubview = llvm::find_if(
-          subviews, [&](Value v) { return v.getType() == arg.getType(); });
-      if (existSubview != subviews.end())
-        newCall.setOperand(arg.getArgNumber(), *existSubview);
-
-      // Update the subview list with the current subview if applicable.
-      if (resultMap.count(arg)) {
-        if (existSubview != subviews.end())
-          subviews[existSubview - subviews.begin()] = resultMap.lookup(arg);
-        else
-          subviews.push_back(resultMap.lookup(arg));
-      }
-    }
   }
 }
 
-std::unique_ptr<Pass> polyaie::createExplicitizeDependencyPass() {
-  return std::make_unique<ExplicitizeDependency>();
+std::unique_ptr<Pass> polyaie::createMemrefArgToResultPass() {
+  return std::make_unique<MemrefArgToResult>();
 }
