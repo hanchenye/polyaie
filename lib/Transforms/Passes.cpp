@@ -28,14 +28,14 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createCreateSubViewPass());
         pm.addPass(polyaie::createDetectReductionPass());
         pm.addPass(polyaie::createHoistSubViewPass());
-        // pm.addPass(polyaie::createExplicitizeDependencyPass());
+        pm.addPass(polyaie::createExplicitizeDependencyPass());
         // pm.addPass(polyaie::createConvertToDataflowPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
         // if (opts.vectorizeSize != 1)
         //   pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
-        // pm.addPass(polyaie::createPlacementPass(opts));
-        // pm.addPass(polyaie::createPrintDataflowPass());
+        pm.addPass(polyaie::createPlacementPass(opts));
+        pm.addPass(polyaie::createPrintDataflowPass());
         // pm.addPass(polyaie::createConvertToAIEPass(opts));
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         // pm.addPass(xilinx::AIE::createAIECreateLocksPass());

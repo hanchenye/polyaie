@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polyaie/Dataflow/Dataflow.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
 
@@ -27,19 +26,10 @@ void CreateSubView::runOnFunction() {
   auto b = OpBuilder(func);
   auto loc = b.getUnknownLoc();
 
-  SmallVector<Type, 8> inputTypes;
-  SmallVector<Value, 2> resultBufs;
-  SmallVector<Value, 2> resultMems;
   for (auto arg : func.getArguments()) {
-    // Get the type of the current argument.
+    // Get the argument type and bypass single-element memories.
     auto argType = arg.getType().dyn_cast<MemRefType>();
-    if (!argType) {
-      emitError(func.getLoc(), "function must be fully bufferized");
-      return signalPassFailure();
-    }
-
-    // Bypass single-element memories.
-    if (argType.getRank() == 0 || argType.getNumElements() == 1)
+    if (!argType || argType.getRank() == 0 || argType.getNumElements() == 1)
       continue;
 
     // We assume that after the compilation of phism, all users have the same
@@ -135,14 +125,14 @@ void CreateSubView::runOnFunction() {
 
     // Construct the buffer type and create the SubViewOp.
     b.setInsertionPointToStart(&func.front());
-    auto buf =
+    auto subview =
         b.create<memref::SubViewOp>(loc, arg, bufOffsets, bufSizes, bufStrides);
-    arg.replaceAllUsesExcept(buf.getResult(), buf);
+    arg.replaceAllUsesExcept(subview.getResult(), subview);
 
     // Update memory access maps of all affine load and store operations.
     auto accessAffineMap = AffineMap::get(map.getNumInputs(), 0,
                                           accessAffineExprs, map.getContext());
-    for (auto user : buf->getUsers())
+    for (auto user : subview.getResult().getUsers())
       if (isa<mlir::AffineLoadOp, mlir::AffineStoreOp>(user))
         user->setAttr("map", AffineMapAttr::get(accessAffineMap));
   }

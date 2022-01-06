@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "polyaie/Dataflow/Dataflow.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
@@ -26,8 +25,7 @@ void HoistSubView::runOnOperation() {
 
   for (auto call : mod.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
-    auto inputTypes = SmallVector<Type, 8>(func.getArgumentTypes().begin(),
-                                           func.getArgumentTypes().end());
+    auto inputTypes = SmallVector<Type, 8>(func.getArgumentTypes());
 
     for (auto subview :
          llvm::make_early_inc_range(func.getOps<memref::SubViewOp>())) {
@@ -43,16 +41,14 @@ void HoistSubView::runOnOperation() {
       arg.setType(subview.getType());
       subview.replaceAllUsesWith(arg);
 
-      // Get the existing subviews of the current memory.
+      // Get the existing subviews list of the current memory.
       auto memory = call.getOperand(arg.getArgNumber());
       auto &subviews = subviewsMap[memory];
 
-      // Find if there exists an subview that has the same type with the current
-      // subview.
-      auto existSubview =
-          std::find_if(subviews.begin(), subviews.end(), [&](Value v) {
-            return v.getType() == subview.getType();
-          });
+      // Figure out if there exists an subview that has the same type with the
+      // current subview.
+      auto existSubview = llvm::find_if(
+          subviews, [&](Value v) { return v.getType() == subview.getType(); });
 
       // If the subview already exists, we can safely erase the curren subview.
       // Otherwise, we need to move it to outside.
