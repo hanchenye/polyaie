@@ -35,7 +35,7 @@ static OpResult getResultFromArg(BlockArgument arg, CallOp call = nullptr) {
   }
   assert(func.sym_name() == call.callee());
 
-  auto returnOp = cast<ReturnOp>(func.front().getTerminator());
+  auto returnOp = cast<mlir::ReturnOp>(func.front().getTerminator());
   auto idx = llvm::find_if(returnOp.getOperands(), [&](Value operand) {
                return operand == arg;
              }).getIndex();
@@ -160,7 +160,7 @@ void ConvertToAIE::runOnOperation() {
   // Generate TileOp, CoreOp, and BufferOps for each CallOp.
   for (auto call : mod.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
-    auto returnOp = cast<ReturnOp>(func.front().getTerminator());
+    auto returnOp = cast<mlir::ReturnOp>(func.front().getTerminator());
 
     // Generate TileOp based on the placement results.
     b.setInsertionPoint(call);
@@ -349,7 +349,7 @@ void ConvertToAIE::runOnOperation() {
       auto result = storeOp.buffer().cast<OpResult>();
       auto call = storeOp.buffer().getDefiningOp<CallOp>();
       auto func = mod.lookupSymbol<FuncOp>(call.callee());
-      auto returnOp = cast<ReturnOp>(func.front().getTerminator());
+      auto returnOp = cast<mlir::ReturnOp>(func.front().getTerminator());
       auto buf = resultBufMap[returnOp.getOperand(result.getResultNumber())];
       auto rank = std::max(
           storeOp.memory().getType().cast<MemRefType>().getRank(), (int64_t)1);

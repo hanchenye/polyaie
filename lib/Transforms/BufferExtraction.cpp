@@ -195,9 +195,9 @@ void BufferExtraction::runOnOperation() {
     func.setType(b.getFunctionType(inputTypes, resultTypes));
 
     // Update return operation.
-    auto returnOp = cast<ReturnOp>(func.front().getTerminator());
+    auto returnOp = cast<mlir::ReturnOp>(func.front().getTerminator());
     b.setInsertionPoint(returnOp);
-    b.create<ReturnOp>(returnOp.getLoc(), resultBufs);
+    b.create<mlir::ReturnOp>(returnOp.getLoc(), resultBufs);
     returnOp.erase();
 
     // Update call operation with new operands and results.

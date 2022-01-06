@@ -20,6 +20,43 @@ void DataflowDialect::initialize() {
 
 #include "polyaie/Dataflow/DataflowEnums.cpp.inc"
 
+//===----------------------------------------------------------------------===//
+// Process-related Operation
+//===----------------------------------------------------------------------===//
+
+void ProcOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                   TypeRange resultTypes, ValueRange operands) {
+  odsState.addOperands(operands);
+  auto body = odsState.addRegion();
+  odsState.addTypes(resultTypes);
+
+  auto &entry = body->emplaceBlock();
+  entry.addArguments(operands.getTypes());
+}
+
+static LogicalResult verify(ProcOp op) {
+  if (op.body().empty())
+    return op.emitOpError("must have at least one block");
+
+  if (op.getOperandTypes() != op.body().front().getArgumentTypes())
+    return op.emitOpError(
+        "operands types must align with arguments types of the entry block");
+
+  return success();
+}
+
+static LogicalResult verify(ReturnOp op) {
+  if (op.getOperandTypes() != op->getParentOfType<ProcOp>().getResultTypes())
+    return op.emitOpError("operands types must align with result types of the "
+                          "parent process operation");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Buffer Load/Store Operation
+//===----------------------------------------------------------------------===//
+
 template <class OpType>
 static LogicalResult verifyLoadStoreBufferOp(OpType op) {
   auto bufferType = op.buffer().getType().template cast<MemRefType>();
