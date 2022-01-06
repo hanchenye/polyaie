@@ -56,7 +56,6 @@ std::unique_ptr<OperationPass<FuncOp>> createCreateMemrefSubviewPass();
 std::unique_ptr<OperationPass<FuncOp>> createDetectLoopReductionPass();
 std::unique_ptr<Pass> createHoistMemrefSubviewPass();
 std::unique_ptr<Pass> createMemrefArgToResultPass();
-std::unique_ptr<Pass> createPromoteMemrefResultPass();
 std::unique_ptr<Pass> createExtractMemrefDependencyPass();
 std::unique_ptr<Pass> createConvertToDataflowPass();
 std::unique_ptr<Pass> createLinkExternKernelPass();

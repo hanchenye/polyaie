@@ -4,7 +4,6 @@ add_mlir_library(MLIRPolyAIEPasses
   DetectLoopReduction.cpp
   HoistMemrefSubview.cpp
   MemrefArgToResult.cpp
-  PromoteMemrefResult.cpp
   ExtractMemrefDependency.cpp
   ConvertToDataflow.cpp
   LinkExternKernel.cpp

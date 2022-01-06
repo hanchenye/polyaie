@@ -20,16 +20,16 @@ struct MemrefArgToResult
 void MemrefArgToResult::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
+  auto loc = b.getUnknownLoc();
 
   for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
-    auto resultTypes = SmallVector<Type, 8>(func.getType().getResults().begin(),
-                                            func.getType().getResults().end());
-
     auto returnOp = func.front().getTerminator();
-    auto returnOperands = SmallVector<Value, 4>(returnOp->getOperands());
+    auto returnVals = SmallVector<Value, 4>(returnOp->getOperands());
 
     // Figure out all arguments that need to be returned.
+    // TODO: Currently we only return state-changed memref arguments, how to
+    // determine whether other arguments need to be returned?
     for (auto arg : func.getArguments()) {
       // Get the argument type and bypass single-element memories.
       auto argType = arg.getType().dyn_cast<MemRefType>();
@@ -41,23 +41,57 @@ void MemrefArgToResult::runOnOperation() {
             return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
                        memref::TensorStoreOp, vector::TransferWriteOp>(op);
           })) {
-        resultTypes.push_back(arg.getType());
-        returnOperands.push_back(arg);
+        // Create a local buffer for each state-changed memref argument and
+        // replace all its uses.
+        b.setInsertionPointToStart(&func.front());
+        auto buf = b.create<memref::AllocOp>(loc, argType);
+        arg.replaceAllUsesWith(buf);
+        returnVals.push_back(buf);
+
+        // Set insertion point to the ancestor of the first user.
+        auto firstUser = *buf->getUsers().begin();
+        b.setInsertionPoint(func.front().findAncestorOpInBlock(*firstUser));
+
+        // Create nested loop to copy data to local buffer.
+        SmallVector<Value, 4> ivs;
+        for (auto dimSize : argType.getShape()) {
+          auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize);
+          b.setInsertionPointToStart(loop.getBody());
+          ivs.push_back(loop.getInductionVar());
+        }
+
+        // Create affine load/store operations.
+        auto value = b.create<mlir::AffineLoadOp>(loc, arg, ivs);
+        b.create<mlir::AffineStoreOp>(loc, value, buf, ivs);
+
+        // Create a memref copy operation to copy data from local buffer.
+        auto memory = call.getOperand(arg.getArgNumber());
+        b.setInsertionPointAfter(call);
+        b.create<memref::CopyOp>(loc, buf, memory);
       }
     }
 
-    // Update return and function signature.
-    func.setType(b.getFunctionType(func.getArgumentTypes(), resultTypes));
+    // Update return operation and function signature.
     b.setInsertionPoint(returnOp);
-    b.create<mlir::ReturnOp>(returnOp->getLoc(), returnOperands);
+    auto newReturn = b.create<mlir::ReturnOp>(returnOp->getLoc(), returnVals);
     returnOp->erase();
+    func.setType(b.getFunctionType(func.getArgumentTypes(),
+                                   newReturn.getOperandTypes()));
 
     // Update function call.
     b.setInsertionPoint(call);
     auto newCall = b.create<CallOp>(call.getLoc(), func, call.getOperands());
-    call.replaceAllUsesWith(
-        newCall.getResults().take_front(call.getNumResults()));
+    auto numResults = call.getNumResults();
+    call.replaceAllUsesWith(newCall.getResults().take_front(numResults));
     call.erase();
+
+    // Update the external uses of the local buffer.
+    for (auto zip : llvm::drop_begin(
+             llvm::zip(returnVals, newCall.getResults()), numResults)) {
+      std::get<0>(zip).replaceUsesWithIf(std::get<1>(zip), [&](OpOperand &use) {
+        return use.getOwner()->getParentRegion() == newCall->getParentRegion();
+      });
+    }
   }
 }
 

@@ -50,15 +50,11 @@ def HoistMemrefSubview : Pass<"polyaie-hoist-memref-subview", "ModuleOp"> {
 
 def MemrefArgToResult : Pass<"polyaie-memref-arg-to-result", "ModuleOp"> {
   let summary = "Return state-changed memrefs as results";
-  let constructor = "mlir::polyaie::createMemrefArgToResultPass()";
-}
-
-def PromoteMemrefResult : Pass<"polyaie-promote-memref-result", "ModuleOp"> {
-  let summary = "Promote memref results to local buffers";
   let description = [{
-    Promote each memref that is returned by the function to a local buffer.
+    Promote each memref whose state is changed to a local buffer and return the
+    local buffer as a result.
   }];
-  let constructor = "mlir::polyaie::createPromoteMemrefResultPass()";
+  let constructor = "mlir::polyaie::createMemrefArgToResultPass()";
 }
 
 def ExtractMemrefDependency :
