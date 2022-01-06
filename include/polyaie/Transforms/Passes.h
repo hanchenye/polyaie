@@ -52,11 +52,11 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
 
 std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEOptions &opts);
-std::unique_ptr<Pass> createBufferExtractionPass();
-std::unique_ptr<Pass> createCreateDataflowPass();
+std::unique_ptr<OperationPass<FuncOp>> createCreateSubViewPass();
+std::unique_ptr<OperationPass<FuncOp>> createDetectReductionPass();
+std::unique_ptr<Pass> createConvertToDataflowPass();
 std::unique_ptr<Pass> createLinkExternKernelPass();
 std::unique_ptr<Pass> createLinkExternKernelPass(const PolyAIEOptions &opts);
-std::unique_ptr<OperationPass<FuncOp>> createDetectReductionPass();
 std::unique_ptr<Pass> createPlacementPass();
 std::unique_ptr<Pass> createPlacementPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createPrintDataflowPass();

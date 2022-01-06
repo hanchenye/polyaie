@@ -1,3 +1,9 @@
+//===----------------------------------------------------------------------===//
+//
+// Copyright 2021-2021 The PolyAIE Authors.
+//
+//===----------------------------------------------------------------------===//
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"

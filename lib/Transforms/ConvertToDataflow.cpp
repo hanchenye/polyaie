@@ -12,7 +12,8 @@ using namespace polyaie;
 using namespace dataflow;
 
 namespace {
-struct CreateDataflow : public polyaie::CreateDataflowBase<CreateDataflow> {
+struct ConvertToDataflow
+    : public polyaie::ConvertToDataflowBase<ConvertToDataflow> {
   void runOnOperation() override;
 };
 } // namespace
@@ -41,7 +42,7 @@ private:
 };
 } // namespace
 
-void CreateDataflow::runOnOperation() {
+void ConvertToDataflow::runOnOperation() {
   auto mod = getOperation();
 
   // Construct a map from memory to its buffer list.
@@ -112,6 +113,6 @@ void CreateDataflow::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> polyaie::createCreateDataflowPass() {
-  return std::make_unique<CreateDataflow>();
+std::unique_ptr<Pass> polyaie::createConvertToDataflowPass() {
+  return std::make_unique<ConvertToDataflow>();
 }

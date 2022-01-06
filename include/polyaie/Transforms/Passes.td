@@ -24,23 +24,28 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
   ];
 }
 
-def BufferExtraction : Pass<"polyaie-buffer-extraction", "ModuleOp"> {
+def CreateSubView : FunctionPass<"polyaie-create-subview"> {
   let summary = "Extract local buffers based on loop analysis";
   let description = [{
     Through loop analysis, this pass can identify the memory partition that each
     function has accessed. In this way, the local buffer of each function can be
     extracted from the global memory.
   }];
-  let constructor = "mlir::polyaie::createBufferExtractionPass()";
+  let constructor = "mlir::polyaie::createCreateSubViewPass()";
 }
 
-def CreateDataflow : Pass<"polyaie-create-dataflow", "ModuleOp"> {
+def DetectReduction : FunctionPass<"polyaie-detect-reduction"> {
+  let summary = "Detect reductions in AffineForOps";
+  let constructor = "mlir::polyaie::createDetectReductionPass()";
+}
+
+def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let summary = "Extract the depedencies and create dataflow";
   let description = [{
     Extract the dependencies between different function calls through memory
     type analysis. Then, create a dataflow based on the dependencies.
   }];
-  let constructor = "mlir::polyaie::createCreateDataflowPass()";
+  let constructor = "mlir::polyaie::createConvertToDataflowPass()";
 }
 
 def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
@@ -56,11 +61,6 @@ def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
            /*default=*/"\"kernel.o\"", "Specify the path of the pre-compiled "
            "object file of external kernels">
   ];
-}
-
-def DetectReduction : FunctionPass<"polyaie-detect-reduction"> {
-  let summary = "Detect reductions in AffineForOps";
-  let constructor = "mlir::polyaie::createDetectReductionPass()";
 }
 
 def Placement : Pass<"polyaie-placement", "ModuleOp"> {

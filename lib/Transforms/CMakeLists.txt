@@ -1,7 +1,7 @@
 add_mlir_library(MLIRPolyAIEPasses
   Preprocess.cpp
-  BufferExtraction.cpp
-  CreateDataflow.cpp
+  CreateSubView.cpp
+  ConvertToDataflow.cpp
   LinkExternKernel.cpp
   DetectReduction.cpp
   Placement.cpp
