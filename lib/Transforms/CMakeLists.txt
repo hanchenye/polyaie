@@ -1,9 +1,11 @@
 add_mlir_library(MLIRPolyAIEPasses
   Preprocess.cpp
   CreateSubView.cpp
+  DetectReduction.cpp
+  HoistSubView.cpp
+  ExplicitizeDependency.cpp
   ConvertToDataflow.cpp
   LinkExternKernel.cpp
-  DetectReduction.cpp
   Placement.cpp
   PrintDataflow.cpp
   ConvertToAIE.cpp

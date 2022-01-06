@@ -39,6 +39,20 @@ def DetectReduction : FunctionPass<"polyaie-detect-reduction"> {
   let constructor = "mlir::polyaie::createDetectReductionPass()";
 }
 
+def HoistSubView : Pass<"polyaie-hoist-subview", "ModuleOp"> {
+  let summary = "Hoist subviews out of sub-functions";
+  let description = [{
+    Hoist subviews such that each sub-function consumes subviews rather than the
+    original global memories.
+  }];
+  let constructor = "mlir::polyaie::createHoistSubViewPass()";
+}
+
+def ExplicitizeDependency : Pass<"polyaie-explicitize-dependency", "ModuleOp"> {
+  let summary = "Make dependency explicit";
+  let constructor = "mlir::polyaie::createExplicitizeDependencyPass()";
+}
+
 def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let summary = "Extract the depedencies and create dataflow";
   let description = [{

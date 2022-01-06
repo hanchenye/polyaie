@@ -27,6 +27,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(polyaie::createCreateSubViewPass());
         pm.addPass(polyaie::createDetectReductionPass());
+        pm.addPass(polyaie::createHoistSubViewPass());
+        // pm.addPass(polyaie::createExplicitizeDependencyPass());
         // pm.addPass(polyaie::createConvertToDataflowPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));

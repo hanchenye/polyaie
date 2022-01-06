@@ -54,6 +54,8 @@ std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEOptions &opts);
 std::unique_ptr<OperationPass<FuncOp>> createCreateSubViewPass();
 std::unique_ptr<OperationPass<FuncOp>> createDetectReductionPass();
+std::unique_ptr<Pass> createHoistSubViewPass();
+std::unique_ptr<Pass> createExplicitizeDependencyPass();
 std::unique_ptr<Pass> createConvertToDataflowPass();
 std::unique_ptr<Pass> createLinkExternKernelPass();
 std::unique_ptr<Pass> createLinkExternKernelPass(const PolyAIEOptions &opts);
