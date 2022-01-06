@@ -37,7 +37,6 @@ void MemrefArgToResult::runOnOperation() {
         continue;
 
       // Return it if the argument is used by any state-changing operations.
-      // TODO: How to control which argument to be returned?
       if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
             return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
                        memref::TensorStoreOp, vector::TransferWriteOp>(op);

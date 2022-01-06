@@ -29,8 +29,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
         pm.addPass(polyaie::createMemrefArgToResultPass());
-        pm.addPass(polyaie::createExtractMemrefDependencyPass());
         pm.addPass(polyaie::createPromoteMemrefResultPass());
+        // pm.addPass(polyaie::createExtractMemrefDependencyPass());
         // pm.addPass(polyaie::createConvertToDataflowPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
