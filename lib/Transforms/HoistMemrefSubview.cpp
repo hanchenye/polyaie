@@ -11,7 +11,8 @@ using namespace polyaie;
 using namespace dataflow;
 
 namespace {
-struct HoistSubView : public polyaie::HoistSubViewBase<HoistSubView> {
+struct HoistMemrefSubview
+    : public polyaie::HoistMemrefSubviewBase<HoistMemrefSubview> {
   // Hold the subviews list of each global memory.
   DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
 
@@ -19,7 +20,7 @@ struct HoistSubView : public polyaie::HoistSubViewBase<HoistSubView> {
 };
 } // namespace
 
-void HoistSubView::runOnOperation() {
+void HoistMemrefSubview::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
 
@@ -70,6 +71,6 @@ void HoistSubView::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> polyaie::createHoistSubViewPass() {
-  return std::make_unique<HoistSubView>();
+std::unique_ptr<Pass> polyaie::createHoistMemrefSubviewPass() {
+  return std::make_unique<HoistMemrefSubview>();
 }

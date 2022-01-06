@@ -16,7 +16,8 @@ using namespace mlir;
 using namespace polyaie;
 
 namespace {
-struct DetectReductionPass : public DetectReductionBase<DetectReductionPass> {
+struct DetectLoopReduction
+    : public DetectLoopReductionBase<DetectLoopReduction> {
   void runOnFunction() override;
 };
 } // end namespace.
@@ -258,7 +259,7 @@ struct AffineForReductionIter : public OpRewritePattern<AffineForOp> {
 
 } // end namespace.
 
-void DetectReductionPass::runOnFunction() {
+void DetectLoopReduction::runOnFunction() {
   mlir::RewritePatternSet rpl(getFunction().getContext());
   rpl.add<AffineForReductionIter>(getFunction().getContext());
   GreedyRewriteConfig config;
@@ -266,6 +267,7 @@ void DetectReductionPass::runOnFunction() {
                                      std::move(rpl), config);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> polyaie::createDetectReductionPass() {
-  return std::make_unique<DetectReductionPass>();
+std::unique_ptr<OperationPass<FuncOp>>
+polyaie::createDetectLoopReductionPass() {
+  return std::make_unique<DetectLoopReduction>();
 }

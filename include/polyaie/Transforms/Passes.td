@@ -24,28 +24,28 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
   ];
 }
 
-def CreateSubView : FunctionPass<"polyaie-create-subview"> {
+def CreateMemrefSubview : FunctionPass<"polyaie-create-memref-subview"> {
   let summary = "Extract local buffers based on loop analysis";
   let description = [{
     Through loop analysis, this pass can identify the memory partition that each
     function has accessed. In this way, the local buffer of each function can be
     extracted from the global memory.
   }];
-  let constructor = "mlir::polyaie::createCreateSubViewPass()";
+  let constructor = "mlir::polyaie::createCreateMemrefSubviewPass()";
 }
 
-def DetectReduction : FunctionPass<"polyaie-detect-reduction"> {
+def DetectLoopReduction : FunctionPass<"polyaie-detect-loop-reduction"> {
   let summary = "Detect reductions in AffineForOps";
-  let constructor = "mlir::polyaie::createDetectReductionPass()";
+  let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
 }
 
-def HoistSubView : Pass<"polyaie-hoist-subview", "ModuleOp"> {
+def HoistMemrefSubview : Pass<"polyaie-hoist-memref-subview", "ModuleOp"> {
   let summary = "Hoist subviews out of sub-functions";
   let description = [{
     Hoist subviews such that each sub-function consumes subviews rather than the
     original global memories. This is an inter-procedural pass.
   }];
-  let constructor = "mlir::polyaie::createHoistSubViewPass()";
+  let constructor = "mlir::polyaie::createHoistMemrefSubviewPass()";
 }
 
 def ExplicitizeDependency : Pass<"polyaie-explicitize-dependency", "ModuleOp"> {

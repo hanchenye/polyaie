@@ -5,14 +5,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Transforms/Passes.h"
-#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
 
 namespace {
-struct CreateSubView : public polyaie::CreateSubViewBase<CreateSubView> {
+struct CreateMemrefSubview
+    : public polyaie::CreateMemrefSubviewBase<CreateMemrefSubview> {
   void runOnFunction() override;
 };
 } // namespace
@@ -21,7 +21,7 @@ struct CreateSubView : public polyaie::CreateSubViewBase<CreateSubView> {
 /// loop analysis to determine which tile of a memref is accessed in a function,
 /// (2) create a corresponding SubViewOp to load the tile out from the original
 /// memref and replace all uses.
-void CreateSubView::runOnFunction() {
+void CreateMemrefSubview::runOnFunction() {
   auto func = getFunction();
   auto b = OpBuilder(func);
   auto loc = b.getUnknownLoc();
@@ -138,6 +138,7 @@ void CreateSubView::runOnFunction() {
   }
 }
 
-std::unique_ptr<OperationPass<FuncOp>> polyaie::createCreateSubViewPass() {
-  return std::make_unique<CreateSubView>();
+std::unique_ptr<OperationPass<FuncOp>>
+polyaie::createCreateMemrefSubviewPass() {
+  return std::make_unique<CreateMemrefSubview>();
 }
