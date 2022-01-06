@@ -24,8 +24,8 @@ void DataflowDialect::initialize() {
 // Process-related Operation
 //===----------------------------------------------------------------------===//
 
-void ProcOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                   TypeRange resultTypes, ValueRange operands) {
+void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+                      TypeRange resultTypes, ValueRange operands) {
   odsState.addOperands(operands);
   auto body = odsState.addRegion();
   odsState.addTypes(resultTypes);
@@ -34,7 +34,7 @@ void ProcOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   entry.addArguments(operands.getTypes());
 }
 
-static LogicalResult verify(ProcOp op) {
+static LogicalResult verify(ProcessOp op) {
   if (op.body().empty())
     return op.emitOpError("must have at least one block");
 
@@ -46,11 +46,46 @@ static LogicalResult verify(ProcOp op) {
 }
 
 static LogicalResult verify(ReturnOp op) {
-  if (op.getOperandTypes() != op->getParentOfType<ProcOp>().getResultTypes())
+  if (op.getOperandTypes() != op->getParentOfType<ProcessOp>().getResultTypes())
     return op.emitOpError("operands types must align with result types of the "
                           "parent process operation");
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Tensor Load/Store Operation
+//===----------------------------------------------------------------------===//
+
+template <class OpType>
+static LogicalResult verifyTensorLoadStoreOp(OpType op) {
+  auto tensorType = op.tensor().getType().template cast<RankedTensorType>();
+  auto memoryType = op.memory().getType().template cast<MemRefType>();
+  if (tensorType.getNumElements() > memoryType.getNumElements())
+    return op.emitOpError("tensor size is larger than memory size");
+
+  for (auto zip : llvm::zip(op.offsets(), op.sizes(), op.strides(),
+                            tensorType.getShape(), memoryType.getShape())) {
+    auto offset = std::get<0>(zip).template cast<IntegerAttr>().getInt();
+    auto size = std::get<1>(zip).template cast<IntegerAttr>().getInt();
+    auto stride = std::get<2>(zip).template cast<IntegerAttr>().getInt();
+
+    if (size != std::get<3>(zip))
+      return op.emitOpError("sizes attribute doen't match with tensor type");
+
+    if (stride * (size - 1) + offset > std::get<4>(zip) - 1)
+      return op.emitOpError("exceeds memory boundary");
+  }
+
+  return success();
+}
+
+static LogicalResult verify(TensorLoadOp op) {
+  return verifyTensorLoadStoreOp(op);
+}
+
+static LogicalResult verify(TensorStoreOp op) {
+  return verifyTensorLoadStoreOp(op);
 }
 
 //===----------------------------------------------------------------------===//
