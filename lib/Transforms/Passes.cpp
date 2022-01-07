@@ -25,11 +25,14 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createAffineLoopNormalizePass());
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());
+
         pm.addPass(polyaie::createCreateMemrefSubviewPass());
         pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
         pm.addPass(polyaie::createMemrefArgToResultPass());
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
+        pm.addPass(polyaie::createTensorizeMemrefPass());
+
         // pm.addPass(polyaie::createConvertToDataflowPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));

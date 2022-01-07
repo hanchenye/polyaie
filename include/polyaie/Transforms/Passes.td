@@ -63,6 +63,12 @@ def ExtractMemrefDependency :
   let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
 }
 
+def TensorizeMemref : Pass<"polyaie-tensorize-memref", "ModuleOp"> {
+  let summary = "Tensorize memrefs";
+  let constructor = "mlir::polyaie::createTensorizeMemrefPass()";
+}
+
+
 def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let summary = "Extract the depedencies and create dataflow";
   let description = [{

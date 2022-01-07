@@ -5,6 +5,7 @@ add_mlir_library(MLIRPolyAIEPasses
   HoistMemrefSubview.cpp
   MemrefArgToResult.cpp
   ExtractMemrefDependency.cpp
+  TensorizeMemref.cpp
   ConvertToDataflow.cpp
   LinkExternKernel.cpp
   Placement.cpp
