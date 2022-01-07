@@ -22,6 +22,7 @@ struct ExtractMemrefDependency
 void ExtractMemrefDependency::runOnOperation() {
   auto mod = getOperation();
 
+  // Construct explicit dependencies between memrefs.
   for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = func.front().getTerminator();
@@ -41,7 +42,7 @@ void ExtractMemrefDependency::runOnOperation() {
       if (existSubview != subviews.end())
         call.setOperand(operandIdx, *existSubview);
 
-      // Check whether the result is an alias of the operand.
+      // Helper to check whether the result is an alias of the operand.
       auto isOperandAlias = [&](OpResult result) {
         return func.getArgument(operandIdx) ==
                    returnOp->getOperand(result.getResultNumber()) ||
@@ -62,6 +63,22 @@ void ExtractMemrefDependency::runOnOperation() {
 
       ++operandIdx;
     }
+  }
+
+  // As we have extracted memref dependencies, we can safely remove redundant
+  // copy operations now.
+  SmallVector<memref::CopyOp, 16> latestCopies;
+  for (auto copy : llvm::make_early_inc_range(mod.getOps<memref::CopyOp>())) {
+    auto latestCopy = llvm::find_if(latestCopies, [&](memref::CopyOp op) {
+      return op.target() == copy.target() &&
+             op.source().getType() == copy.source().getType();
+    });
+
+    if (latestCopy != latestCopies.end()) {
+      latestCopy->erase();
+      latestCopies[latestCopy - latestCopies.begin()] = copy;
+    } else
+      latestCopies.push_back(copy);
   }
 }
 
