@@ -1,5 +1,6 @@
 add_mlir_library(MLIRPolyAIEPasses
   Preprocess.cpp
+  SplitTopFunc.cpp
   CreateMemrefSubview.cpp
   HoistMemrefSubview.cpp
   MemrefArgToResult.cpp

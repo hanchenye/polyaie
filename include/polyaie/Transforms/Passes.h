@@ -48,6 +48,7 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
 
 std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEOptions &opts);
+std::unique_ptr<Pass> createSplitTopFuncPass();
 
 std::unique_ptr<OperationPass<FuncOp>> createCreateMemrefSubviewPass();
 std::unique_ptr<Pass> createHoistMemrefSubviewPass();

@@ -24,6 +24,11 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
   ];
 }
 
+def SplitTopFunc : Pass<"polyaie-split-top-func", "ModuleOp"> {
+  let summary = "Make memref dependency explicit";
+  let constructor = "mlir::polyaie::createSplitTopFuncPass()";
+}
+
 def CreateMemrefSubview : FunctionPass<"polyaie-create-memref-subview"> {
   let summary = "Extract local buffers based on loop analysis";
   let description = [{
