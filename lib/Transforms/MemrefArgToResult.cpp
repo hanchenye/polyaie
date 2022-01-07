@@ -8,7 +8,6 @@
 
 using namespace mlir;
 using namespace polyaie;
-using namespace dataflow;
 
 namespace {
 struct MemrefArgToResult
