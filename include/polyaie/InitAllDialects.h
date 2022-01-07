@@ -11,6 +11,7 @@
 #include "circt/Dialect/Handshake/HandshakeDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
@@ -24,17 +25,18 @@ namespace polyaie {
 inline void registerAllDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<
+    mlir::StandardOpsDialect,
     mlir::AffineDialect,
     mlir::scf::SCFDialect,
-    mlir::StandardOpsDialect,
+    mlir::memref::MemRefDialect,
     mlir::arith::ArithmeticDialect,
     mlir::math::MathDialect,
-    mlir::memref::MemRefDialect,
-    polyaie::dataflow::DataflowDialect,
     mlir::vector::VectorDialect,
+    mlir::bufferization::BufferizationDialect,
     mlir::LLVM::LLVMDialect,
-    xilinx::AIE::AIEDialect,
-    circt::handshake::HandshakeDialect
+    circt::handshake::HandshakeDialect,
+    polyaie::dataflow::DataflowDialect,
+    xilinx::AIE::AIEDialect
   >();
   // clang-format on
 }

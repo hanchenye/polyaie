@@ -42,6 +42,7 @@ void MemrefArgToResult::runOnOperation() {
           })) {
         // Create a local buffer for each state-changed memref argument and
         // replace all its uses.
+        // FIXME: The alloc generated here shouldn't have layout information?
         b.setInsertionPointToStart(&func.front());
         auto buf = b.create<memref::AllocOp>(loc, argType);
         arg.replaceAllUsesWith(buf);

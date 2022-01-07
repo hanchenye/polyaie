@@ -7,12 +7,8 @@
 #ifndef POLYAIE_PASSES_H
 #define POLYAIE_PASSES_H
 
-#include "aie/AIEDialect.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Pass/Pass.h"
-#include "polyaie/Dataflow/Dataflow.h"
+#include "polyaie/InitAllDialects.h"
 #include <memory>
 
 namespace mlir {
@@ -54,11 +50,11 @@ std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEOptions &opts);
 
 std::unique_ptr<OperationPass<FuncOp>> createCreateMemrefSubviewPass();
-std::unique_ptr<OperationPass<FuncOp>> createDetectLoopReductionPass();
 std::unique_ptr<Pass> createHoistMemrefSubviewPass();
 std::unique_ptr<Pass> createMemrefArgToResultPass();
 std::unique_ptr<Pass> createExtractMemrefDependencyPass();
 std::unique_ptr<Pass> createTensorizeMemrefPass();
+std::unique_ptr<OperationPass<FuncOp>> createDetectLoopReductionPass();
 
 std::unique_ptr<Pass> createConvertToDataflowPass();
 std::unique_ptr<Pass> createLinkExternKernelPass();

@@ -1,11 +1,11 @@
 add_mlir_library(MLIRPolyAIEPasses
   Preprocess.cpp
   CreateMemrefSubview.cpp
-  DetectLoopReduction.cpp
   HoistMemrefSubview.cpp
   MemrefArgToResult.cpp
   ExtractMemrefDependency.cpp
   TensorizeMemref.cpp
+  DetectLoopReduction.cpp
   ConvertToDataflow.cpp
   LinkExternKernel.cpp
   Placement.cpp
