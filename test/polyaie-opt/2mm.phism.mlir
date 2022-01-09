@@ -1,6 +1,6 @@
 // RUN: polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" %s | FileCheck %s
 
-// CHECK: module @kernel_2mm
+// CHECK: func @kernel_2mm
 
 #map0 = affine_map<()[s0] -> (s0 * 32)>
 #map1 = affine_map<()[s0] -> (16, s0 * 32 + 32)>

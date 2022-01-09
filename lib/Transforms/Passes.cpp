@@ -27,7 +27,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());
 
-        pm.addPass(polyaie::createCreateMemrefSubviewPass());
+        // pm.addPass(polyaie::createCreateMemrefSubviewPass());
         // pm.addPass(polyaie::createHoistMemrefSubviewPass());
         // pm.addPass(polyaie::createMemrefArgToResultPass());
         // pm.addPass(polyaie::createExtractMemrefDependencyPass());

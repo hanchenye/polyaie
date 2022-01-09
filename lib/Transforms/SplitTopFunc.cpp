@@ -6,9 +6,7 @@
 
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/Passes.h"
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "polyaie/Transforms/Passes.h"
@@ -50,7 +48,7 @@ static void unrollFuncByFactorGreedily(FuncOp func, unsigned factor,
       auto remainder = currentRemainder;
       for (auto loop : band) {
         auto maybeTripCount = getConstantTripCount(loop);
-        if (!maybeTripCount || maybeTripCount.getValue() <= 1)
+        if (!maybeTripCount || maybeTripCount.getValue() < 1)
           continue;
         unsigned tripCount = maybeTripCount.getValue();
 
@@ -68,8 +66,8 @@ static void unrollFuncByFactorGreedily(FuncOp func, unsigned factor,
 
     // Simplify the loop structure after the unrolling.
     PassManager pm(func.getContext(), "builtin.func");
-    pm.addPass((createSimplifyAffineStructuresPass()));
-    pm.addPass((createCanonicalizerPass()));
+    pm.addPass(createSimplifyAffineStructuresPass());
+    pm.addPass(createCanonicalizerPass());
     (void)pm.run(func);
 
     // Early exit if the unroll factor is already equal to one.
@@ -122,19 +120,21 @@ static void duplicateSubFuncs(FuncOp func) {
     newCallee.eraseArguments(argsToErase);
     call->eraseOperands(operandsToErase);
 
+    // Canonicalize the function for constant propogation.
+    PassManager pm(newCallee.getContext(), "builtin.func");
+    pm.addPass(createCanonicalizerPass());
+    (void)pm.run(newCallee);
+
     // Move to the next AIE call.
     ++callIdx;
   });
 }
 
 /// Eliminate all funcions that are redundant.
-static void removeRedundantFuncs(ModuleOp mod, FuncOp topFunc) {
+static void removeRedundantFuncs(ModuleOp mod) {
   for (auto func : llvm::make_early_inc_range(mod.getOps<FuncOp>())) {
-    if (func == topFunc)
-      continue;
-
     // Remove the function if it's no longer used.
-    if (func.symbolKnownUseEmpty(mod)) {
+    if (func.symbolKnownUseEmpty(mod) && !func->hasAttr("polyaie.top_func")) {
       func.erase();
       continue;
     }
@@ -201,16 +201,13 @@ struct SplitTopFunc : public polyaie::SplitTopFuncBase<SplitTopFunc> {
       cloneTopFunc->remove();
     }
 
-    // Unroll and simplify the top function.
+    // Split the top function.
     unrollFuncByFactorGreedily(topFunc, factor);
     duplicateSubFuncs(topFunc);
-    removeRedundantFuncs(mod, topFunc);
-
-    llvm::outs() << mod << "\n";
+    removeRedundantFuncs(mod);
 
     // TODO: Support control flow.
     if (!hasFullyUnrolled(topFunc)) {
-      topFunc.emitOpError("top function is not fully unrolled");
       emitError(topFunc.getLoc(), "top function is not fully unrolled");
       return signalPassFailure();
     }
