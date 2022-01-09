@@ -57,6 +57,8 @@ static void unrollFuncByFactorGreedily(FuncOp func, unsigned factor,
             tripCount % unrollFactor == 0 ? unrollFactor : unrollFactor - 1;
         if (succeeded(loopUnrollJamByFactor(loop, cleanupUnrollFactor)))
           remainder /= unrollFactor;
+        else if (succeeded(loopUnrollByFactor(loop, cleanupUnrollFactor)))
+          remainder /= unrollFactor;
 
         if (remainder == 1)
           break;
