@@ -6,8 +6,8 @@
 
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -72,6 +72,7 @@ static void removeLayoutMap(OpBuilder &b, OpType op, Args &&...args) {
 void TensorizeMemref::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
+  auto topFunc = getTopFunc(mod);
 
   // Tensorize memref types.
   MemrefTensorizeTypeConverter tensorizeConverter;
@@ -80,8 +81,9 @@ void TensorizeMemref::runOnOperation() {
 
   populateFuncOpTypeConversionPattern(patterns, tensorizeConverter);
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    return tensorizeConverter.isSignatureLegal(op.getType()) &&
-           tensorizeConverter.isLegal(&op.getBody());
+    return (tensorizeConverter.isSignatureLegal(op.getType()) &&
+            tensorizeConverter.isLegal(&op.getBody())) ||
+           op == topFunc;
   });
   populateCallOpTypeConversionPattern(patterns, tensorizeConverter);
   target.addDynamicallyLegalOp<CallOp>(

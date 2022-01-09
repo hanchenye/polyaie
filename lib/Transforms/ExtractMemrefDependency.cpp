@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -21,9 +22,10 @@ struct ExtractMemrefDependency
 
 void ExtractMemrefDependency::runOnOperation() {
   auto mod = getOperation();
+  auto topFunc = getTopFunc(mod);
 
   // Construct explicit dependencies between memrefs.
-  for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
+  for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = func.front().getTerminator();
 
@@ -68,7 +70,8 @@ void ExtractMemrefDependency::runOnOperation() {
   // As we have extracted memref dependencies, we can safely remove redundant
   // copy operations now.
   SmallVector<memref::CopyOp, 16> latestCopies;
-  for (auto copy : llvm::make_early_inc_range(mod.getOps<memref::CopyOp>())) {
+  for (auto copy :
+       llvm::make_early_inc_range(topFunc.getOps<memref::CopyOp>())) {
     auto latestCopy = llvm::find_if(latestCopies, [&](memref::CopyOp op) {
       return op.target() == copy.target() &&
              op.source().getType() == copy.source().getType();

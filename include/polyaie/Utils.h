@@ -25,6 +25,8 @@ using AffineLoopBands = std::vector<AffineLoopBand>;
 void getLoopBands(Block &block, AffineLoopBands &bands, bool reverse = false,
                   bool allowHavingChilds = false);
 
+FuncOp getTopFunc(ModuleOp mod);
+
 unsigned getCol(Operation *call);
 unsigned getRow(Operation *call);
 

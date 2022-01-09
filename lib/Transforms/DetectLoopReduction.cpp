@@ -267,7 +267,6 @@ void DetectLoopReduction::runOnFunction() {
                                      std::move(rpl), config);
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
-polyaie::createDetectLoopReductionPass() {
+std::unique_ptr<FunctionPass> polyaie::createDetectLoopReductionPass() {
   return std::make_unique<DetectLoopReduction>();
 }

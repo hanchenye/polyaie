@@ -26,9 +26,11 @@ void CreateMemrefSubview::runOnFunction() {
   auto loc = b.getUnknownLoc();
 
   for (auto arg : func.getArguments()) {
-    // Get the argument type and bypass single-element memories.
+    // Get the argument type and bypass non-memref arguments.
     auto argType = arg.getType().dyn_cast<MemRefType>();
-    if (!argType || argType.getRank() == 0 || argType.getNumElements() == 1)
+    if (!argType || llvm::any_of(arg.getUsers(), [&](Operation *op) {
+          return !isa<mlir::AffineLoadOp, mlir::AffineStoreOp>(op);
+        }))
       continue;
 
     // We assume that after the compilation of phism, all users have the same
@@ -44,9 +46,6 @@ void CreateMemrefSubview::runOnFunction() {
     } else if (auto storeOp = dyn_cast<mlir::AffineStoreOp>(firstUser)) {
       operands = SmallVector<Value, 4>(storeOp.getMapOperands());
       map = storeOp.getAffineMap();
-    } else {
-      firstUser->emitOpError("user must be an affine load/store operation");
-      return signalPassFailure();
     }
 
     // Construct the dimension size map based on the loop trip counts.
@@ -137,7 +136,6 @@ void CreateMemrefSubview::runOnFunction() {
   }
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
-polyaie::createCreateMemrefSubviewPass() {
+std::unique_ptr<FunctionPass> polyaie::createCreateMemrefSubviewPass() {
   return std::make_unique<CreateMemrefSubview>();
 }

@@ -27,16 +27,16 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());
 
-        // pm.addPass(polyaie::createCreateMemrefSubviewPass());
-        // pm.addPass(polyaie::createHoistMemrefSubviewPass());
-        // pm.addPass(polyaie::createMemrefArgToResultPass());
-        // pm.addPass(polyaie::createExtractMemrefDependencyPass());
-        // pm.addPass(polyaie::createTensorizeMemrefPass());
-        // pm.addPass(polyaie::createDetectLoopReductionPass());
-        // pm.addPass(mlir::createLoopFusionPass());
-        // pm.addPass(mlir::createAffineScalarReplacementPass());
-        // if (opts.vectorizeSize != 1)
-        //   pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
+        pm.addPass(polyaie::createCreateMemrefSubviewPass());
+        pm.addPass(polyaie::createHoistMemrefSubviewPass());
+        pm.addPass(polyaie::createMemrefArgToResultPass());
+        pm.addPass(polyaie::createExtractMemrefDependencyPass());
+        pm.addPass(polyaie::createTensorizeMemrefPass());
+        pm.addPass(polyaie::createDetectLoopReductionPass());
+        pm.addPass(mlir::createLoopFusionPass());
+        pm.addPass(mlir::createAffineScalarReplacementPass());
+        if (opts.vectorizeSize != 1)
+          pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
 
         // // pm.addPass(polyaie::createConvertToDataflowPass());
         // // if (opts.enableLinkExternKernel)

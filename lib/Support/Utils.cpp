@@ -50,6 +50,14 @@ void polyaie::getLoopBands(Block &block, AffineLoopBands &bands, bool reverse,
   });
 }
 
+FuncOp polyaie::getTopFunc(ModuleOp mod) {
+  for (auto func : mod.getOps<FuncOp>())
+    if (func->hasAttr("polyaie.top_func"))
+      return func;
+  emitError(mod.getLoc(), "failed to find top function");
+  return FuncOp();
+}
+
 unsigned polyaie::getCol(Operation *call) {
   auto col = call->getAttrOfType<IntegerAttr>("aie.col").getInt();
   assert(col >= 0 && "illegal col attribute");

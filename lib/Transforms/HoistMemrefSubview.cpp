@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -22,8 +23,9 @@ struct HoistMemrefSubview
 void HoistMemrefSubview::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
+  auto topFunc = getTopFunc(mod);
 
-  for (auto call : mod.getOps<CallOp>()) {
+  for (auto call : topFunc.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto inputTypes = SmallVector<Type, 8>(func.getArgumentTypes());
 
@@ -55,8 +57,14 @@ void HoistMemrefSubview::runOnOperation() {
       if (existSubview != subviews.end())
         subview.erase();
       else {
+        subview->remove();
+        if (auto alloc = memory.getDefiningOp())
+          b.setInsertionPointAfter(alloc);
+        else
+          b.setInsertionPointToStart(memory.getParentBlock());
+        b.insert(subview);
+
         subview.sourceMutable().assign(memory);
-        subview->moveAfter(memory.getDefiningOp());
         subviews.push_back(subview.result());
         existSubview = &subviews.back();
       }

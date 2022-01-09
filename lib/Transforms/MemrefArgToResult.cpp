@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -20,8 +21,9 @@ void MemrefArgToResult::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
+  auto topFunc = getTopFunc(mod);
 
-  for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
+  for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = func.front().getTerminator();
     auto returnVals = SmallVector<Value, 4>(returnOp->getOperands());
