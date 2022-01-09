@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef POLYAIE_PASSES_TD
-#define POLYAIE_PASSES_TD
+#ifndef POLYAIE_TRANSFORMS_PASSES_TD
+#define POLYAIE_TRANSFORMS_PASSES_TD
 
 include "mlir/Pass/PassBase.td"
 
@@ -25,8 +25,13 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
 }
 
 def SplitTopFunc : Pass<"polyaie-split-top-func", "ModuleOp"> {
-  let summary = "Make memref dependency explicit";
+  let summary = "Split the top function";
   let constructor = "mlir::polyaie::createSplitTopFuncPass()";
+
+  let options = [
+    Option<"numAIE", "num-aie", "int64_t", /*default=*/"256",
+           "Specify the available number of AIEs">
+  ];
 }
 
 def CreateMemrefSubview : FunctionPass<"polyaie-create-memref-subview"> {
@@ -147,4 +152,4 @@ def Postprocess : Pass<"polyaie-postprocess", "ModuleOp"> {
   let constructor = "mlir::polyaie::createPostprocessPass()";
 }
 
-#endif // POLYAIE_PASSES_TD
+#endif // POLYAIE_TRANSFORMS_PASSES_TD

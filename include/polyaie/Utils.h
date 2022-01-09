@@ -8,14 +8,22 @@
 #define POLYAIE_UTILS_H
 
 #include "aie/AIEDialect.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
 
 namespace mlir {
 namespace polyaie {
 
-/// Inference the buffer offsets from the input `type`.
-SmallVector<int64_t, 4> getBufferOffsets(MemRefType type);
+using AffineLoopBand = SmallVector<AffineForOp, 6>;
+using AffineLoopBands = std::vector<AffineLoopBand>;
+
+/// Collect all loop bands in the "block" and return them in "bands". If
+/// "allowHavingChilds" is true, loop bands containing more than 1 other loop
+/// bands are also collected. Otherwise, only loop bands that contains no child
+/// loops are collected.
+void getLoopBands(Block &block, AffineLoopBands &bands, bool reverse = false,
+                  bool allowHavingChilds = false);
 
 unsigned getCol(Operation *call);
 unsigned getRow(Operation *call);

@@ -4,8 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef POLYAIE_PASSES_H
-#define POLYAIE_PASSES_H
+#ifndef POLYAIE_TRANSFORMS_PASSES_H
+#define POLYAIE_TRANSFORMS_PASSES_H
 
 #include "mlir/Pass/Pass.h"
 #include "polyaie/InitAllDialects.h"
@@ -23,6 +23,11 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
   Option<std::string> preprocessTopFuncName{
       *this, "top-func-name", llvm::cl::init("main"),
       llvm::cl::desc("Specify the top function of the program")};
+
+  /// Configure the split-top-func pass.
+  Option<int64_t> splitTopFuncNumAIE{
+      *this, "num-aie", llvm::cl::init(256),
+      llvm::cl::desc("Specify the available number of AIEs")};
 
   /// Configure the link-extern-kernel pass.
   Option<bool> enableLinkExternKernel{
@@ -49,6 +54,7 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
 std::unique_ptr<Pass> createPreprocessPass();
 std::unique_ptr<Pass> createPreprocessPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createSplitTopFuncPass();
+std::unique_ptr<Pass> createSplitTopFuncPass(const PolyAIEOptions &opts);
 
 std::unique_ptr<OperationPass<FuncOp>> createCreateMemrefSubviewPass();
 std::unique_ptr<Pass> createHoistMemrefSubviewPass();
@@ -77,4 +83,4 @@ void registerPolyAIEPasses();
 } // namespace polyaie
 } // namespace mlir
 
-#endif // POLYAIE_PASSES_H
+#endif // POLYAIE_TRANSFORMS_PASSES_H

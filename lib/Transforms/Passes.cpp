@@ -22,11 +22,12 @@ void polyaie::registerPolyAIEPassPipeline() {
       "polyaie-pipeline", "Compile to AIE array",
       [](OpPassManager &pm, const PolyAIEOptions &opts) {
         pm.addPass(polyaie::createPreprocessPass(opts));
-        // pm.addPass(mlir::createAffineLoopNormalizePass());
-        // pm.addPass(mlir::createSimplifyAffineStructuresPass());
-        // pm.addPass(mlir::createCanonicalizerPass());
+        pm.addPass(polyaie::createSplitTopFuncPass(opts));
+        pm.addPass(mlir::createAffineLoopNormalizePass());
+        pm.addPass(mlir::createSimplifyAffineStructuresPass());
+        pm.addPass(mlir::createCanonicalizerPass());
 
-        // pm.addPass(polyaie::createCreateMemrefSubviewPass());
+        pm.addPass(polyaie::createCreateMemrefSubviewPass());
         // pm.addPass(polyaie::createHoistMemrefSubviewPass());
         // pm.addPass(polyaie::createMemrefArgToResultPass());
         // pm.addPass(polyaie::createExtractMemrefDependencyPass());

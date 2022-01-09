@@ -4,6 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/Pass/PassManager.h"
@@ -11,62 +12,71 @@
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 #include "llvm/ADT/BitVector.h"
 
 using namespace mlir;
 using namespace polyaie;
 
-static FuncOp simplifyModuleAndFindTopFunc(ModuleOp mod,
-                                           StringRef topFuncName) {
-  mod->removeAttr("llvm.data_layout");
-  mod->removeAttr("llvm.target_triple");
-  auto topFunc = FuncOp();
-  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
-    if (isa<LLVM::GlobalOp, LLVM::LLVMFuncOp>(op))
-      op.erase();
-    else if (auto func = dyn_cast<FuncOp>(op))
-      if (func.getName() == topFuncName) {
-        for (auto argType : func.getArgumentTypes())
-          if (auto memrefType = argType.dyn_cast<MemRefType>())
-            if (!memrefType.hasStaticShape())
-              emitError(func.getLoc(), "has dynamic shaped argument");
-        topFunc = func;
+/// Helper to get the total number of calls in the block.
+static unsigned getNumCall(FuncOp func) {
+  unsigned numCall = 0;
+  func.walk([&](mlir::CallOp call) { ++numCall; });
+  return numCall;
+}
+
+static bool hasFullyUnrolled(FuncOp func) {
+  auto result =
+      func.walk([](mlir::AffineForOp loop) { return WalkResult::interrupt(); });
+  return !result.wasInterrupted();
+}
+
+static void unrollFuncByFactorGreedily(FuncOp func, unsigned factor,
+                                       unsigned maxIteration = 3) {
+  // Record the current remainded unroll factor.
+  unsigned currentRemainder = factor;
+
+  for (unsigned i = 1; i < maxIteration; ++i) {
+    if (hasFullyUnrolled(func))
+      return;
+
+    // Collect all leaf loop bands in the function.
+    AffineLoopBands bands;
+    getLoopBands(func.front(), bands, /*reverse=*/true,
+                 /*allowHavingChilds=*/false);
+
+    auto minRemainder = currentRemainder;
+    for (auto &band : bands) {
+      auto remainder = currentRemainder;
+      for (auto loop : band) {
+        auto maybeTripCount = getConstantTripCount(loop);
+        if (!maybeTripCount || maybeTripCount.getValue() <= 1)
+          continue;
+        unsigned tripCount = maybeTripCount.getValue();
+
+        auto unrollFactor = std::min(remainder, tripCount);
+        auto cleanupUnrollFactor =
+            tripCount % unrollFactor == 0 ? unrollFactor : unrollFactor - 1;
+        if (succeeded(loopUnrollJamByFactor(loop, cleanupUnrollFactor)))
+          remainder /= unrollFactor;
+
+        if (remainder == 1)
+          break;
       }
-  }
-  return topFunc;
-}
+      minRemainder = std::min(minRemainder, remainder);
+    }
 
-/// Erase constant arguments of `func`. These constant are unused and dangling
-/// there after the compilation of polymer.
-static void eraseConstantArgs(FuncOp func) {
-  SmallVector<unsigned, 8> argsToErase;
-  for (unsigned i = 0, e = func.getNumArguments(); i < e; ++i) {
-    if (func.getArgAttr(i, "scop.constant_value"))
-      argsToErase.push_back(i);
-  }
-  func.eraseArguments(argsToErase);
-}
-
-/// Fully unroll all loops in `func`, such that there's no loop in `func`.
-static LogicalResult unrollAllLoops(FuncOp func) {
-  // Try 8 iterations before exiting.
-  unsigned i = 0;
-  for (; i < 8; ++i) {
-    bool hasFullyUnrolled = true;
-    func.walk([&](mlir::AffineForOp loop) {
-      if (failed(loopUnrollFull(loop)))
-        hasFullyUnrolled = false;
-    });
-
+    // Simplify the loop structure after the unrolling.
     PassManager pm(func.getContext(), "builtin.func");
     pm.addPass((createSimplifyAffineStructuresPass()));
     pm.addPass((createCanonicalizerPass()));
     (void)pm.run(func);
 
-    if (hasFullyUnrolled)
+    // Early exit if the unroll factor is already equal to one.
+    currentRemainder = minRemainder;
+    if (currentRemainder == 1)
       break;
   }
-  return i == 8 ? failure() : success();
 }
 
 /// Duplicate a separate function for each call in `func`, such that each
@@ -78,8 +88,6 @@ static void duplicateSubFuncs(FuncOp func) {
     auto calleeOp = SymbolTable::lookupSymbolIn(
         func->getParentOfType<ModuleOp>(), call.callee());
     auto callee = dyn_cast<FuncOp>(calleeOp);
-    call->removeAttr("scop.pe");
-    callee->removeAttr("scop.pe");
 
     // Create a new callee function for each call operation.
     b.setInsertionPointAfter(callee);
@@ -119,101 +127,12 @@ static void duplicateSubFuncs(FuncOp func) {
   });
 }
 
-namespace {
-class ScalarBufferizeTypeConverter : public TypeConverter {
-public:
-  static Value materializeDefine(OpBuilder &b, Type type, ValueRange inputs,
-                                 Location loc) {
-    assert(inputs.size() == 1);
-    auto inputType = inputs[0].getType().dyn_cast<MemRefType>();
-    assert(inputType && inputType.getElementType() == type);
-    auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
-    return b.create<mlir::AffineLoadOp>(loc, inputs[0], zero.getResult());
-  }
-
-  static Value materializeUse(OpBuilder &b, MemRefType type, ValueRange inputs,
-                              Location loc) {
-    assert(inputs.size() == 1);
-    auto defLoad = inputs[0].getDefiningOp<mlir::AffineLoadOp>();
-    // TODO: Make it more robust.
-    assert(defLoad && defLoad.getMemRefType() == type);
-    return defLoad.memref();
-  }
-
-  ScalarBufferizeTypeConverter() {
-    // Convert all scalar to memref.
-    addConversion([](Type type) -> Type {
-      if (!type.isa<MemRefType>())
-        return MemRefType::get({1}, type);
-      return type;
-    });
-    // Load the original scalar from memref.
-    addArgumentMaterialization(materializeDefine);
-    addSourceMaterialization(materializeDefine);
-    addTargetMaterialization(materializeUse);
-  }
-};
-} // namespace
-
-/// Bufferize all scalars to single-element memrefs.
-static LogicalResult bufferizeAllScalars(ModuleOp mod) {
-  ScalarBufferizeTypeConverter typeConverter;
-  RewritePatternSet patterns(mod.getContext());
-  ConversionTarget target(*mod.getContext());
-
-  populateFuncOpTypeConversionPattern(patterns, typeConverter);
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    return typeConverter.isSignatureLegal(op.getType()) &&
-           typeConverter.isLegal(&op.getBody());
-  });
-  populateCallOpTypeConversionPattern(patterns, typeConverter);
-  target.addDynamicallyLegalOp<CallOp>(
-      [&](CallOp op) { return typeConverter.isLegal(op); });
-  populateReturnOpTypeConversionPattern(patterns, typeConverter);
-
-  target.markUnknownOpDynamicallyLegal([&](Operation *op) {
-    return isNotBranchOpInterfaceOrReturnLikeOp(op) ||
-           isLegalForReturnOpTypeConversionPattern(op, typeConverter);
-  });
-
-  return applyFullConversion(mod, target, std::move(patterns));
-}
-
-/// Inline `func` into its parent module.
-static void inlineFuncIntoModule(FuncOp func) {
-  // Create alloc for all arguments of the top function.
-  auto mod = func->getParentOfType<ModuleOp>();
-  auto b = OpBuilder(mod);
-  b.setInsertionPointToEnd(mod.getBody());
-  for (auto arg : func.getArguments()) {
-    auto type = arg.getType().dyn_cast<MemRefType>();
-    assert(type && "top function must be fully bufferized");
-    auto memref = b.create<memref::AllocOp>(func.getLoc(), type);
-    arg.replaceAllUsesWith(memref);
-  }
-
-  // Inline the top function into the module.
-  auto &modOps = mod.getBody()->getOperations();
-  auto &funcOps = func.front().getOperations();
-  modOps.splice(modOps.end(), funcOps, funcOps.begin(),
-                std::prev(funcOps.end()));
-  mod->setAttr("sym_name", func.sym_nameAttr());
-  func.erase();
-
-  // Canonicalize the whole module.
-  PassManager pm(mod.getContext(), "builtin.module");
-  pm.addPass(createCanonicalizerPass());
-  (void)pm.run(mod);
-
-  // FIXME: Temporary solution.
-  for (auto store :
-       llvm::make_early_inc_range(mod.getOps<mlir::AffineStoreOp>()))
-    store.erase();
-}
-
 /// Eliminate all funcions that are redundant.
-static void removeRedundantFuncs(ModuleOp mod) {
+static void removeRedundantFuncs(ModuleOp mod, FuncOp topFunc) {
   for (auto func : llvm::make_early_inc_range(mod.getOps<FuncOp>())) {
+    if (func == topFunc)
+      continue;
+
     // Remove the function if it's no longer used.
     if (func.symbolKnownUseEmpty(mod)) {
       func.erase();
@@ -228,7 +147,6 @@ static void removeRedundantFuncs(ModuleOp mod) {
           (loop.getStep() > 0 && loop.hasConstantBounds() &&
            loop.getConstantLowerBound() >= loop.getConstantUpperBound()))
         loop.erase();
-      loop->removeAttr("scop.point_loop");
     }
 
     // Canonicalize the function to remove other redundant operations after
@@ -250,29 +168,60 @@ static void removeRedundantFuncs(ModuleOp mod) {
 
 namespace {
 struct SplitTopFunc : public polyaie::SplitTopFuncBase<SplitTopFunc> {
+  SplitTopFunc() = default;
+  SplitTopFunc(const SplitTopFunc &) {}
+  SplitTopFunc(const PolyAIEOptions &opts) { numAIE = opts.splitTopFuncNumAIE; }
+
   void runOnOperation() override {
-    // auto mod = getOperation();
-    // auto topFunc = simplifyModuleAndFindTopFunc(mod, topFuncName);
-    // if (!topFunc) {
-    //   emitError(mod.getLoc(), "failed to find top function " + topFuncName);
-    //   return signalPassFailure();
-    // }
-    // eraseConstantArgs(topFunc);
-    // if (failed(unrollAllLoops(topFunc))) {
-    //   emitError(topFunc.getLoc(), "failed to unroll all loops");
-    //   return signalPassFailure();
-    // }
-    // duplicateSubFuncs(topFunc);
-    // if (failed(bufferizeAllScalars(mod))) {
-    //   emitError(mod.getLoc(), "failed to bufferize scalars");
-    //   return signalPassFailure();
-    // }
-    // inlineFuncIntoModule(topFunc);
-    // removeRedundantFuncs(mod);
+    auto mod = getOperation();
+
+    // Find the top function.
+    auto topFunc = FuncOp();
+    for (auto func : mod.getOps<FuncOp>())
+      if (func->hasAttr("polyaie.top_func"))
+        topFunc = func;
+
+    // Find the suitable function unroll factor.
+    unsigned factor = numAIE / getNumCall(topFunc);
+    if (factor <= 1)
+      return;
+    for (; factor < numAIE; ++factor) {
+      auto cloneTopFunc = topFunc.clone();
+      unrollFuncByFactorGreedily(cloneTopFunc, factor);
+
+      // Exit and subtract one from the factor if the number of function calls
+      // are larger than the available number of AIEs.
+      if (getNumCall(cloneTopFunc) > numAIE) {
+        --factor;
+        break;
+      }
+      // Exit if the function is already fully unrolled.
+      if (hasFullyUnrolled(cloneTopFunc))
+        break;
+      cloneTopFunc->remove();
+    }
+
+    // Unroll and simplify the top function.
+    unrollFuncByFactorGreedily(topFunc, factor);
+    duplicateSubFuncs(topFunc);
+    removeRedundantFuncs(mod, topFunc);
+
+    llvm::outs() << mod << "\n";
+
+    // TODO: Support control flow.
+    if (!hasFullyUnrolled(topFunc)) {
+      topFunc.emitOpError("top function is not fully unrolled");
+      emitError(topFunc.getLoc(), "top function is not fully unrolled");
+      return signalPassFailure();
+    }
   }
 };
 } // namespace
 
 std::unique_ptr<Pass> polyaie::createSplitTopFuncPass() {
   return std::make_unique<SplitTopFunc>();
+}
+std::unique_ptr<Pass>
+polyaie::createSplitTopFuncPass(const PolyAIEOptions &opts) {
+  return std::make_unique<SplitTopFunc>(opts);
 }

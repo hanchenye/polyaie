@@ -53,15 +53,6 @@ struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
 
     topFunc->removeAttr("llvm.linkage");
     topFunc->setAttr("polyaie.top_func", b.getUnitAttr());
-
-    // Erase constant arguments of `func`. These constant are unused and
-    // dangling there after the compilation of polymer.
-    SmallVector<unsigned, 8> argsToErase;
-    for (unsigned i = 0, e = topFunc.getNumArguments(); i < e; ++i) {
-      if (topFunc.getArgAttr(i, "scop.constant_value"))
-        argsToErase.push_back(i);
-    }
-    topFunc.eraseArguments(argsToErase);
   }
 };
 } // namespace
