@@ -44,19 +44,10 @@ void ExtractMemrefDependency::runOnOperation() {
       if (existSubview != subviews.end())
         call.setOperand(operandIdx, *existSubview);
 
-      // Helper to check whether the result is an alias of the operand.
-      auto isOperandAlias = [&](OpResult result) {
-        return func.getArgument(operandIdx) ==
-                   returnOp->getOperand(result.getResultNumber()) ||
-               llvm::any_of(result.getUsers(), [&](Operation *user) {
-                 auto copy = dyn_cast<memref::CopyOp>(user);
-                 return copy ? copy.target() == operand : false;
-               });
-      };
-
-      // Update the subview list with the current subview if applicable.
+      // Update the subview list with the current subview if it is returned.
       for (auto result : call.getResults())
-        if (isOperandAlias(result)) {
+        if (func.getArgument(operandIdx) ==
+            returnOp->getOperand(result.getResultNumber())) {
           if (existSubview != subviews.end())
             subviews[existSubview - subviews.begin()] = result;
           else
@@ -65,23 +56,6 @@ void ExtractMemrefDependency::runOnOperation() {
 
       ++operandIdx;
     }
-  }
-
-  // As we have extracted memref dependencies, we can safely remove redundant
-  // copy operations now.
-  SmallVector<memref::CopyOp, 16> latestCopies;
-  for (auto copy :
-       llvm::make_early_inc_range(topFunc.getOps<memref::CopyOp>())) {
-    auto latestCopy = llvm::find_if(latestCopies, [&](memref::CopyOp op) {
-      return op.target() == copy.target() &&
-             op.source().getType() == copy.source().getType();
-    });
-
-    if (latestCopy != latestCopies.end()) {
-      latestCopy->erase();
-      latestCopies[latestCopy - latestCopies.begin()] = copy;
-    } else
-      latestCopies.push_back(copy);
   }
 }
 

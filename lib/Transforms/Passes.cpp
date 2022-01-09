@@ -31,6 +31,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
         pm.addPass(polyaie::createMemrefArgToResultPass());
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
+        pm.addPass(polyaie::createBufferStateChangedMemrefPass());
         pm.addPass(polyaie::createTensorizeMemrefPass());
         pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(mlir::createLoopFusionPass());

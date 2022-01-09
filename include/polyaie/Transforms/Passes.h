@@ -60,6 +60,7 @@ std::unique_ptr<FunctionPass> createCreateMemrefSubviewPass();
 std::unique_ptr<Pass> createHoistMemrefSubviewPass();
 std::unique_ptr<Pass> createMemrefArgToResultPass();
 std::unique_ptr<Pass> createExtractMemrefDependencyPass();
+std::unique_ptr<Pass> createBufferStateChangedMemrefPass();
 std::unique_ptr<Pass> createTensorizeMemrefPass();
 std::unique_ptr<FunctionPass> createDetectLoopReductionPass();
 

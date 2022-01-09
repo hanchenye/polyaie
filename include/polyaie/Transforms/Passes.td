@@ -44,11 +44,6 @@ def CreateMemrefSubview : FunctionPass<"polyaie-create-memref-subview"> {
   let constructor = "mlir::polyaie::createCreateMemrefSubviewPass()";
 }
 
-def DetectLoopReduction : FunctionPass<"polyaie-detect-loop-reduction"> {
-  let summary = "Detect reductions in AffineForOps";
-  let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
-}
-
 def HoistMemrefSubview : Pass<"polyaie-hoist-memref-subview", "ModuleOp"> {
   let summary = "Hoist subviews out of sub-functions";
   let description = [{
@@ -59,11 +54,7 @@ def HoistMemrefSubview : Pass<"polyaie-hoist-memref-subview", "ModuleOp"> {
 }
 
 def MemrefArgToResult : Pass<"polyaie-memref-arg-to-result", "ModuleOp"> {
-  let summary = "Return state-changed memrefs as results";
-  let description = [{
-    Promote each memref whose state is changed to a local buffer and return the
-    local buffer as a result.
-  }];
+  let summary = "Return specified memref arguments as results";
   let constructor = "mlir::polyaie::createMemrefArgToResultPass()";
 }
 
@@ -73,11 +64,25 @@ def ExtractMemrefDependency :
   let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
 }
 
+def BufferStateChangedMemref :
+      Pass<"polyaie-buffer-state-changed-memref", "ModuleOp"> {
+  let summary = "Buffer state-changing memrefs";
+  let description = [{
+    Promote each memref whose state is changed to a local buffer and return the
+    local buffer as a result.
+  }];
+  let constructor = "mlir::polyaie::createBufferStateChangedMemrefPass()";
+}
+
 def TensorizeMemref : Pass<"polyaie-tensorize-memref", "ModuleOp"> {
   let summary = "Tensorize memrefs";
   let constructor = "mlir::polyaie::createTensorizeMemrefPass()";
 }
 
+def DetectLoopReduction : FunctionPass<"polyaie-detect-loop-reduction"> {
+  let summary = "Detect reductions in AffineForOps";
+  let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
+}
 
 def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let summary = "Extract the depedencies and create dataflow";
