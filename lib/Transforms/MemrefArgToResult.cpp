@@ -20,12 +20,14 @@ struct MemrefArgToResult
 void MemrefArgToResult::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
+  auto loc = b.getUnknownLoc();
   auto topFunc = getTopFunc(mod);
 
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = func.front().getTerminator();
-    auto returnVals = SmallVector<Value, 4>(returnOp->getOperands());
+    SmallVector<Value, 4> returnVals(returnOp->getOperands());
+    SmallVector<Value, 4> resultMems;
 
     // Figure out all arguments that need to be returned.
     // TODO: Currently we only return state-changed memref arguments, how to
@@ -41,8 +43,10 @@ void MemrefArgToResult::runOnOperation() {
       if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
             return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
                        memref::TensorStoreOp, vector::TransferWriteOp>(op);
-          }))
+          })) {
         returnVals.push_back(arg);
+        resultMems.push_back(call.getOperand(arg.getArgNumber()));
+      }
     }
 
     // Update return operation and function signature.
@@ -53,11 +57,16 @@ void MemrefArgToResult::runOnOperation() {
                                    newReturn.getOperandTypes()));
 
     // Update function call.
-    b.setInsertionPoint(call);
+    b.setInsertionPointAfter(call);
     auto newCall = b.create<CallOp>(call.getLoc(), func, call.getOperands());
     auto numResults = call.getNumResults();
     call.replaceAllUsesWith(newCall.getResults().take_front(numResults));
     call.erase();
+
+    // Create copy operation to copy the data back to global memory.
+    for (auto zip :
+         llvm::zip(newCall.getResults().drop_front(numResults), resultMems))
+      b.create<memref::CopyOp>(loc, std::get<0>(zip), std::get<1>(zip));
   }
 }
 

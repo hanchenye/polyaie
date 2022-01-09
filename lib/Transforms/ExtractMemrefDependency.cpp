@@ -57,6 +57,23 @@ void ExtractMemrefDependency::runOnOperation() {
       ++operandIdx;
     }
   }
+
+  // As we have extracted memref dependencies, we can safely remove redundant
+  // copy operations now.
+  SmallVector<memref::CopyOp, 16> latestCopies;
+  for (auto copy :
+       llvm::make_early_inc_range(topFunc.getOps<memref::CopyOp>())) {
+    auto latestCopy = llvm::find_if(latestCopies, [&](memref::CopyOp op) {
+      return op.target() == copy.target() &&
+             op.source().getType() == copy.source().getType();
+    });
+
+    if (latestCopy != latestCopies.end()) {
+      latestCopy->erase();
+      latestCopies[latestCopy - latestCopies.begin()] = copy;
+    } else
+      latestCopies.push_back(copy);
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createExtractMemrefDependencyPass() {

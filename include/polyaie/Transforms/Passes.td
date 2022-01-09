@@ -10,12 +10,7 @@
 include "mlir/Pass/PassBase.td"
 
 def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
-  let summary = "Preprocess the affine-level IR";
-  let description = [{
-    Erase contant arguments, unroll all loops, duplicate all sub-functions in
-    the top function, bufferize all scalars to single-element memrefs, inline
-    top function, and eliminate redundant sub-functions.
-  }];
+  let summary = "Preprocess the IR from phism";
   let constructor = "mlir::polyaie::createPreprocessPass()";
 
   let options = [
@@ -25,7 +20,12 @@ def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
 }
 
 def SplitTopFunc : Pass<"polyaie-split-top-func", "ModuleOp"> {
-  let summary = "Split the top function";
+  let summary = "Split the top-function";
+  let description = [{
+    Split the top-function into multiple sub-functions by unrolling the loops in
+    the top-function. The total number of calls in the top-function after
+    unrolling is constrained by the available number of AIEs.
+  }];
   let constructor = "mlir::polyaie::createSplitTopFuncPass()";
 
   let options = [
@@ -35,11 +35,12 @@ def SplitTopFunc : Pass<"polyaie-split-top-func", "ModuleOp"> {
 }
 
 def CreateMemrefSubview : FunctionPass<"polyaie-create-memref-subview"> {
-  let summary = "Extract local buffers based on loop analysis";
+  let summary = "Create subviews based on loop analysis";
   let description = [{
     Through loop analysis, this pass can identify the memory partition that each
-    function has accessed. In this way, the local buffer of each function can be
-    extracted from the global memory.
+    sub-function is accessing. Then, by creating subview operations, the program
+    in each sub-function can access the memory subview rather than the original
+    memory.
   }];
   let constructor = "mlir::polyaie::createCreateMemrefSubviewPass()";
 }
@@ -47,26 +48,34 @@ def CreateMemrefSubview : FunctionPass<"polyaie-create-memref-subview"> {
 def HoistMemrefSubview : Pass<"polyaie-hoist-memref-subview", "ModuleOp"> {
   let summary = "Hoist subviews out of sub-functions";
   let description = [{
-    Hoist subviews such that each sub-function consumes subviews rather than the
-    original global memories. This is an inter-procedural pass.
+    Hoist subviews such that each sub-function takes memory subviews rather than
+    the original memories as input.
   }];
   let constructor = "mlir::polyaie::createHoistMemrefSubviewPass()";
 }
 
 def MemrefArgToResult : Pass<"polyaie-memref-arg-to-result", "ModuleOp"> {
   let summary = "Return specified memref arguments as results";
+  let description = [{
+    Return specified memref arguments as results and create copy operations in
+    the top-function to copy the data back to the original memories.
+  }];
   let constructor = "mlir::polyaie::createMemrefArgToResultPass()";
 }
 
 def ExtractMemrefDependency :
       Pass<"polyaie-extract-memref-dependency", "ModuleOp"> {
-  let summary = "Make memref dependency explicit";
+  let summary = "Extract memref dependency";
+  let description = [{
+    Construct memref dependency between sub-function calls and remove redundant
+    copy operations in the top-function.
+  }];
   let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
 }
 
 def BufferStateChangedMemref :
-      Pass<"polyaie-buffer-state-changed-memref", "ModuleOp"> {
-  let summary = "Buffer state-changing memrefs";
+      FunctionPass<"polyaie-buffer-state-changed-memref"> {
+  let summary = "Buffer state-changed memrefs";
   let description = [{
     Promote each memref whose state is changed to a local buffer and return the
     local buffer as a result.

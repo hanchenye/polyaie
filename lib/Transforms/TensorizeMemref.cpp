@@ -98,14 +98,25 @@ void TensorizeMemref::runOnOperation() {
   if (failed(applyFullConversion(mod, target, std::move(patterns))))
     return signalPassFailure();
 
-  // Rewrite ToMemrefOp and AllocOp to remove layout information.
-  // FIXME: This is a little weird.
+  // Move ToTensorOp right before ReturnOp. Rewrite ToMemrefOp and AllocOp to
+  // remove layout information.
+  // TODO: This is a little weird, we should refactor this pass by not using the
+  // MLIR conversion infra -- it cannot meet our requirement here.
+  SmallVector<bufferization::ToTensorOp, 32> toTensorOps;
   mod.walk([&](Operation *op) {
-    if (auto toMemref = dyn_cast<bufferization::ToMemrefOp>(op))
-      removeLayoutMap(b, toMemref, toMemref.tensor());
+    if (auto toTensorOp = dyn_cast<bufferization::ToTensorOp>(op))
+      toTensorOps.push_back(toTensorOp);
+    else if (auto toMemrefOp = dyn_cast<bufferization::ToMemrefOp>(op))
+      removeLayoutMap(b, toMemrefOp, toMemrefOp.tensor());
     else if (auto alloc = dyn_cast<memref::AllocOp>(op))
       removeLayoutMap(b, alloc);
   });
+
+  for (auto toTensorOp : toTensorOps) {
+    if (toTensorOp.result().hasOneUse())
+      if (auto returnOp = dyn_cast<mlir::ReturnOp>(*toTensorOp->user_begin()))
+        toTensorOp->moveBefore(returnOp);
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createTensorizeMemrefPass() {

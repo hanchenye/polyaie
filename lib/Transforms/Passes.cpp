@@ -42,8 +42,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         // // pm.addPass(polyaie::createConvertToDataflowPass());
         // // if (opts.enableLinkExternKernel)
         // //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
-        // pm.addPass(polyaie::createPlacementPass(opts));
-        // pm.addPass(polyaie::createPrintDataflowPass());
+        pm.addPass(polyaie::createPlacementPass(opts));
+        pm.addPass(polyaie::createPrintDataflowPass());
         // pm.addPass(polyaie::createConvertToAIEPass(opts));
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         // pm.addPass(xilinx::AIE::createAIECreateLocksPass());

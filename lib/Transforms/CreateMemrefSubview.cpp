@@ -37,7 +37,7 @@ void CreateMemrefSubview::runOnFunction() {
     // memory access pattern. Therefore, we only collect the operands and
     // affine map of the first user.
     // TODO: Make this more robust.
-    auto firstUser = *arg.getUsers().begin();
+    auto firstUser = *arg.user_begin();
     SmallVector<Value, 4> operands;
     AffineMap map;
     if (auto loadOp = dyn_cast<mlir::AffineLoadOp>(firstUser)) {
