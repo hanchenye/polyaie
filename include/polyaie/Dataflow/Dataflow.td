@@ -42,6 +42,22 @@ def ProcessOp : DataflowOp<"process", []> {
   ];
 
   let verifier = "return ::verify(*this);";
+
+  let extraClassDeclaration = [{
+    /// Given an internal value, return the corresponding process operand. If
+    /// the internal value is not a block argument, return nullptr.
+    Value getOperand(Value internalVal);
+
+    /// Given an internal value, return the corresponding process result. If the
+    /// internal value is not returned as a result, return nullptr.
+    Value getResult(Value internalVal);
+
+    /// Given a process operand, return the corresponding block argument.
+    Value getArgument(OpOperand &operand);
+
+    /// Given a process result, return the corresponding returned value.
+    Value getReturnVal(OpResult result);
+  }];
 }
 
 def ReturnOp : DataflowOp<"return", [HasParent<"ProcessOp">, Terminator]> {

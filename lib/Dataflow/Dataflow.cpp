@@ -45,6 +45,33 @@ static LogicalResult verify(ProcessOp op) {
   return success();
 }
 
+/// Given an internal value, return the corresponding process operand. If
+/// the internal value is not a block argument, return nullptr.
+Value ProcessOp::getOperand(Value internalVal) {
+  if (auto arg = internalVal.dyn_cast<BlockArgument>())
+    return (*this)->getOperand(arg.getArgNumber());
+  return Value();
+}
+
+/// Given an internal value, return the corresponding process result. If the
+/// internal value is not returned as a result, return nullptr.
+Value ProcessOp::getResult(Value internalVal) {
+  for (auto &operand : body().back().getTerminator()->getOpOperands())
+    if (internalVal == operand.get())
+      return (*this)->getResult(operand.getOperandNumber());
+  return Value();
+}
+
+/// Given a process operand, return the corresponding block argument.
+Value ProcessOp::getArgument(OpOperand &operand) {
+  return body().front().getArgument(operand.getOperandNumber());
+}
+
+/// Given a process result, return the corresponding returned value.
+Value ProcessOp::getReturnVal(OpResult result) {
+  return body().back().getTerminator()->getOperand(result.getResultNumber());
+}
+
 static LogicalResult verify(ReturnOp op) {
   if (op.getOperandTypes() != op->getParentOfType<ProcessOp>().getResultTypes())
     return op.emitOpError("operands types must align with result types of the "
