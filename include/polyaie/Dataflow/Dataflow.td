@@ -36,7 +36,7 @@ def ProcessOp : DataflowOp<"process", []> {
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region AnyRegion:$body);
 
-  // let skipDefaultBuilders = 1;
+  let skipDefaultBuilders = 1;
   let builders =[
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands)>
   ];

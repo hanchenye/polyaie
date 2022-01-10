@@ -4,8 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Transforms/DialectConversion.h"
 #include "polyaie/Dataflow/Dataflow.h"
 #include "polyaie/Transforms/Passes.h"
+#include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -19,98 +21,96 @@ struct ConvertToDataflow
 } // namespace
 
 namespace {
-/// This is a class used to maintain a list of buffers with different types.
-class BufferList {
-public:
-  Value getBuffer(Type type) const {
-    auto existBufPtr =
-        llvm::find_if(impl, [&](Value v) { return v.getType() == type; });
-    return existBufPtr != impl.end() ? *existBufPtr : nullptr;
-  }
+struct TensorLoadConversion
+    : public OpConversionPattern<bufferization::ToTensorOp> {
+  using OpConversionPattern<bufferization::ToTensorOp>::OpConversionPattern;
 
-  void updateBuffer(Value newBuf) {
-    auto oldBufPtr = llvm::find_if(
-        impl, [&](Value v) { return v.getType() == newBuf.getType(); });
-    if (oldBufPtr != impl.end())
-      impl[oldBufPtr - impl.begin()] = newBuf;
-    else
-      impl.push_back(newBuf);
+  LogicalResult
+  matchAndRewrite(bufferization::ToTensorOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (auto subview = op.memref().getDefiningOp<memref::SubViewOp>()) {
+      rewriter.replaceOpWithNewOp<dataflow::TensorLoadOp>(
+          op, op.getType(), subview.static_offsets(), subview.static_sizes(),
+          subview.static_strides(), subview.source());
+      return success();
+    }
+    return failure();
   }
+};
+} // namespace
 
-private:
-  SmallVector<Value, 32> impl;
+namespace {
+struct TensorStoreConversion : public OpConversionPattern<memref::CopyOp> {
+  using OpConversionPattern<memref::CopyOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::CopyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (auto subview = op.target().getDefiningOp<memref::SubViewOp>()) {
+      if (auto toMemrefOp =
+              op.source().getDefiningOp<bufferization::ToMemrefOp>()) {
+        rewriter.replaceOpWithNewOp<dataflow::TensorStoreOp>(
+            op, subview.static_offsets(), subview.static_sizes(),
+            subview.static_strides(), subview.source(), toMemrefOp.tensor());
+        return success();
+      }
+    }
+    return failure();
+  }
+};
+} // namespace
+
+namespace {
+struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
+  using OpConversionPattern<mlir::CallOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(mlir::CallOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto mod = op->getParentOfType<ModuleOp>();
+    auto func = mod.lookupSymbol<FuncOp>(op.callee());
+
+    // Replace call and function operation.
+    auto process = rewriter.replaceOpWithNewOp<dataflow::ProcessOp>(
+        op, op.getResultTypes(), op.getOperands());
+    auto &bodyBlock = process.body().front();
+    rewriter.inlineRegionBefore(func.getBody(), &bodyBlock);
+    rewriter.eraseBlock(&bodyBlock);
+    rewriter.eraseOp(func);
+
+    // Replace return operation.
+    auto returnOp = process.body().back().getTerminator();
+    rewriter.setInsertionPoint(returnOp);
+    rewriter.create<dataflow::ReturnOp>(returnOp->getLoc(),
+                                        returnOp->getOperands());
+    rewriter.eraseOp(returnOp);
+    return success();
+  }
 };
 } // namespace
 
 void ConvertToDataflow::runOnOperation() {
   auto mod = getOperation();
+  auto topFunc = getTopFunc(mod);
 
-  // Construct a map from memory to its buffer list.
-  DenseMap<Value, BufferList> bufListMap;
-  for (auto alloc : mod.getOps<memref::AllocOp>())
-    bufListMap[alloc.getResult()] = BufferList();
+  RewritePatternSet patterns(mod.getContext());
+  ConversionTarget target(*mod.getContext());
 
-  // Create dataflow between function calls.
-  for (auto call : llvm::make_early_inc_range(mod.getOps<CallOp>())) {
-    for (auto buf : call.getOperands()) {
-      auto loadOp = buf.getDefiningOp<LoadBufferOp>();
-      auto &bufList = bufListMap[loadOp.memory()];
+  target.addIllegalOp<mlir::CallOp>();
+  target.addIllegalOp<bufferization::ToTensorOp>();
+  target.addIllegalOp<memref::CopyOp>();
 
-      // Find the result buffer if it exists.
-      auto resultBufPtr = llvm::find_if(call.getResults(), [&](OpResult r) {
-        auto storeOp = cast<StoreBufferOp>(*r.getUsers().begin());
-        return r.getType() == buf.getType() &&
-               storeOp.memory() == loadOp.memory();
-      });
+  patterns.add<TensorLoadConversion>(patterns.getContext());
+  patterns.add<TensorStoreConversion>(patterns.getContext());
+  patterns.add<ProcessConversion>(patterns.getContext());
 
-      // Query the buffer list to check whether there is a buffer with the same
-      // type existing. If so, replace the buffer generated by LoadBufferOp with
-      // the exist buffer and erase the LoadBufferOp.
-      if (auto existBuf = bufList.getBuffer(buf.getType())) {
-        loadOp.replaceAllUsesWith(existBuf);
-        loadOp.erase();
-      }
+  target.addLegalOp<dataflow::TensorLoadOp>();
+  target.addLegalOp<dataflow::TensorStoreOp>();
+  target.addLegalOp<dataflow::ProcessOp>();
+  target.addLegalOp<dataflow::ReturnOp>();
 
-      // Update the buffer list with the current buffer if applicable.
-      if (resultBufPtr != call.getResults().end())
-        bufList.updateBuffer(*resultBufPtr);
-    }
-  }
-
-  auto b = OpBuilder(mod);
-  for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
-    // As long as the buffer is used by operations other than a StoreBufferOp,
-    // the StoreBufferOp can be identified as redundant.
-    // FIXME: If a buffer is accessed by a function but not updated in the end,
-    // the buffer will be identified as redundant. But actually this is not the
-    // case, we should store all buffers that are updated back.
-    if (auto storeOp = dyn_cast<StoreBufferOp>(op))
-      if (!llvm::hasSingleElement(storeOp.buffer().getUsers()))
-        storeOp.erase();
-
-    // Remove layout map from all memories.
-    if (auto loadOp = dyn_cast<LoadBufferOp>(op)) {
-      // Update the type of load buffer operations.
-      auto type = loadOp.getType();
-      loadOp.getResult().setType(
-          MemRefType::get(type.getShape(), type.getElementType()));
-
-    } else if (auto call = dyn_cast<CallOp>(op)) {
-      auto func = mod.lookupSymbol<FuncOp>(call.callee());
-
-      // Update the type of functions.
-      for (auto arg : func.getArguments()) {
-        auto type = arg.getType().cast<MemRefType>();
-        arg.setType(MemRefType::get(type.getShape(), type.getElementType()));
-      }
-      auto resultTypes = func.front().getTerminator()->getOperandTypes();
-      func.setType(b.getFunctionType(func.getArgumentTypes(), resultTypes));
-
-      // Update the type of calls.
-      for (auto resultAndType : llvm::zip(call.getResults(), resultTypes))
-        std::get<0>(resultAndType).setType(std::get<1>(resultAndType));
-    }
-  }
+  if (failed(applyPartialConversion(topFunc, target, std::move(patterns))))
+    return signalPassFailure();
 }
 
 std::unique_ptr<Pass> polyaie::createConvertToDataflowPass() {
