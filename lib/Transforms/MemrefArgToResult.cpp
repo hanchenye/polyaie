@@ -25,7 +25,7 @@ void MemrefArgToResult::runOnOperation() {
 
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
-    auto returnOp = func.front().getTerminator();
+    auto returnOp = func.back().getTerminator();
     SmallVector<Value, 4> returnVals(returnOp->getOperands());
     SmallVector<Value, 4> resultMems;
 

@@ -42,7 +42,7 @@ void BufferStateChangedMemref::runOnFunction() {
 
       // Set insertion point to the ancestor of the first user.
       auto firstUser = *buf->user_begin();
-      b.setInsertionPoint(func.front().findAncestorOpInBlock(*firstUser));
+      b.setInsertionPoint(func.body().findAncestorOpInRegion(*firstUser));
 
       // Create nested loop to copy data to local buffer.
       SmallVector<Value, 4> ivs;
