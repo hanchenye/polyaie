@@ -35,12 +35,12 @@ void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 static LogicalResult verify(ProcessOp op) {
-  if (op.body().empty())
-    return op.emitOpError("must have at least one block");
+  // if (op.body().empty())
+  //   return op.emitOpError("must have at least one block");
 
-  if (op.getOperandTypes() != op.body().front().getArgumentTypes())
-    return op.emitOpError(
-        "operands types must align with arguments types of the entry block");
+  // if (op.getOperandTypes() != op.body().front().getArgumentTypes())
+  //   return op.emitOpError(
+  //       "operands types must align with arguments types of the entry block");
 
   return success();
 }

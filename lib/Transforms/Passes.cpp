@@ -43,7 +43,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createPlacementPass(opts));
         pm.addPass(polyaie::createPrintDataflowPass());
 
-        // pm.addPass(polyaie::createDataflowToAIEPass(opts));
+        pm.addPass(polyaie::createDataflowToAIEPass(opts));
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
