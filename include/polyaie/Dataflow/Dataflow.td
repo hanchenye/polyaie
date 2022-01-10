@@ -46,17 +46,17 @@ def ProcessOp : DataflowOp<"process", []> {
   let extraClassDeclaration = [{
     /// Given an internal value, return the corresponding process operand. If
     /// the internal value is not a block argument, return nullptr.
-    Value getOperand(Value internalVal);
+    Value getOperandFromInternalVal(Value internalVal);
 
     /// Given an internal value, return the corresponding process result. If the
     /// internal value is not returned as a result, return nullptr.
-    Value getResult(Value internalVal);
+    Value getResultFromInternalVal(Value internalVal);
 
     /// Given a process operand, return the corresponding block argument.
-    Value getArgument(OpOperand &operand);
+    Value getArgumentFromOperand(OpOperand &operand);
 
     /// Given a process result, return the corresponding returned value.
-    Value getReturnVal(OpResult result);
+    Value getReturnValFromResult(OpResult result);
   }];
 }
 
@@ -101,6 +101,43 @@ def TensorStoreOp : DataflowOp<"tensor_store", [SameOperandsElementType]> {
                        AnyTensor:$tensor);
 
   let verifier = "return ::verify(*this);";
+}
+
+//===----------------------------------------------------------------------===//
+// Runtime Operation - should be factored out to a new dialect
+//===----------------------------------------------------------------------===//
+
+def HostToDDR:  I64EnumAttrCase<"HostToDDR", 0>;
+def DDRToHost:  I64EnumAttrCase<"DDRToHost", 1>;
+def DMAKind: I64EnumAttr<"DMAKind", "Kind of Host DMA",
+    [HostToDDR, DDRToHost]> {
+  let cppNamespace = "mlir::polyaie";
+}
+
+def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
+  let summary = "Host DMA operation";
+  let description = [{
+    This operation represents a host DMA to/from external memory, such as DDRs.
+  }];
+
+  let arguments = (ins I64ArrayAttr:$offsets, I64ArrayAttr:$sizes,
+                       I64ArrayAttr:$strides, DMAKind:$kind, AnyMemRef:$target,
+                       AnyMemRef:$source);
+
+  let verifier = "return ::verify(*this);";
+}
+
+//===----------------------------------------------------------------------===//
+// AIE Operation - should be factored out to AIE dialect
+//===----------------------------------------------------------------------===//
+
+def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {
+  let summary = "Memory broadcast operation";
+  let description = [{
+    Broadcast the source buffer to each target buffer.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, Variadic<AnyMemRef>:$targets);
 }
 
 //===----------------------------------------------------------------------===//

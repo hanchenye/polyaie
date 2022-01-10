@@ -47,28 +47,28 @@ static LogicalResult verify(ProcessOp op) {
 
 /// Given an internal value, return the corresponding process operand. If
 /// the internal value is not a block argument, return nullptr.
-Value ProcessOp::getOperand(Value internalVal) {
+Value ProcessOp::getOperandFromInternalVal(Value internalVal) {
   if (auto arg = internalVal.dyn_cast<BlockArgument>())
-    return (*this)->getOperand(arg.getArgNumber());
+    return getOperand(arg.getArgNumber());
   return Value();
 }
 
 /// Given an internal value, return the corresponding process result. If the
 /// internal value is not returned as a result, return nullptr.
-Value ProcessOp::getResult(Value internalVal) {
+Value ProcessOp::getResultFromInternalVal(Value internalVal) {
   for (auto &operand : body().back().getTerminator()->getOpOperands())
     if (internalVal == operand.get())
-      return (*this)->getResult(operand.getOperandNumber());
+      return getResult(operand.getOperandNumber());
   return Value();
 }
 
 /// Given a process operand, return the corresponding block argument.
-Value ProcessOp::getArgument(OpOperand &operand) {
+Value ProcessOp::getArgumentFromOperand(OpOperand &operand) {
   return body().front().getArgument(operand.getOperandNumber());
 }
 
 /// Given a process result, return the corresponding returned value.
-Value ProcessOp::getReturnVal(OpResult result) {
+Value ProcessOp::getReturnValFromResult(OpResult result) {
   return body().back().getTerminator()->getOperand(result.getResultNumber());
 }
 
@@ -116,6 +116,12 @@ static LogicalResult verify(TensorStoreOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Runtime Operation - should be factored out to a new dialect
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(HostDMAOp op) { return success(); }
+
+//===----------------------------------------------------------------------===//
 // Buffer Load/Store Operation
 //===----------------------------------------------------------------------===//
 
@@ -156,6 +162,10 @@ static LogicalResult verify(LoadBufferOp op) {
 static LogicalResult verify(StoreBufferOp op) {
   return verifyLoadStoreBufferOp(op);
 }
+
+//===----------------------------------------------------------------------===//
+// Include TableGen files
+//===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "polyaie/Dataflow/Dataflow.cpp.inc"

@@ -166,7 +166,7 @@ void DataflowToAIE::runOnOperation() {
         // mapping in "bufMap".
         auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
         if (auto tensor = getTensor(alloc.memref())) {
-          auto result = process.getResult(tensor);
+          auto result = process.getResultFromInternalVal(tensor);
           bufMap[result] = buf;
         }
         alloc.replaceAllUsesWith(buf.getResult());
@@ -176,7 +176,7 @@ void DataflowToAIE::runOnOperation() {
         // This buffer should not be accessed by other processes.
         auto buf = b.create<BufferOp>(
             loc, toMemrefOp.getType().cast<MemRefType>(), tile);
-        auto operand = process.getOperand(toMemrefOp.tensor());
+        auto operand = process.getOperandFromInternalVal(toMemrefOp.tensor());
         destBufsMap[bufMap[operand]].push_back(buf);
 
         toMemrefOp.replaceAllUsesWith(buf.getResult());
