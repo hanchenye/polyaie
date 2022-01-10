@@ -108,9 +108,11 @@ def TensorStoreOp : DataflowOp<"tensor_store", [SameOperandsElementType]> {
 //===----------------------------------------------------------------------===//
 
 def HostToDDR:  I64EnumAttrCase<"HostToDDR", 0>;
-def DDRToHost:  I64EnumAttrCase<"DDRToHost", 1>;
-def DMAKind: I64EnumAttr<"DMAKind", "Kind of Host DMA",
-    [HostToDDR, DDRToHost]> {
+def HostToAIE:  I64EnumAttrCase<"HostToAIE", 1>;
+def DDRToHost:  I64EnumAttrCase<"DDRToHost", 2>;
+def AIEToHost:  I64EnumAttrCase<"AIEToHost", 3>;
+def HostDMAKind: I64EnumAttr<"HostDMAKind", "Kind of Host DMA",
+    [HostToDDR, HostToAIE, DDRToHost, AIEToHost]> {
   let cppNamespace = "mlir::polyaie";
 }
 
@@ -121,8 +123,8 @@ def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
   }];
 
   let arguments = (ins I64ArrayAttr:$offsets, I64ArrayAttr:$sizes,
-                       I64ArrayAttr:$strides, DMAKind:$kind, AnyMemRef:$target,
-                       AnyMemRef:$source);
+                       I64ArrayAttr:$strides, HostDMAKind:$kind,
+                       AnyMemRef:$target, AnyType:$source);
 
   let verifier = "return ::verify(*this);";
 }

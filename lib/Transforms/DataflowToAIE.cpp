@@ -23,7 +23,10 @@ struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
 
   /// Map from a buffer to its destination buffers. All values here must be
   /// defined by BufferOps.
-  DenseMap<Value, SmallVector<Value, 4>> destBufsMap;
+  DenseMap<Value, SmallVector<Value, 4>> targetBufsMap;
+
+  /// Map from ProcessOp result to its corresponding BufferOp.
+  DenseMap<Value, BufferOp> bufMap;
 };
 } // namespace
 
@@ -134,22 +137,11 @@ static void updateMemOp(OpBuilder &b, BufferOp buf, StringRef tokName,
   }
 }
 
-/// Return it if the given memref is casted to a tensor.
-static Value getTensor(Value memref) {
-  for (auto user : memref.getUsers())
-    if (auto toTensorOp = dyn_cast<bufferization::ToTensorOp>(user))
-      return toTensorOp.memref();
-  return Value();
-}
-
 void DataflowToAIE::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
   auto topFunc = getTopFunc(mod);
-
-  // Map from ProcessOp result to its corresponding BufferOp.
-  DenseMap<Value, BufferOp> bufMap;
 
   // Generate TileOp, BufferOps, and CoreOp.
   for (auto process : topFunc.getOps<dataflow::ProcessOp>()) {
@@ -162,25 +154,42 @@ void DataflowToAIE::runOnOperation() {
     // BufferStateChangedMemref pass has been applied.
     for (auto &op : llvm::make_early_inc_range(process.body().getOps())) {
       if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
-        // This buffer may be accessed by other processes, thus we record the
-        // mapping in "bufMap".
+        // Replace uses of alloc with the BufferOp.
         auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
-        if (auto tensor = getTensor(alloc.memref())) {
-          auto result = process.getResultFromInternalVal(tensor);
-          bufMap[result] = buf;
-        }
         alloc.replaceAllUsesWith(buf.getResult());
         alloc.erase();
 
+        // If the buffer is casted to a tensor and returned, it may be consumed
+        // by other processes. Therefore, we record the mapping in "bufMap".
+        if (auto toTensorOp =
+                getOnlyUserOfType<bufferization::ToTensorOp>(buf)) {
+          auto result = process.getResultFromInternalVal(toTensorOp.result());
+          bufMap[result] = buf;
+
+          // Create a host DMA to store back the result if applicable.
+          if (auto tensorStore =
+                  getOnlyUserOfType<dataflow::TensorStoreOp>(result))
+            b.create<HostDMAOp>(loc, tensorStore.offsets(), tensorStore.sizes(),
+                                tensorStore.strides(), HostDMAKind::AIEToHost,
+                                tensorStore.memory(), buf);
+        }
       } else if (auto toMemrefOp = dyn_cast<bufferization::ToMemrefOp>(op)) {
-        // This buffer should not be accessed by other processes.
+        // Replace uses of alloc with the BufferOp.
         auto buf = b.create<BufferOp>(
             loc, toMemrefOp.getType().cast<MemRefType>(), tile);
         auto operand = process.getOperandFromInternalVal(toMemrefOp.tensor());
-        destBufsMap[bufMap[operand]].push_back(buf);
-
         toMemrefOp.replaceAllUsesWith(buf.getResult());
         toMemrefOp.erase();
+
+        // This buffer should not be accessed by other processes. Construct the
+        // "targetBufsMap" in order to generate BroadcastOp later.
+        targetBufsMap[bufMap[operand]].push_back(buf);
+
+        // Create a host DMA to load the data if applicable.
+        if (auto tensorLoad = operand.getDefiningOp<dataflow::TensorLoadOp>())
+          b.create<HostDMAOp>(loc, tensorLoad.offsets(), tensorLoad.sizes(),
+                              tensorLoad.strides(), HostDMAKind::HostToAIE, buf,
+                              tensorLoad.memory());
       }
     }
 
@@ -191,6 +200,9 @@ void DataflowToAIE::runOnOperation() {
 
       auto type = MemRefType::get({1}, arg.getType());
       auto buf = b.create<BufferOp>(loc, type, tile);
+      b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
+                          b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
+                          process.getOperandFromInternalVal(arg));
       auto insertPoint = b.saveInsertionPoint();
 
       b.setInsertionPointToStart(&process.body().front());
@@ -216,13 +228,19 @@ void DataflowToAIE::runOnOperation() {
     returnOp->erase();
   }
 
-  // Remove all process operations.
-  // for (auto process :
-  //      llvm::make_early_inc_range(topFunc.getOps<dataflow::ProcessOp>())) {
-  //   process->dropAllUses();
-  //   process->erase();
+  // Remove all converted operations.
+  for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
+    if (isa<dataflow::ProcessOp, dataflow::TensorLoadOp,
+            dataflow::TensorStoreOp, bufferization::ToTensorOp>(op)) {
+      op.dropAllUses();
+      op.erase();
+    }
+
+  // // Create BroadcastOps.
+  // for (auto pair : targetBufsMap) {
+  //   b.setInsertionPointAfterValue(pair.first);
+  //   b.create<dataflow::BroadcastOp>(loc, pair.first, pair.second);
   // }
-  bufMap.clear();
 }
 
 std::unique_ptr<Pass> polyaie::createDataflowToAIEPass() {

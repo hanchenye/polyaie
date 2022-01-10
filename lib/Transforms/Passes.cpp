@@ -40,10 +40,12 @@ void polyaie::registerPolyAIEPassPipeline() {
           pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
 
         pm.addPass(polyaie::createConvertToDataflowPass());
+        pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(polyaie::createPlacementPass(opts));
         pm.addPass(polyaie::createPrintDataflowPass());
 
         pm.addPass(polyaie::createDataflowToAIEPass(opts));
+        pm.addPass(mlir::createCanonicalizerPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
