@@ -36,6 +36,9 @@ struct LinkExternKernel
     kernel.setType(kernelType);
 
     for (auto func : llvm::drop_begin(mod.getOps<FuncOp>(), 1)) {
+      if (func->getAttr("polyaie.top_func"))
+        continue;
+
       if (func.getType() != firstFunc.getType()) {
         func.emitOpError("All functions must have the same type");
         return signalPassFailure();

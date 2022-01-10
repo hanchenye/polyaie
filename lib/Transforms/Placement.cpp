@@ -13,7 +13,7 @@ using namespace polyaie;
 namespace {
 class Placer {
 public:
-  Placer(ModuleOp mod);
+  Placer(FuncOp func);
 
   /// Place all nodes into a Z-style layout.
   void runNaive();
@@ -31,7 +31,7 @@ private:
   void clearLayout() {
     layoutMap.clear();
     for (auto &node : layout)
-      node = CallOp();
+      node = dataflow::ProcessOp();
   }
 
   /// Initialize all nodes to a random location.
@@ -46,23 +46,24 @@ private:
   void applyLayout() const;
 
 private:
-  const ModuleOp mod;
+  const FuncOp func;
 
-  /// All CallOps in the placement problem.
-  const SmallVector<CallOp, 128> nodes;
+  /// All dataflow::ProcessOps in the placement problem.
+  const SmallVector<dataflow::ProcessOp, 128> nodes;
 
   /// The block for placement.
   const unsigned rowBegin, colBegin, rowNum, colNum;
 
-  /// Record the CallOp on each coordinates(index).
-  SmallVector<CallOp, 128> layout;
-  /// Record the coordinates(index) of each CallOp.
+  /// Record the dataflow::ProcessOp on each coordinates(index).
+  SmallVector<dataflow::ProcessOp, 128> layout;
+  /// Record the coordinates(index) of each dataflow::ProcessOp.
   DenseMap<Operation *, unsigned> layoutMap;
 };
 } // namespace
 
-Placer::Placer(ModuleOp mod)
-    : mod(mod), nodes(mod.getOps<CallOp>().begin(), mod.getOps<CallOp>().end()),
+Placer::Placer(FuncOp func)
+    : func(func), nodes(func.getOps<dataflow::ProcessOp>().begin(),
+                        func.getOps<dataflow::ProcessOp>().end()),
       rowBegin(2), colBegin(0),
       rowNum(std::min((unsigned)sqrt(nodes.size()), (unsigned)7)),
       colNum(std::min((unsigned)(1.5 * nodes.size() / rowNum), (unsigned)50)) {
@@ -120,7 +121,7 @@ double Placer::getLayoutCost() const {
       SmallVector<unsigned, 4> cols({srcCol});
 
       for (auto user : result.getUsers()) {
-        if (!isa<CallOp>(user))
+        if (!isa<dataflow::ProcessOp>(user))
           continue;
 
         auto tgtCoord = indexToCoord(layoutMap.lookup(user));
@@ -150,15 +151,16 @@ double Placer::getLayoutCost() const {
 
 /// Apply the current layout to the IR.
 void Placer::applyLayout() const {
-  auto b = Builder(mod);
+  auto b = Builder(func);
   unsigned index = 0;
   for (auto node : layout) {
     if (node) {
       auto mapIndex = layoutMap.lookup(node);
       assert(mapIndex == index && "disorted layout");
       auto coord = indexToCoord(index);
-      node->setAttr("aie.row", b.getI64IntegerAttr(coord.first + rowBegin));
-      node->setAttr("aie.col", b.getI64IntegerAttr(coord.second + colBegin));
+      node->setAttr("polyaie.row", b.getI64IntegerAttr(coord.first + rowBegin));
+      node->setAttr("polyaie.col",
+                    b.getI64IntegerAttr(coord.second + colBegin));
     }
     ++index;
   }
@@ -240,22 +242,23 @@ struct Placement : public polyaie::PlacementBase<Placement> {
   Placement(const Placement &) {}
   Placement(const PolyAIEOptions &opts) { algorithm = opts.placementAlgorithm; }
 
-  void runOnOperation() override {
-    Placer placer(getOperation());
+  void runOnFunction() override {
+    Placer placer(getFunction());
     if (algorithm == "naive")
       return placer.runNaive();
     else if (algorithm == "simulated-annealing")
       return placer.runSimulatedAnnealing();
 
-    emitError(getOperation().getLoc(), "unsupported placement algorithm");
+    emitError(getFunction().getLoc(), "unsupported placement algorithm");
     return signalPassFailure();
   }
 };
 } // namespace
 
-std::unique_ptr<Pass> polyaie::createPlacementPass() {
+std::unique_ptr<FunctionPass> polyaie::createPlacementPass() {
   return std::make_unique<Placement>();
 }
-std::unique_ptr<Pass> polyaie::createPlacementPass(const PolyAIEOptions &opts) {
+std::unique_ptr<FunctionPass>
+polyaie::createPlacementPass(const PolyAIEOptions &opts) {
   return std::make_unique<Placement>(opts);
 }

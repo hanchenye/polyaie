@@ -58,13 +58,13 @@ FuncOp polyaie::getTopFunc(ModuleOp mod) {
   return FuncOp();
 }
 
-unsigned polyaie::getCol(Operation *call) {
-  auto col = call->getAttrOfType<IntegerAttr>("aie.col").getInt();
+unsigned polyaie::getCol(Operation *op) {
+  auto col = op->getAttrOfType<IntegerAttr>("polyaie.col").getInt();
   assert(col >= 0 && "illegal col attribute");
   return col;
 }
-unsigned polyaie::getRow(Operation *call) {
-  auto row = call->getAttrOfType<IntegerAttr>("aie.row").getInt();
+unsigned polyaie::getRow(Operation *op) {
+  auto row = op->getAttrOfType<IntegerAttr>("polyaie.row").getInt();
   assert(row >= 0 && "illegal row attribute");
   return row;
 }
@@ -74,9 +74,10 @@ bool polyaie::adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
   return (std::abs((int64_t)srcRow - (int64_t)tgtRow) +
           std::abs((int64_t)srcCol - (int64_t)tgtCol)) == 1;
 }
-bool polyaie::adjacent(CallOp srcCall, CallOp tgtCall) {
-  return adjacent(getRow(srcCall), getCol(srcCall), getRow(tgtCall),
-                  getCol(tgtCall));
+bool polyaie::adjacent(dataflow::ProcessOp srcProc,
+                       dataflow::ProcessOp tgtProc) {
+  return adjacent(getRow(srcProc), getCol(srcProc), getRow(tgtProc),
+                  getCol(tgtProc));
 }
 bool polyaie::adjacent(xilinx::AIE::TileOp srcTile,
                        xilinx::AIE::TileOp tgtTile) {

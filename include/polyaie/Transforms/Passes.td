@@ -93,15 +93,6 @@ def DetectLoopReduction : FunctionPass<"polyaie-detect-loop-reduction"> {
   let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
 }
 
-def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
-  let summary = "Extract the depedencies and create dataflow";
-  let description = [{
-    Extract the dependencies between different function calls through memory
-    type analysis. Then, create a dataflow based on the dependencies.
-  }];
-  let constructor = "mlir::polyaie::createConvertToDataflowPass()";
-}
-
 def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
   let summary = "Substitute each function body with an external kernel";
   let description = [{
@@ -117,7 +108,16 @@ def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
   ];
 }
 
-def Placement : Pass<"polyaie-placement", "ModuleOp"> {
+def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
+  let summary = "Extract the depedencies and create dataflow";
+  let description = [{
+    Extract the dependencies between different function calls through memory
+    type analysis. Then, create a dataflow based on the dependencies.
+  }];
+  let constructor = "mlir::polyaie::createConvertToDataflowPass()";
+}
+
+def Placement : FunctionPass<"polyaie-placement"> {
   let summary = "Place function calls to a physical location";
   let description = [{
     Find a physical location for each function call in the module using the
@@ -133,7 +133,7 @@ def Placement : Pass<"polyaie-placement", "ModuleOp"> {
   ];
 }
 
-def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
+def PrintDataflow : FunctionPass<"polyaie-print-dataflow"> {
   let summary = "Print dataflow into a DOT graph";
   let constructor = "mlir::polyaie::createPrintDataflowPass()";
 }

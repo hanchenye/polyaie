@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Operation.h"
+#include "polyaie/Dataflow/Dataflow.h"
 
 namespace mlir {
 namespace polyaie {
@@ -27,12 +28,12 @@ void getLoopBands(Block &block, AffineLoopBands &bands, bool reverse = false,
 
 FuncOp getTopFunc(ModuleOp mod);
 
-unsigned getCol(Operation *call);
-unsigned getRow(Operation *call);
+unsigned getCol(Operation *op);
+unsigned getRow(Operation *op);
 
 bool adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
               unsigned tgtCol);
-bool adjacent(CallOp srcCall, CallOp tgtCall);
+bool adjacent(dataflow::ProcessOp srcProc, dataflow::ProcessOp tgtProc);
 bool adjacent(xilinx::AIE::TileOp srcTile, xilinx::AIE::TileOp tgtTile);
 
 xilinx::AIE::TileOp getShareableTile(xilinx::AIE::TileOp srcTile,

@@ -5,7 +5,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Transforms/DialectConversion.h"
-#include "polyaie/Dataflow/Dataflow.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
 
@@ -73,6 +72,9 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
     // Replace call and function operation.
     auto process = rewriter.replaceOpWithNewOp<dataflow::ProcessOp>(
         op, op.getResultTypes(), op.getOperands());
+    process->setAttrs(func->getAttrs());
+    process->setAttrs(op->getAttrs());
+
     auto &bodyBlock = process.body().front();
     rewriter.inlineRegionBefore(func.getBody(), &bodyBlock);
     rewriter.eraseBlock(&bodyBlock);
