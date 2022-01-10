@@ -73,7 +73,6 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
     auto process = rewriter.replaceOpWithNewOp<dataflow::ProcessOp>(
         op, op.getResultTypes(), op.getOperands());
     process->setAttrs(func->getAttrs());
-    process->setAttrs(op->getAttrs());
 
     auto &bodyBlock = process.body().front();
     rewriter.inlineRegionBefore(func.getBody(), &bodyBlock);

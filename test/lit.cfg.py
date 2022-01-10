@@ -53,7 +53,8 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
 tool_dirs = [config.polyaie_tools_dir, config.mlir_tools_dir, config.llvm_tools_dir]
 tools = [
-    'polyaie-opt'
+    'polyaie-opt',
+    'polyaie-translate'
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

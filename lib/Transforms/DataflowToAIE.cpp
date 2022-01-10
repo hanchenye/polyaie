@@ -14,10 +14,10 @@ using namespace dataflow;
 using namespace xilinx::AIE;
 
 namespace {
-struct ConvertToAIE : public polyaie::ConvertToAIEBase<ConvertToAIE> {
-  ConvertToAIE() = default;
-  ConvertToAIE(const ConvertToAIE &) {}
-  ConvertToAIE(const PolyAIEOptions &opts) { vecSize = opts.vectorizeSize; }
+struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
+  DataflowToAIE() = default;
+  DataflowToAIE(const DataflowToAIE &) {}
+  DataflowToAIE(const PolyAIEOptions &opts) { vecSize = opts.vectorizeSize; }
 
   void runOnOperation() override;
 
@@ -152,7 +152,7 @@ static void updateMemOp(OpBuilder &b, BufferOp buf, StringRef tokName,
   }
 }
 
-void ConvertToAIE::runOnOperation() {
+void DataflowToAIE::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
@@ -363,10 +363,10 @@ void ConvertToAIE::runOnOperation() {
   }
 }
 
-std::unique_ptr<Pass> polyaie::createConvertToAIEPass() {
-  return std::make_unique<ConvertToAIE>();
+std::unique_ptr<Pass> polyaie::createDataflowToAIEPass() {
+  return std::make_unique<DataflowToAIE>();
 }
 std::unique_ptr<Pass>
-polyaie::createConvertToAIEPass(const PolyAIEOptions &opts) {
-  return std::make_unique<ConvertToAIE>(opts);
+polyaie::createDataflowToAIEPass(const PolyAIEOptions &opts) {
+  return std::make_unique<DataflowToAIE>(opts);
 }

@@ -93,21 +93,6 @@ def DetectLoopReduction : FunctionPass<"polyaie-detect-loop-reduction"> {
   let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
 }
 
-def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
-  let summary = "Substitute each function body with an external kernel";
-  let description = [{
-    This is a highly experimental pass. We need to figure out how to let the
-    compiler know which external kernel to link for each tile.
-  }];
-  let constructor = "mlir::polyaie::createLinkExternKernelPass()";
-
-  let options = [
-    Option<"objectFile", "object-file", "std::string",
-           /*default=*/"\"kernel.o\"", "Specify the path of the pre-compiled "
-           "object file of external kernels">
-  ];
-}
-
 def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let summary = "Extract the depedencies and create dataflow";
   let description = [{
@@ -138,18 +123,33 @@ def PrintDataflow : FunctionPass<"polyaie-print-dataflow"> {
   let constructor = "mlir::polyaie::createPrintDataflowPass()";
 }
 
-def ConvertToAIE : Pass<"polyaie-convert-to-aie", "ModuleOp"> {
+def DataflowToAIE : Pass<"polyaie-dataflow-to-aie", "ModuleOp"> {
   let summary = "Convert to the logical-level IR of AIE";
   let description = [{
-    Lower function calls to AIE tiles and cores, create local buffers, create
-    MemOp and FlowOp to implement the dependencies between AIE tiles, lower
-    buffer load and store operations.
+    Lower dataflow processes to AIE tiles and cores, create local buffers,
+    create MemOp and FlowOp to implement the dependencies between AIE tiles,
+    lower buffer load and store operations.
   }];
-  let constructor = "mlir::polyaie::createConvertToAIEPass()";
+  let constructor = "mlir::polyaie::createDataflowToAIEPass()";
 
   let options = [
     Option<"vecSize", "vec-size", "int64_t", /*default=*/"1",
            "Specify the size of super vectorization">
+  ];
+}
+
+def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
+  let summary = "Substitute each function body with an external kernel";
+  let description = [{
+    This is a highly experimental pass. We need to figure out how to let the
+    compiler know which external kernel to link for each tile.
+  }];
+  let constructor = "mlir::polyaie::createLinkExternKernelPass()";
+
+  let options = [
+    Option<"objectFile", "object-file", "std::string",
+           /*default=*/"\"kernel.o\"", "Specify the path of the pre-compiled "
+           "object file of external kernels">
   ];
 }
 
