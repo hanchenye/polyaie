@@ -1,0 +1,67 @@
+{
+  "folders": [
+    {
+      "name": "POLYAIE",
+      "path": ".."
+    },
+    {
+      "name": "MLIRAIE",
+      "path": "../mlir-aie"
+    },
+    {
+      "name": "CIRCT",
+      "path": "../circt"
+    },
+    {
+      "name": "MLIR",
+      "path": "../circt/llvm/mlir"
+    }
+  ],
+  "settings": {
+    "editor.detectIndentation": false,
+    "editor.insertSpaces": true,
+    "editor.useTabStops": true,
+    "editor.tabSize": 2,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.rulers": [
+      80
+    ],
+    "jupyter.jupyterServerType": "local",
+    "C_Cpp.errorSquiggles": "Enabled",
+    "C_Cpp.dimInactiveRegions": true,
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.default.includePath": [
+      "${workspaceFolder:POLYAIE}/include",
+      "${workspaceFolder:POLYAIE}/build/include",
+      "${workspaceFolder:MLIRAIE}/include",
+      "${workspaceFolder:MLIRAIE}/build/include",
+      "${workspaceFolder:MLIRAIE}/build/runtime_lib",
+      "${workspaceFolder:MLIRAIE}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include",
+      "${workspaceFolder:CIRCT}/include",
+      "${workspaceFolder:CIRCT}/build/include",
+      "${workspaceFolder:CIRCT}/llvm/mlir/include",
+      "${workspaceFolder:CIRCT}/llvm/llvm/include",
+      "${workspaceFolder:CIRCT}/llvm/build/include",
+      "${workspaceFolder:CIRCT}/llvm/build/tools/mlir/include",
+      "${workspaceFolder:POLYAIE}/samples/tmp/gemm/acdc_project",
+      "${workspaceFolder:POLYAIE}/samples/tmp/utilities"
+    ],
+    "cmake.configureOnOpen": false,
+    "files.watcherExclude": {
+      "**/.git/objects/**": true,
+      "**/.git/subtree-cache/**": true,
+      "**/node_modules/*/**": true,
+      "**/llvm/**": true
+    },
+    "files.associations": {
+      "*.inc": "cpp"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-vscode.cpptools"
+    ]
+  }
+}
