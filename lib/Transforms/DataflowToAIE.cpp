@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
 
@@ -15,127 +15,9 @@ using namespace xilinx::AIE;
 
 namespace {
 struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
-  DataflowToAIE() = default;
-  DataflowToAIE(const DataflowToAIE &) {}
-  DataflowToAIE(const PolyAIEOptions &opts) { vecSize = opts.vectorizeSize; }
-
   void runOnOperation() override;
-
-  /// Map from a buffer to its destination buffers. All values here must be
-  /// defined by BufferOps.
-  DenseMap<Value, SmallVector<Value, 4>> targetBufsMap;
-
-  /// Map from ProcessOp result to its corresponding BufferOp.
-  DenseMap<Value, BufferOp> bufMap;
 };
 } // namespace
-
-static Block *getCoreBlock(BufferOp buf) {
-  return &buf.getTileOp().getCoreOp().body().front();
-}
-
-static void createLoopNest(OpBuilder &b, Value srcBuf, Value tgtBuf,
-                           int64_t vecSize) {
-  auto loc = b.getUnknownLoc();
-  auto type = srcBuf.getType().cast<MemRefType>();
-  auto rank = std::max(type.getRank(), (int64_t)1);
-
-  SmallVector<Value, 4> ivs;
-  unsigned loopIdx = 0;
-  for (auto dimSize : type.getShape()) {
-    // The last loop level should has a step of "vecSize".
-    auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize,
-                                            ++loopIdx == rank ? vecSize : 1);
-    b.setInsertionPointToStart(loop.getBody());
-    ivs.push_back(loop.getInductionVar());
-  }
-
-  // Create affine load/store operations or vector transfer read/write
-  // operations according to the value of vector size.
-  if (vecSize == 1) {
-    auto value = b.create<mlir::AffineLoadOp>(loc, srcBuf, ivs);
-    b.create<mlir::AffineStoreOp>(loc, value, tgtBuf, ivs);
-  } else {
-    auto vecType = VectorType::get({vecSize}, type.getElementType());
-    auto value = b.create<vector::TransferReadOp>(loc, vecType, srcBuf, ivs);
-    b.create<vector::TransferWriteOp>(loc, value, tgtBuf, ivs);
-  }
-}
-
-static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
-                         StringRef tokName, unsigned tokValA, unsigned tokValR,
-                         bool shareSrcTile, int64_t vecSize) {
-  auto loc = b.getUnknownLoc();
-
-  // If the shareable tile is source tile, then create memory copy in the end of
-  // CoreOp of the source tile. Otherwise, create in the start of CoreOp of the
-  // target tile.
-  if (shareSrcTile)
-    b.setInsertionPoint(getCoreBlock(srcBuf)->getTerminator());
-  else
-    b.setInsertionPointToStart(getCoreBlock(tgtBuf));
-
-  // Generate token acquire and release.
-  b.create<UseTokenOp>(loc, tokName, tokValA, LockAction::Acquire);
-  auto useOp = b.create<UseTokenOp>(loc, tokName, tokValR, LockAction::Release);
-  b.setInsertionPoint(useOp);
-
-  // Create loop nests to copy data from source to target.
-  createLoopNest(b, srcBuf, tgtBuf, vecSize);
-}
-
-static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
-                            Block *endBlock, BufferOp buf, StringRef tokName,
-                            unsigned tokValA, unsigned tokValR, DMAChan chan) {
-  auto loc = b.getUnknownLoc();
-
-  // Create DMA start block.
-  b.setInsertionPointToStart(dmaBlock);
-  b.create<DMAStartOp>(loc, chan, bdBlock, endBlock);
-
-  // Create DMA descripter block.
-  b.setInsertionPointToStart(bdBlock);
-  b.create<UseTokenOp>(loc, tokName, tokValA, LockAction::Acquire);
-  b.create<DMABDOp>(loc, buf, /*offset=*/0, buf.getType().getNumElements(), 0);
-  b.create<UseTokenOp>(loc, tokName, tokValR, LockAction::Release);
-  b.create<BranchOp>(loc, bdBlock);
-
-  // Create DMA end block.
-  if (endBlock->empty()) {
-    b.setInsertionPointToStart(endBlock);
-    b.create<xilinx::AIE::EndOp>(loc);
-  }
-}
-
-static void updateMemOp(OpBuilder &b, BufferOp buf, StringRef tokName,
-                        unsigned tokValA, unsigned tokValR, DMAChan chan) {
-  auto tile = buf.getTileOp();
-
-  if (auto mem = tile.getMemOp()) {
-    auto &endBlock = mem.body().back();
-    auto &predDmaBlock = *std::prev(mem.body().end(), 3);
-
-    auto dmaBlock = b.createBlock(&endBlock);
-    auto bdBlock = b.createBlock(&endBlock);
-
-    auto predDma = cast<DMAStartOp>(&predDmaBlock.front());
-    predDma.setSuccessor(dmaBlock, /*index=*/1);
-
-    fillMemOpBlocks(b, dmaBlock, bdBlock, &endBlock, buf, tokName, tokValA,
-                    tokValR, chan);
-  } else {
-    // If MemOp has not been created, create a new one.
-    b.setInsertionPointAfter(tile.getCoreOp());
-    auto newMem = b.create<MemOp>(b.getUnknownLoc(), tile);
-
-    auto &dmaBlock = newMem.body().emplaceBlock();
-    auto &bdBlock = newMem.body().emplaceBlock();
-    auto &endBlock = newMem.body().emplaceBlock();
-
-    fillMemOpBlocks(b, &dmaBlock, &bdBlock, &endBlock, buf, tokName, tokValA,
-                    tokValR, chan);
-  }
-}
 
 void DataflowToAIE::runOnOperation() {
   auto mod = getOperation();
@@ -143,10 +25,17 @@ void DataflowToAIE::runOnOperation() {
   auto loc = b.getUnknownLoc();
   auto topFunc = getTopFunc(mod);
 
+  // Map from a buffer to its target buffers.
+  DenseMap<Value, SmallVector<Value, 4>> targetBufsMap;
+
+  // Map from process result to its corresponding buffer.
+  DenseMap<Value, BufferOp> bufMap;
+
   // Generate TileOp, BufferOps, and CoreOp.
-  for (auto process : topFunc.getOps<dataflow::ProcessOp>()) {
+  // TODO: Should use DFS traversal for graph region.
+  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
     // Generate TileOp based on the placement results.
-    b.setInsertionPointAfter(process);
+    b.setInsertionPoint(process);
     auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
 
     // Create BufferOp for each local buffer.
@@ -160,36 +49,44 @@ void DataflowToAIE::runOnOperation() {
         alloc.erase();
 
         // If the buffer is casted to a tensor and returned, it may be consumed
-        // by other processes. Therefore, we record the mapping in "bufMap".
-        if (auto toTensorOp =
-                getOnlyUserOfType<bufferization::ToTensorOp>(buf)) {
-          auto result = process.getResultFromInternalVal(toTensorOp.result());
-          bufMap[result] = buf;
+        // by other processes. Therefore, we record the process result to buffer
+        // mapping in "bufMap".
+        if (auto castOp = getOnlyUserOfType<bufferization::ToTensorOp>(buf))
+          if (auto result = process.getResultFromInternalVal(castOp.result())) {
+            bufMap[result] = buf;
+            castOp->dropAllUses();
+            castOp.erase();
 
-          // Create a host DMA to store back the result if applicable.
-          if (auto tensorStore =
-                  getOnlyUserOfType<dataflow::TensorStoreOp>(result))
-            b.create<HostDMAOp>(loc, tensorStore.offsets(), tensorStore.sizes(),
-                                tensorStore.strides(), HostDMAKind::AIEToHost,
-                                tensorStore.memory(), buf);
+            // Create a host DMA to store the result to host.
+            if (auto store = getOnlyUserOfType<TensorStoreOp>(result)) {
+              b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                                  store.strides(), HostDMAKind::AIEToHost,
+                                  store.memory(), buf);
+              store.erase();
+            }
+          }
+      } else if (auto castOp = dyn_cast<bufferization::ToMemrefOp>(op)) {
+        // Replace uses of the cast operation with the BufferOp.
+        auto buf = b.create<BufferOp>(loc, castOp.getType(), tile);
+        castOp.replaceAllUsesWith(buf.getResult());
+        castOp.erase();
+
+        if (auto operand = process.getOperandFromInternalVal(castOp.tensor())) {
+          // Construct the "targetBufsMap" to record the buffer dependencies,
+          // which is used to generate BroadcastOps later.
+          auto sourceBuf = bufMap.lookup(operand);
+          if (sourceBuf)
+            targetBufsMap[sourceBuf].push_back(buf);
+
+          // Create a host DMA to load the data from host.
+          if (auto load = operand.getDefiningOp<TensorLoadOp>()) {
+            b.create<HostDMAOp>(loc, load.offsets(), load.sizes(),
+                                load.strides(), HostDMAKind::HostToAIE, buf,
+                                load.memory());
+            load->dropAllUses();
+            load.erase();
+          }
         }
-      } else if (auto toMemrefOp = dyn_cast<bufferization::ToMemrefOp>(op)) {
-        // Replace uses of alloc with the BufferOp.
-        auto buf = b.create<BufferOp>(
-            loc, toMemrefOp.getType().cast<MemRefType>(), tile);
-        auto operand = process.getOperandFromInternalVal(toMemrefOp.tensor());
-        toMemrefOp.replaceAllUsesWith(buf.getResult());
-        toMemrefOp.erase();
-
-        // This buffer should not be accessed by other processes. Construct the
-        // "targetBufsMap" in order to generate BroadcastOp later.
-        targetBufsMap[bufMap[operand]].push_back(buf);
-
-        // Create a host DMA to load the data if applicable.
-        if (auto tensorLoad = operand.getDefiningOp<dataflow::TensorLoadOp>())
-          b.create<HostDMAOp>(loc, tensorLoad.offsets(), tensorLoad.sizes(),
-                              tensorLoad.strides(), HostDMAKind::HostToAIE, buf,
-                              tensorLoad.memory());
       }
     }
 
@@ -228,25 +125,18 @@ void DataflowToAIE::runOnOperation() {
     returnOp->erase();
   }
 
-  // Remove all converted operations.
-  for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
-    if (isa<dataflow::ProcessOp, dataflow::TensorLoadOp,
-            dataflow::TensorStoreOp, bufferization::ToTensorOp>(op)) {
-      op.dropAllUses();
-      op.erase();
-    }
+  // Now we can safely erase all process operations.
+  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+    process->dropAllUses();
+    process->erase();
+  }
 
-  // // Create BroadcastOps.
-  // for (auto pair : targetBufsMap) {
-  //   b.setInsertionPointAfterValue(pair.first);
-  //   b.create<dataflow::BroadcastOp>(loc, pair.first, pair.second);
-  // }
+  // Create BroadcastOps.
+  b.setInsertionPoint(topFunc.back().getTerminator());
+  for (auto pair : targetBufsMap)
+    b.create<BroadcastOp>(loc, pair.first, pair.second);
 }
 
 std::unique_ptr<Pass> polyaie::createDataflowToAIEPass() {
   return std::make_unique<DataflowToAIE>();
-}
-std::unique_ptr<Pass>
-polyaie::createDataflowToAIEPass(const PolyAIEOptions &opts) {
-  return std::make_unique<DataflowToAIE>(opts);
 }

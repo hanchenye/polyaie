@@ -13,9 +13,6 @@ using namespace polyaie;
 namespace {
 struct ExtractMemrefDependency
     : public polyaie::ExtractMemrefDependencyBase<ExtractMemrefDependency> {
-  // Hold the subviews list (or itself) of each global memory.
-  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
-
   void runOnOperation() override;
 };
 } // namespace
@@ -23,6 +20,9 @@ struct ExtractMemrefDependency
 void ExtractMemrefDependency::runOnOperation() {
   auto mod = getOperation();
   auto topFunc = getTopFunc(mod);
+
+  // Hold the subviews list (or itself) of each global memory.
+  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
 
   // Construct explicit dependencies between memrefs.
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {

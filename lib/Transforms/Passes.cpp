@@ -44,10 +44,11 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createPlacementPass(opts));
         pm.addPass(polyaie::createPrintDataflowPass());
 
-        pm.addPass(polyaie::createDataflowToAIEPass(opts));
+        pm.addPass(polyaie::createDataflowToAIEPass());
         pm.addPass(mlir::createCanonicalizerPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
+        pm.addPass(polyaie::createMaterializeBroadcastPass(opts));
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         // pm.addPass(xilinx::AIE::createAIECreateLocksPass());
         // pm.addPass(polyaie::createDoubleBufferPass());

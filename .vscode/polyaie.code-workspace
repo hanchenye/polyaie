@@ -129,7 +129,11 @@
       "thread": "cpp",
       "typeindex": "cpp",
       "valarray": "cpp",
-      "variant": "cpp"
+      "variant": "cpp",
+      "__split_buffer": "cpp",
+      "rope": "cpp",
+      "dynamic_bitset": "cpp",
+      "*.ipp": "cpp"
     }
   },
   "extensions": {

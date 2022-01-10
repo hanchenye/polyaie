@@ -131,11 +131,6 @@ def DataflowToAIE : Pass<"polyaie-dataflow-to-aie", "ModuleOp"> {
     lower buffer load and store operations.
   }];
   let constructor = "mlir::polyaie::createDataflowToAIEPass()";
-
-  let options = [
-    Option<"vecSize", "vec-size", "int64_t", /*default=*/"1",
-           "Specify the size of super vectorization">
-  ];
 }
 
 def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
@@ -150,6 +145,16 @@ def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
     Option<"objectFile", "object-file", "std::string",
            /*default=*/"\"kernel.o\"", "Specify the path of the pre-compiled "
            "object file of external kernels">
+  ];
+}
+
+def MaterializeBroadcast : Pass<"polyaie-materialize-broadcast", "ModuleOp"> {
+  let summary = "Materialize broadcast with flow and dma";
+  let constructor = "mlir::polyaie::createMaterializeBroadcastPass()";
+
+  let options = [
+    Option<"vecSize", "vec-size", "int64_t", /*default=*/"1",
+           "Specify the size of super vectorization">
   ];
 }
 

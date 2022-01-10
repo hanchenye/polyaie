@@ -13,9 +13,6 @@ using namespace polyaie;
 namespace {
 struct HoistMemrefSubview
     : public polyaie::HoistMemrefSubviewBase<HoistMemrefSubview> {
-  // Hold the subviews list of each global memory.
-  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
-
   void runOnOperation() override;
 };
 } // namespace
@@ -24,6 +21,9 @@ void HoistMemrefSubview::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto topFunc = getTopFunc(mod);
+
+  // Hold the subviews list of each global memory.
+  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
 
   for (auto call : topFunc.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
