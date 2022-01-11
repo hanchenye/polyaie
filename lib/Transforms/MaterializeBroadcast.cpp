@@ -13,72 +13,48 @@ using namespace polyaie;
 using namespace dataflow;
 using namespace xilinx::AIE;
 
+/// BroadcastOp takes one source buffer and variadic target buffers as operand,
+/// the relationship between the source buffer and target buffer can be
+/// categorized into three different kinds:
+///   1) Share the source tile
+///   2) share the target tile
+///   3) Share both the source and target tile
+///   4) Don't share any tile
+/// For the target buffers of each BroadcastOp, there are at most one kind-1
+/// buffer, one kind-2 buffer, two kind-3 buffer, and theoretically-unlimited
+/// kind-4 buffers.
+///
+/// To materialize BroadcastOp, we need to do several things: 1) Reallocate
+/// source buffer and merge target buffers if applicable; 2) Create MemOp,
+/// DMAStartOp, DMABDPacketOp, and DMABDOp to describe DMAs; 3) Create FlowOp or
+/// PacketFlowOp to describe connectivities; 4) Generate tokens/locks to realize
+/// the back-pressure between computation and communication. Note that the
+/// target buffer can be eliminated only if it shares the target tile with the
+/// source buffer (or in other words, only if the target tile can access the
+/// source buffer).
+///
+/// In the current implementation, we follow the table below to reallocate the
+/// source buffer, where 1/2/3/4 indicates whether kind-1/2/3/4 exists in the
+/// broadcast:
+///   | 1 |2/3| 4 |  loc.  |
+///   |---|---|---|--------|
+///   | + |   |   | target |
+///   |   | + |   | source |
+///   |   |   | + | source |
+///   | + | + |   | source |
+///   | + |   | + | target |
+///   |   | + | + | source |
+///   | + | + | + | source |
+///
+/// This means only if there's one kind-1 and no kind-2/3 existing, we
+/// reallocate the source buffer to the target tile.
+///
 namespace {
 struct MaterializeBroadcast
     : public polyaie::MaterializeBroadcastBase<MaterializeBroadcast> {
-  MaterializeBroadcast() = default;
-  MaterializeBroadcast(const MaterializeBroadcast &) {}
-  MaterializeBroadcast(const PolyAIEOptions &opts) {
-    vecSize = opts.vectorizeSize;
-  }
-
   void runOnOperation() override;
 };
 } // namespace
-
-static Block *getCoreBlock(BufferOp buf) {
-  return &buf.getTileOp().getCoreOp().body().front();
-}
-
-static void createLoopNest(OpBuilder &b, Value srcBuf, Value tgtBuf,
-                           int64_t vecSize) {
-  auto loc = b.getUnknownLoc();
-  auto type = srcBuf.getType().cast<MemRefType>();
-  auto rank = std::max(type.getRank(), (int64_t)1);
-
-  SmallVector<Value, 4> ivs;
-  unsigned loopIdx = 0;
-  for (auto dimSize : type.getShape()) {
-    // The last loop level should has a step of "vecSize".
-    auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize,
-                                            ++loopIdx == rank ? vecSize : 1);
-    b.setInsertionPointToStart(loop.getBody());
-    ivs.push_back(loop.getInductionVar());
-  }
-
-  // Create affine load/store operations or vector transfer read/write
-  // operations according to the value of vector size.
-  if (vecSize == 1) {
-    auto value = b.create<mlir::AffineLoadOp>(loc, srcBuf, ivs);
-    b.create<mlir::AffineStoreOp>(loc, value, tgtBuf, ivs);
-  } else {
-    auto vecType = VectorType::get({vecSize}, type.getElementType());
-    auto value = b.create<vector::TransferReadOp>(loc, vecType, srcBuf, ivs);
-    b.create<vector::TransferWriteOp>(loc, value, tgtBuf, ivs);
-  }
-}
-
-static void createMemCpy(OpBuilder &b, BufferOp srcBuf, BufferOp tgtBuf,
-                         StringRef tokName, unsigned tokValA, unsigned tokValR,
-                         bool shareSrcTile, int64_t vecSize) {
-  auto loc = b.getUnknownLoc();
-
-  // If the shareable tile is source tile, then create memory copy in the end of
-  // CoreOp of the source tile. Otherwise, create in the start of CoreOp of the
-  // target tile.
-  if (shareSrcTile)
-    b.setInsertionPoint(getCoreBlock(srcBuf)->getTerminator());
-  else
-    b.setInsertionPointToStart(getCoreBlock(tgtBuf));
-
-  // Generate token acquire and release.
-  b.create<UseTokenOp>(loc, tokName, tokValA, LockAction::Acquire);
-  auto useOp = b.create<UseTokenOp>(loc, tokName, tokValR, LockAction::Release);
-  b.setInsertionPoint(useOp);
-
-  // Create loop nests to copy data from source to target.
-  createLoopNest(b, srcBuf, tgtBuf, vecSize);
-}
 
 static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
                             Block *endBlock, BufferOp buf, StringRef tokName,
@@ -133,12 +109,86 @@ static void updateMemOp(OpBuilder &b, BufferOp buf, StringRef tokName,
   }
 }
 
-void MaterializeBroadcast::runOnOperation() {}
+void MaterializeBroadcast::runOnOperation() {
+  auto mod = getOperation();
+  auto b = OpBuilder(mod);
+  auto loc = b.getUnknownLoc();
+  auto topFunc = getTopFunc(mod);
+
+  unsigned tokIdx = 0;
+  for (auto broadcast :
+       llvm::make_early_inc_range(topFunc.getOps<BroadcastOp>())) {
+    auto srcBuf = broadcast.source().getDefiningOp<BufferOp>();
+    auto srcTile = srcBuf.getTileOp();
+
+    SmallVector<BufferOp, 4> shareSrcTileBufs;
+    SmallVector<BufferOp, 4> shareTgtTileBufs;
+    SmallVector<BufferOp, 4> nonAdjacentBufs;
+    for (auto tgt : broadcast.targets()) {
+      auto tgtBuf = tgt.getDefiningOp<BufferOp>();
+      auto tgtTile = tgtBuf.getTileOp();
+
+      auto shareableTile = getShareableTile(srcBuf, tgtBuf);
+      if (shareableTile == srcTile)
+        shareSrcTileBufs.push_back(tgtBuf);
+      else if (shareableTile == tgtTile)
+        shareTgtTileBufs.push_back(tgtBuf);
+      else
+        nonAdjacentBufs.push_back(tgtBuf);
+    }
+
+    assert(shareSrcTileBufs.size() <= 1 && shareTgtTileBufs.size() <= 3 &&
+           "illegal broadcast with incorrect target buffers");
+
+    // Collect mergeable and non-mergeable target buffers.
+    SmallVector<BufferOp, 4> mergeableBufs;
+    SmallVector<BufferOp, 4> nonMergeableBufs;
+    if (shareSrcTileBufs.size() == 1 && shareTgtTileBufs.size() == 0) {
+      // Reallocate source buffer to the target tile.
+      srcBuf.tileMutable().assign(shareSrcTileBufs.front().tile());
+
+      // After reallocate, the target tile can access the source buffer thus the
+      // target buffer is mergeable now.
+      mergeableBufs.append(shareSrcTileBufs);
+      nonMergeableBufs.append(nonAdjacentBufs);
+    } else {
+      mergeableBufs.append(shareTgtTileBufs);
+      nonMergeableBufs.append(shareSrcTileBufs);
+      nonMergeableBufs.append(nonAdjacentBufs);
+    }
+
+    // Create a new token for the broadcast.
+    b.setInsertionPointToStart(&topFunc.front());
+    auto tok = b.create<TokenOp>(loc, 0);
+    auto tokName = "token" + std::to_string(tokIdx++);
+    tok->setAttr("sym_name", b.getStringAttr(tokName));
+    unsigned tokVal = 0;
+
+    // Acquire and release the token in the source tile.
+    auto srcCore = srcTile.getCoreOp();
+    b.setInsertionPointToStart(&srcCore.body().front());
+    b.create<UseTokenOp>(loc, tokName, tokVal, LockAction::Acquire);
+    b.setInsertionPoint(srcCore.body().back().getTerminator());
+    b.create<UseTokenOp>(loc, tokName, ++tokVal, LockAction::Release);
+    auto srcRelTokVal = tokVal;
+
+    // Handle mergeable target buffers.
+    for (auto tgtBuf : mergeableBufs) {
+      auto tgtCore = tgtBuf.getTileOp().getCoreOp();
+      b.setInsertionPointToStart(&tgtCore.body().front());
+      b.create<UseTokenOp>(loc, tokName, srcRelTokVal, LockAction::Acquire);
+      b.setInsertionPoint(tgtCore.body().back().getTerminator());
+      b.create<UseTokenOp>(loc, tokName, ++tokVal, LockAction::Release);
+
+      // Replace target buffer with source buffer.
+      tgtBuf.replaceAllUsesWith(srcBuf.getResult());
+      tgtBuf.erase();
+    }
+  }
+
+  llvm::outs() << *mod << "\n";
+}
 
 std::unique_ptr<Pass> polyaie::createMaterializeBroadcastPass() {
   return std::make_unique<MaterializeBroadcast>();
-}
-std::unique_ptr<Pass>
-polyaie::createMaterializeBroadcastPass(const PolyAIEOptions &opts) {
-  return std::make_unique<MaterializeBroadcast>(opts);
 }

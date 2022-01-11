@@ -141,8 +141,8 @@ double Placer::getLayoutCost() const {
                          *std::min_element(rows.begin(), rows.end());
         auto boxWidth = *std::max_element(cols.begin(), cols.end()) -
                         *std::min_element(cols.begin(), cols.end());
-        cost += result.getType().cast<MemRefType>().getNumElements() *
-                (boxHeight + boxWidth);
+        cost += result.getType().cast<RankedTensorType>().getNumElements();
+        cost += 4 * (boxHeight + boxWidth);
       }
     }
   }

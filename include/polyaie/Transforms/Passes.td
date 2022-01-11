@@ -149,13 +149,8 @@ def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
 }
 
 def MaterializeBroadcast : Pass<"polyaie-materialize-broadcast", "ModuleOp"> {
-  let summary = "Materialize broadcast with flow and dma";
+  let summary = "Materialize broadcast with tokens, flows, and dmas";
   let constructor = "mlir::polyaie::createMaterializeBroadcastPass()";
-
-  let options = [
-    Option<"vecSize", "vec-size", "int64_t", /*default=*/"1",
-           "Specify the size of super vectorization">
-  ];
 }
 
 def DoubleBuffer : Pass<"polyaie-double-buffer", "ModuleOp"> {

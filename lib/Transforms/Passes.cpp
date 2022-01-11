@@ -48,7 +48,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createCanonicalizerPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
-        pm.addPass(polyaie::createMaterializeBroadcastPass(opts));
+        pm.addPass(polyaie::createMaterializeBroadcastPass());
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
         // pm.addPass(xilinx::AIE::createAIECreateLocksPass());
         // pm.addPass(polyaie::createDoubleBufferPass());

@@ -34,11 +34,9 @@ unsigned getRow(Operation *op);
 
 bool adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
               unsigned tgtCol);
-bool adjacent(dataflow::ProcessOp srcProc, dataflow::ProcessOp tgtProc);
-bool adjacent(xilinx::AIE::TileOp srcTile, xilinx::AIE::TileOp tgtTile);
 
-xilinx::AIE::TileOp getShareableTile(xilinx::AIE::TileOp srcTile,
-                                     xilinx::AIE::TileOp tgtTile);
+xilinx::AIE::TileOp getShareableTile(xilinx::AIE::BufferOp bufA,
+                                     xilinx::AIE::BufferOp bufB);
 
 using UserIterator = Value::user_iterator;
 

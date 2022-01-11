@@ -74,33 +74,27 @@ bool polyaie::adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
   return (std::abs((int64_t)srcRow - (int64_t)tgtRow) +
           std::abs((int64_t)srcCol - (int64_t)tgtCol)) == 1;
 }
-bool polyaie::adjacent(dataflow::ProcessOp srcProc,
-                       dataflow::ProcessOp tgtProc) {
-  return adjacent(getRow(srcProc), getCol(srcProc), getRow(tgtProc),
-                  getCol(tgtProc));
-}
-bool polyaie::adjacent(xilinx::AIE::TileOp srcTile,
-                       xilinx::AIE::TileOp tgtTile) {
-  return adjacent(srcTile.row(), srcTile.col(), tgtTile.row(), tgtTile.col());
-}
 
-xilinx::AIE::TileOp polyaie::getShareableTile(xilinx::AIE::TileOp srcTile,
-                                              xilinx::AIE::TileOp tgtTile) {
-  auto srcCol = srcTile.col();
-  auto srcRow = srcTile.row();
-  auto tgtCol = tgtTile.col();
-  auto tgtRow = tgtTile.row();
+xilinx::AIE::TileOp polyaie::getShareableTile(xilinx::AIE::BufferOp bufA,
+                                              xilinx::AIE::BufferOp bufB) {
+  auto tileA = bufA.getTileOp();
+  auto tileB = bufB.getTileOp();
 
-  bool isS = xilinx::AIE::isSouth(srcCol, srcRow, tgtCol, tgtRow);
-  bool isW = xilinx::AIE::isWest(srcCol, srcRow, tgtCol, tgtRow);
-  bool isN = xilinx::AIE::isNorth(srcCol, srcRow, tgtCol, tgtRow);
-  bool isE = xilinx::AIE::isEast(srcCol, srcRow, tgtCol, tgtRow);
-  bool isEvenRow = ((srcRow % 2) == 0);
+  auto colA = tileA.col();
+  auto rowA = tileA.row();
+  auto colB = tileB.col();
+  auto rowB = tileB.row();
+
+  bool isS = xilinx::AIE::isSouth(colA, rowA, colB, rowB);
+  bool isW = xilinx::AIE::isWest(colA, rowA, colB, rowB);
+  bool isN = xilinx::AIE::isNorth(colA, rowA, colB, rowB);
+  bool isE = xilinx::AIE::isEast(colA, rowA, colB, rowB);
+  bool isEvenRow = ((rowA % 2) == 0);
 
   if (isS || isN || (isW && isEvenRow) || (isE && !isEvenRow))
-    return tgtTile;
+    return tileB;
   if ((isW && !isEvenRow) || (isE && isEvenRow))
-    return srcTile;
+    return tileA;
 
   return nullptr;
 }
