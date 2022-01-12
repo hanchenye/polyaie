@@ -26,12 +26,12 @@ using namespace xilinx::AIE;
 ///
 /// To materialize BroadcastOp, we need to do several things: 1) Reallocate
 /// source buffer and merge target buffers if applicable; 2) Create MemOp,
-/// DMAStartOp, DMABDPacketOp, and DMABDOp to describe DMAs; 3) Create FlowOp or
-/// PacketFlowOp to describe connectivities; 4) Generate tokens/locks to realize
-/// the back-pressure between computation and communication. Note that the
-/// target buffer can be eliminated only if it shares the target tile with the
-/// source buffer (or in other words, only if the target tile can access the
-/// source buffer).
+/// DMAStartOp, DMABDPacketOp, and DMABDOp to describe DMAs; 3) Create
+/// PacketFlowOp, PacketSourceOp, and PacketDestOp to describe connectivities;
+/// 4) Generate tokens/locks to realize the back-pressure between computation
+/// and communication. Note that the target buffer can be eliminated only if it
+/// shares the target tile with the source buffer (or in other words, only if
+/// the target tile can access the source buffer).
 ///
 /// In the current implementation, we follow the table below to reallocate the
 /// source buffer, where 1/2/3/4 indicates whether kind-1/2/3/4 exists in the
@@ -56,68 +56,33 @@ struct MaterializeBroadcast
 };
 } // namespace
 
-static void fillMemOpBlocks(OpBuilder &b, Block *dmaBlock, Block *bdBlock,
-                            Block *endBlock, BufferOp buf, StringRef tokName,
-                            unsigned tokValA, unsigned tokValR, DMAChan chan) {
-  auto loc = b.getUnknownLoc();
+namespace {
+struct DMAInfo {
+  StringAttr tokName;
+  unsigned acqTokVal;
+  unsigned relTokVal;
+  BufferOp buf;
+  PacketFlowOp flow;
 
-  // Create DMA start block.
-  b.setInsertionPointToStart(dmaBlock);
-  b.create<DMAStartOp>(loc, chan, bdBlock, endBlock);
-
-  // Create DMA descripter block.
-  b.setInsertionPointToStart(bdBlock);
-  b.create<UseTokenOp>(loc, tokName, tokValA, LockAction::Acquire);
-  b.create<DMABDOp>(loc, buf, /*offset=*/0, buf.getType().getNumElements(), 0);
-  b.create<UseTokenOp>(loc, tokName, tokValR, LockAction::Release);
-  b.create<BranchOp>(loc, bdBlock);
-
-  // Create DMA end block.
-  if (endBlock->empty()) {
-    b.setInsertionPointToStart(endBlock);
-    b.create<xilinx::AIE::EndOp>(loc);
-  }
-}
-
-static void updateMemOp(OpBuilder &b, BufferOp buf, StringRef tokName,
-                        unsigned tokValA, unsigned tokValR, DMAChan chan) {
-  auto tile = buf.getTileOp();
-
-  if (auto mem = tile.getMemOp()) {
-    auto &endBlock = mem.body().back();
-    auto &predDmaBlock = *std::prev(mem.body().end(), 3);
-
-    auto dmaBlock = b.createBlock(&endBlock);
-    auto bdBlock = b.createBlock(&endBlock);
-
-    auto predDma = cast<DMAStartOp>(&predDmaBlock.front());
-    predDma.setSuccessor(dmaBlock, /*index=*/1);
-
-    fillMemOpBlocks(b, dmaBlock, bdBlock, &endBlock, buf, tokName, tokValA,
-                    tokValR, chan);
-  } else {
-    // If MemOp has not been created, create a new one.
-    b.setInsertionPointAfter(tile.getCoreOp());
-    auto newMem = b.create<MemOp>(b.getUnknownLoc(), tile);
-
-    auto &dmaBlock = newMem.body().emplaceBlock();
-    auto &bdBlock = newMem.body().emplaceBlock();
-    auto &endBlock = newMem.body().emplaceBlock();
-
-    fillMemOpBlocks(b, &dmaBlock, &bdBlock, &endBlock, buf, tokName, tokValA,
-                    tokValR, chan);
-  }
-}
+  DMAInfo(StringAttr tokName, unsigned acqTokVal, unsigned relTokVal,
+          BufferOp buf, PacketFlowOp flow)
+      : tokName(tokName), acqTokVal(acqTokVal), relTokVal(relTokVal), buf(buf),
+        flow(flow) {}
+};
+} // namespace
 
 void MaterializeBroadcast::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc(mod);
+
+  // Map from TileOp to its associated S2MM/MM2S DMAs.
+  DenseMap<Operation *, SmallVector<DMAInfo, 8>> S2MMInfoMap;
+  DenseMap<Operation *, SmallVector<DMAInfo, 8>> MM2SInfoMap;
 
   unsigned tokIdx = 0;
-  for (auto broadcast :
-       llvm::make_early_inc_range(topFunc.getOps<BroadcastOp>())) {
+  uint8_t packetIdx = 0;
+  for (auto broadcast : llvm::make_early_inc_range(mod.getOps<BroadcastOp>())) {
     auto srcBuf = broadcast.source().getDefiningOp<BufferOp>();
     auto srcTile = srcBuf.getTileOp();
 
@@ -139,6 +104,8 @@ void MaterializeBroadcast::runOnOperation() {
 
     assert(shareSrcTileBufs.size() <= 1 && shareTgtTileBufs.size() <= 3 &&
            "illegal broadcast with incorrect target buffers");
+    // Now we can safely erase the broadcast operation.
+    broadcast.erase();
 
     // Collect mergeable and non-mergeable target buffers.
     SmallVector<BufferOp, 4> mergeableBufs;
@@ -158,35 +125,141 @@ void MaterializeBroadcast::runOnOperation() {
     }
 
     // Create a new token for the broadcast.
-    b.setInsertionPointToStart(&topFunc.front());
+    b.setInsertionPointToStart(mod.getBody());
     auto tok = b.create<TokenOp>(loc, 0);
-    auto tokName = "token" + std::to_string(tokIdx++);
-    tok->setAttr("sym_name", b.getStringAttr(tokName));
+    auto tokName = b.getStringAttr("token" + std::to_string(tokIdx++));
+    tok->setAttr("sym_name", tokName);
     unsigned tokVal = 0;
 
-    // Acquire and release the token in the source tile.
-    auto srcCore = srcTile.getCoreOp();
-    b.setInsertionPointToStart(&srcCore.body().front());
-    b.create<UseTokenOp>(loc, tokName, tokVal, LockAction::Acquire);
-    b.setInsertionPoint(srcCore.body().back().getTerminator());
-    b.create<UseTokenOp>(loc, tokName, ++tokVal, LockAction::Release);
+    // A helper for inserting token acquire and release to a CoreOp.
+    auto insertTokenUses = [&](CoreOp core, unsigned acqTokVal) {
+      b.setInsertionPointToStart(&core.body().front());
+      b.create<UseTokenOp>(loc, tokName, acqTokVal, LockAction::Acquire);
+      b.setInsertionPoint(core.body().back().getTerminator());
+      b.create<UseTokenOp>(loc, tokName, ++tokVal, LockAction::Release);
+    };
+
+    // Insert token uses in the source core.
+    insertTokenUses(srcTile.getCoreOp(), tokVal);
     auto srcRelTokVal = tokVal;
 
-    // Handle mergeable target buffers.
+    // Handle mergeable buffers.
     for (auto tgtBuf : mergeableBufs) {
-      auto tgtCore = tgtBuf.getTileOp().getCoreOp();
-      b.setInsertionPointToStart(&tgtCore.body().front());
-      b.create<UseTokenOp>(loc, tokName, srcRelTokVal, LockAction::Acquire);
-      b.setInsertionPoint(tgtCore.body().back().getTerminator());
-      b.create<UseTokenOp>(loc, tokName, ++tokVal, LockAction::Release);
-
-      // Replace target buffer with source buffer.
+      // Insert token uses in each target core.
+      insertTokenUses(tgtBuf.getTileOp().getCoreOp(), srcRelTokVal);
       tgtBuf.replaceAllUsesWith(srcBuf.getResult());
       tgtBuf.erase();
     }
+
+    // Check if the source buffer need to DMA to stream.
+    if (nonMergeableBufs.empty())
+      continue;
+
+    // First, create a new packet_flow operation and construct the source DMA
+    // info. The info will be used to generate MemOps later.
+    b.setInsertionPointAfter(srcTile.getCoreOp());
+    auto flow = b.create<PacketFlowOp>(loc, packetIdx++);
+    b.setInsertionPointToEnd(&flow.ports().emplaceBlock());
+    b.create<xilinx::AIE::EndOp>(loc);
+
+    auto srcInfo = DMAInfo(tokName, srcRelTokVal, ++tokVal, srcBuf, flow);
+    MM2SInfoMap[srcTile].push_back(srcInfo);
+
+    // Handle non-mergeable target buffers.
+    for (auto tgtBuf : nonMergeableBufs) {
+      auto tgtTile = tgtBuf.getTileOp();
+
+      // Construct the target DMA info.
+      auto tgtInfo = DMAInfo(tokName, srcRelTokVal, ++tokVal, tgtBuf, flow);
+      S2MMInfoMap[tgtTile].push_back(tgtInfo);
+
+      // Note that the target tile depends on the S2MM DMA rather than the
+      // source tile. Therefore, the acquire token value is equal to the release
+      // token value of the S2MM DMA.
+      insertTokenUses(tgtTile.getCoreOp(), tokVal);
+    }
   }
 
-  llvm::outs() << *mod << "\n";
+  // Generate MemOps containing DMAStartOp, DMABDPacketOp, and DMABDOp. Also,
+  // fill PacketSourceOp and PacketDestOp into the PacketFlowOp once the DMA
+  // channel is deteremined.
+  for (auto tile : llvm::make_early_inc_range(mod.getOps<TileOp>())) {
+    auto S2MMs = S2MMInfoMap.lookup(tile);
+    auto MM2Ss = MM2SInfoMap.lookup(tile);
+    if (S2MMs.empty() && MM2Ss.empty())
+      continue;
+
+    // Allocate S2MM and MM2S DMAs to two channels, respectively.
+    auto sizeS2MM0 = S2MMs.size() == 1 ? 1 : S2MMs.size() / 2;
+    auto S2MM0s = llvm::make_range(S2MMs.begin(), S2MMs.begin() + sizeS2MM0);
+    auto S2MM1s = llvm::make_range(S2MMs.begin() + sizeS2MM0, S2MMs.end());
+
+    auto sizeMM2S0 = MM2Ss.size() == 1 ? 1 : MM2Ss.size() / 2;
+    auto MM2S0s = llvm::make_range(MM2Ss.begin(), MM2Ss.begin() + sizeMM2S0);
+    auto MM2S1s = llvm::make_range(MM2Ss.begin() + sizeMM2S0, MM2Ss.end());
+
+    // Construct the MemOp.
+    b.setInsertionPointAfter(tile.getCoreOp());
+    auto mem = b.create<MemOp>(loc, tile);
+    auto endBlock = &mem.body().emplaceBlock();
+    b.setInsertionPointToEnd(endBlock);
+    b.create<xilinx::AIE::EndOp>(loc);
+
+    DMAStartOp currentDMAStart;
+    mlir::BranchOp currentBDBranch;
+    Block *currentHeadBDBlock;
+
+    // A helper for constructing desciption blocks of MemOp and inserting token
+    // acquire and release to each description block.
+    auto createMemBlocks = [&](llvm::iterator_range<DMAInfo *> dmaList,
+                               xilinx::AIE::DMAChan chan) {
+      if (dmaList.empty())
+        return;
+
+      // Construct one DMAStartOp.
+      auto startBlock = b.createBlock(endBlock);
+      if (currentDMAStart)
+        currentDMAStart.setSuccessor(startBlock, /*chain_idx=*/1);
+      b.setInsertionPointToEnd(startBlock);
+      currentDMAStart = b.create<DMAStartOp>(loc, chan, endBlock, endBlock);
+
+      unsigned dmaIdx = 0;
+      for (auto dma : dmaList) {
+        // Connect all description blocks into a chained loop.
+        auto bdBlock = b.createBlock(endBlock);
+        if (dmaIdx++ == 0) {
+          currentHeadBDBlock = bdBlock;
+          currentDMAStart.setSuccessor(bdBlock, /*dest_idx=*/0);
+        } else
+          currentBDBranch.setSuccessor(bdBlock);
+
+        // Create DMABDPacketOp and DMABDOp for each DMA.
+        b.setInsertionPointToStart(bdBlock);
+        auto tokName = dma.tokName.strref();
+        b.create<UseTokenOp>(loc, tokName, dma.acqTokVal, LockAction::Acquire);
+        b.create<DMABDPACKETOp>(loc, 0, dma.flow.ID());
+        b.create<DMABDOp>(loc, dma.buf, /*offset=*/0,
+                          dma.buf.getType().getNumElements(), /*AB=*/0);
+        b.create<UseTokenOp>(loc, tokName, dma.relTokVal, LockAction::Release);
+        currentBDBranch = b.create<BranchOp>(loc, currentHeadBDBlock);
+
+        // Create PacketSourceOp or PacketDestOp in the PackeFlowOp.
+        b.setInsertionPoint(dma.flow.ports().front().getTerminator());
+        if (chan == DMAChan::MM2S0 || chan == DMAChan::MM2S1)
+          b.create<PacketSourceOp>(loc, tile, WireBundle::DMA,
+                                   chan == DMAChan::MM2S0 ? 0 : 1);
+        else
+          b.create<PacketDestOp>(loc, tile, WireBundle::DMA,
+                                 chan == DMAChan::S2MM0 ? 0 : 1);
+      }
+    };
+
+    // Create MemOp blocks for all four kinds of DMAs.
+    createMemBlocks(S2MM0s, DMAChan::S2MM0);
+    createMemBlocks(S2MM1s, DMAChan::S2MM1);
+    createMemBlocks(MM2S0s, DMAChan::MM2S0);
+    createMemBlocks(MM2S1s, DMAChan::MM2S1);
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createMaterializeBroadcastPass() {

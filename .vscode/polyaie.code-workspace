@@ -133,7 +133,12 @@
       "__split_buffer": "cpp",
       "rope": "cpp",
       "dynamic_bitset": "cpp",
-      "*.ipp": "cpp"
+      "*.ipp": "cpp",
+      "__hash_table": "cpp",
+      "__tree": "cpp",
+      "queue": "cpp",
+      "stack": "cpp",
+      "locale": "cpp"
     }
   },
   "extensions": {

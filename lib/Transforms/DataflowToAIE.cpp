@@ -19,6 +19,30 @@ struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
 };
 } // namespace
 
+/// Inline `func` into its parent module.
+/// TODO: Use handshake function instead.
+static void inlineFuncIntoModule(FuncOp func) {
+  // Create alloc for all arguments of the top function.
+  auto mod = func->getParentOfType<ModuleOp>();
+  auto b = OpBuilder(mod);
+  b.setInsertionPointToEnd(mod.getBody());
+  for (auto arg : func.getArguments()) {
+    auto type = arg.getType().dyn_cast<MemRefType>();
+    if (!type)
+      type = MemRefType::get({1}, arg.getType());
+    auto memref = b.create<memref::AllocOp>(func.getLoc(), type);
+    arg.replaceAllUsesWith(memref);
+  }
+
+  // Inline the top function into the module.
+  auto &modOps = mod.getBody()->getOperations();
+  auto &funcOps = func.front().getOperations();
+  modOps.splice(modOps.end(), funcOps, funcOps.begin(),
+                std::prev(funcOps.end()));
+  mod->setAttr("sym_name", func.sym_nameAttr());
+  func.erase();
+}
+
 void DataflowToAIE::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
@@ -132,9 +156,13 @@ void DataflowToAIE::runOnOperation() {
   }
 
   // Create BroadcastOps.
-  b.setInsertionPoint(topFunc.back().getTerminator());
-  for (auto pair : targetBufsMap)
+  for (auto pair : targetBufsMap) {
+    b.setInsertionPointAfter(
+        pair.first.getDefiningOp<BufferOp>().getTileOp().getCoreOp());
     b.create<BroadcastOp>(loc, pair.first, pair.second);
+  }
+
+  inlineFuncIntoModule(topFunc);
 }
 
 std::unique_ptr<Pass> polyaie::createDataflowToAIEPass() {

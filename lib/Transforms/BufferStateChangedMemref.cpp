@@ -28,13 +28,12 @@ void BufferStateChangedMemref::runOnFunction() {
     if (!argType)
       continue;
 
-    // Return it if the argument is used by any state-changing operations.
+    // Create a local buffer for each state-changed memref argument and replace
+    // all its uses.
     if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
           return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
                      memref::TensorStoreOp, vector::TransferWriteOp>(op);
         })) {
-      // Create a local buffer for each state-changed memref argument and
-      // replace all its uses.
       // FIXME: The alloc generated here shouldn't have layout information?
       b.setInsertionPointToStart(&func.front());
       auto buf = b.create<memref::AllocOp>(loc, argType);

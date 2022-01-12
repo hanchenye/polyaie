@@ -45,14 +45,16 @@ void ExtractMemrefDependency::runOnOperation() {
         call.setOperand(operand.getOperandNumber(), *existSubview);
 
       // Update the subview list with the current subview if it is returned.
-      for (auto result : call.getResults())
-        if (func.getArgument(operand.getOperandNumber()) ==
-            returnOp->getOperand(result.getResultNumber())) {
-          if (existSubview != subviews.end())
-            subviews[existSubview - subviews.begin()] = result;
-          else
-            subviews.push_back(result);
-        }
+      auto result = llvm::find_if(call.getResults(), [&](OpResult result) {
+        return func.getArgument(operand.getOperandNumber()) ==
+               returnOp->getOperand(result.getResultNumber());
+      });
+      if (result != call.getResults().end()) {
+        if (existSubview != subviews.end())
+          subviews[existSubview - subviews.begin()] = *result;
+        else
+          subviews.push_back(*result);
+      }
     }
   }
 
