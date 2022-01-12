@@ -25,14 +25,15 @@ class HostKernelExporter : public ExporterBase {
 public:
   explicit HostKernelExporter(ExporterState &state) : ExporterBase(state) {}
   void exportHostKernel(ModuleOp mod);
-  void emitMemCpy(dataflow::MemCpyOp memCpy, unsigned argIdx, bool isWrite);
+  void emitHostDMA(dataflow::HostDMAOp hostDMA, unsigned argIdx);
 };
 } // namespace
 
-void HostKernelExporter::emitMemCpy(dataflow::MemCpyOp memCpy, unsigned argIdx,
-                                    bool isWrite) {
-  auto buf = isWrite ? memCpy.target() : memCpy.source();
-  auto bufOffsets = isWrite ? memCpy.sourceOffsets() : memCpy.targetOffsets();
+void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
+                                     unsigned argIdx) {
+  auto isWrite = hostDMA.kind() == HostDMAKind::HostToAIE;
+  auto buf = isWrite ? hostDMA.target() : hostDMA.source();
+  auto bufOffsets = hostDMA.offsets();
   auto bufType = buf.getType().dyn_cast<MemRefType>();
   auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
   auto bufRank = bufType.getRank();
@@ -164,14 +165,16 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   }
 
   // Collect memory copy operations.
-  SmallVector<dataflow::MemCpyOp, 8> loads;
-  SmallVector<dataflow::MemCpyOp, 8> stores;
+  SmallVector<dataflow::HostDMAOp, 8> loads;
+  SmallVector<dataflow::HostDMAOp, 8> stores;
 
-  for (auto memCpy : mod.getOps<dataflow::MemCpyOp>())
-    if (memCpy.target().getDefiningOp<BufferOp>())
-      loads.push_back(memCpy);
-    else if (auto buf = memCpy.source().getDefiningOp<BufferOp>())
-      stores.push_back(memCpy);
+  for (auto hostDMA : mod.getOps<dataflow::HostDMAOp>())
+    if (hostDMA.kind() == HostDMAKind::HostToAIE)
+      loads.push_back(hostDMA);
+    else if (hostDMA.kind() == HostDMAKind::AIEToHost)
+      stores.push_back(hostDMA);
+    else
+      hostDMA.emitOpError("only support host-aie DMAs");
 
   if (!dryRunHostKernel) {
     // Clear the local memory of all tiles.
@@ -183,7 +186,7 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
     // Initialize local memories.
     indent() << "unsigned bufIdx;\n\n";
     for (auto load : loads)
-      emitMemCpy(load, argIdxMap[load.source()], /*isWrite=*/true);
+      emitHostDMA(load, argIdxMap[load.source()]);
   }
 
   // Configure the iteration number buffer of each AIE.
@@ -240,7 +243,7 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
     addIndent();
 
     if (!dryRunHostKernel)
-      emitMemCpy(load, argIdxMap[load.source()], /*isWrite=*/true);
+      emitHostDMA(load, argIdxMap[load.source()]);
 
     indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
              << tile.row() << ", 15, 0, 0);\n";
@@ -253,8 +256,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   if (!dryRunHostKernel) {
     // Write back results from local to global memory.
-    for (auto memCpy : stores)
-      emitMemCpy(memCpy, argIdxMap[memCpy.target()], /*isWrite=*/false);
+    for (auto hostDMA : stores)
+      emitHostDMA(hostDMA, argIdxMap[hostDMA.target()]);
   }
 
   os << R"XXX(
