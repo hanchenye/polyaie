@@ -33,30 +33,32 @@ void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
                                      unsigned argIdx) {
   auto isWrite = hostDMA.kind() == HostDMAKind::HostToAIE;
   auto buf = isWrite ? hostDMA.target() : hostDMA.source();
-  auto bufOffsets = hostDMA.offsets();
   auto bufType = buf.getType().dyn_cast<MemRefType>();
   auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
-  auto bufRank = bufType.getRank();
+  auto bufSize = bufType.getNumElements();
 
   // Generate the loop head.
   // TODO: Make this more robust. Now we assume we won't read and write buffer
   // simultaneously in the host kernel.
-  if (bufRank)
+  if (bufSize != 1) {
     indent() << "bufIdx = 0;\n";
-  unsigned ivIdx = 0;
-  for (auto dimSize : bufType.getShape()) {
-    auto ivName = "idx" + std::to_string(ivIdx++);
-    indent() << "for (int64_t " << ivName << " = 0; " << ivName << " < "
-             << dimSize << "; ++" << ivName << ")\n";
-    addIndent();
+    unsigned ivIdx = 0;
+    for (auto dimSize : bufType.getShape()) {
+      auto ivName = "idx" + std::to_string(ivIdx++);
+      indent() << "for (int64_t " << ivName << " = 0; " << ivName << " < "
+               << dimSize << "; ++" << ivName << ")\n";
+      addIndent();
+    }
   }
 
   auto emitArgValue = [&]() {
     os << "arg" << argIdx;
-    for (ivIdx = 0; ivIdx < bufRank; ++ivIdx) {
+    if (bufSize == 1)
+      return;
+    for (unsigned ivIdx = 0; ivIdx < bufType.getRank(); ++ivIdx) {
       reduceIndent();
       os << "[idx" << ivIdx;
-      auto offset = bufOffsets[ivIdx].cast<IntegerAttr>().getInt();
+      auto offset = hostDMA.offsets()[ivIdx].cast<IntegerAttr>().getInt();
       if (offset)
         os << " + " << offset << "]";
       else
@@ -67,14 +69,14 @@ void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
   // Generate the loop body.
   if (isWrite) {
     indent() << "mlir_aie_write_buffer_" << bufName << "(_xaie, "
-             << (bufRank ? "bufIdx++" : "0") << ", ";
+             << (bufSize != 1 ? "bufIdx++" : "0") << ", ";
     emitArgValue();
     os << ");\n\n";
   } else {
     indent();
     emitArgValue();
     os << " = mlir_aie_read_buffer_" << bufName << "(_xaie, "
-       << (bufRank ? "bufIdx++" : "0") << ");\n\n";
+       << (bufSize != 1 ? "bufIdx++" : "0") << ");\n\n";
   }
 }
 
@@ -131,8 +133,9 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
     argIdxMap[alloc.getResult()] = argIdx;
 
     indent() << emitType(type.getElementType()) << " arg" << argIdx++;
-    for (auto dimSize : type.getShape())
-      os << "[" << dimSize << "]";
+    if (type.getNumElements() != 1)
+      for (auto dimSize : type.getShape())
+        os << "[" << dimSize << "]";
     os << ",\n";
   }
   indent() << "unsigned iter_num = 1) {\n";
@@ -206,8 +209,11 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   auto kernel_complete = [&]() {
     bool flag = true;
-    for (auto result : results)
+    for (auto result : results) {
       flag &= result;
+      // printf("%d ", result);
+    }
+    // printf("\n");
     return flag;
   };
 

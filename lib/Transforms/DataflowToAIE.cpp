@@ -78,16 +78,18 @@ void DataflowToAIE::runOnOperation() {
         if (auto castOp = getOnlyUserOfType<bufferization::ToTensorOp>(buf))
           if (auto result = process.getResultFromInternalVal(castOp.result())) {
             bufMap[result] = buf;
+            if (!castOp.result().hasOneUse()) {
+              castOp.emitOpError("should only be used by return op");
+              return signalPassFailure();
+            }
             castOp->dropAllUses();
             castOp.erase();
 
             // Create a host DMA to store the result to host.
-            if (auto store = getOnlyUserOfType<TensorStoreOp>(result)) {
+            if (auto store = getOnlyUserOfType<TensorStoreOp>(result))
               b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
                                   store.strides(), HostDMAKind::AIEToHost,
                                   store.memory(), buf);
-              store.erase();
-            }
           }
       } else if (auto castOp = dyn_cast<bufferization::ToMemrefOp>(op)) {
         // Replace uses of the cast operation with the BufferOp.
@@ -103,13 +105,10 @@ void DataflowToAIE::runOnOperation() {
             targetBufsMap[sourceBuf].push_back(buf);
 
           // Create a host DMA to load the data from host.
-          if (auto load = operand.getDefiningOp<TensorLoadOp>()) {
+          if (auto load = operand.getDefiningOp<TensorLoadOp>())
             b.create<HostDMAOp>(loc, load.offsets(), load.sizes(),
                                 load.strides(), HostDMAKind::HostToAIE, buf,
                                 load.memory());
-            load->dropAllUses();
-            load.erase();
-          }
         }
       }
     }
@@ -149,11 +148,12 @@ void DataflowToAIE::runOnOperation() {
     returnOp->erase();
   }
 
-  // Now we can safely erase all process operations.
-  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
-    process->dropAllUses();
-    process->erase();
-  }
+  // Now we can safely erase all process and tensor load/store operations.
+  for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
+    if (isa<ProcessOp, TensorLoadOp, TensorStoreOp>(op)) {
+      op.dropAllUses();
+      op.erase();
+    }
 
   // Create BroadcastOps.
   for (auto pair : targetBufsMap) {

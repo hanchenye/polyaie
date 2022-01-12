@@ -43,7 +43,7 @@ public:
     // Convert multi-elements memrefs to tensors.
     addConversion([](Type type) -> Type {
       auto memref = type.dyn_cast<MemRefType>();
-      if (!memref || memref.getRank() == 0 || memref.getNumElements() == 1)
+      if (!memref || memref.getNumElements() == 1)
         return type;
       return RankedTensorType::get(memref.getShape(), memref.getElementType());
     });

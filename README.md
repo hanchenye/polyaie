@@ -111,7 +111,7 @@ $ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \
     -I$PWD/../mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include/c++/9.2.0/backward \
     -L$PWD/../mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
     -B$PWD/../mlir-aie/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/lib/aarch64-xilinx-linux/9.2.0 \
-    -fuse-ld=lld -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
+    -fuse-ld=lld -lm -rdynamic -lxaiengine -lmetal -lopen_amp -ldl \
     -I$PWD/../mlir-aie/build/runtime_lib/ -I$PWD/tmp/utilities -I$PWD/tmp/gemm -I$PWD/tmp/gemm/acdc_project \
     $PWD/../mlir-aie/build/runtime_lib/test_library.cpp \
     $PWD/tmp/utilities/polybench.cpp $PWD/tmp/gemm/gemm.cpp -o gemm.elf
