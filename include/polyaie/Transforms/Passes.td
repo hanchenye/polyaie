@@ -153,6 +153,15 @@ def MaterializeBroadcast : Pass<"polyaie-materialize-broadcast", "ModuleOp"> {
   let constructor = "mlir::polyaie::createMaterializeBroadcastPass()";
 }
 
+def FlowPacketToCircuit : Pass<"polyaie-flow-packet-to-circuit", "ModuleOp"> {
+  let summary = "Attempt to convert packet flows to circuit flows";
+  let description = [{
+    The conversion is possible when both the source channel and destination
+    channel only handle one DMA.
+  }];
+  let constructor = "mlir::polyaie::createFlowPacketToCircuitPass()";
+}
+
 def DoubleBuffer : Pass<"polyaie-double-buffer", "ModuleOp"> {
   let summary = "Enable the double buffer between computing and communication";
   let constructor = "mlir::polyaie::createDoubleBufferPass()";

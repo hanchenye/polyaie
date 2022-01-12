@@ -29,6 +29,17 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       *this, "num-aie", llvm::cl::init(256),
       llvm::cl::desc("Specify the available number of AIEs")};
 
+  /// Configure the affine-super-vectorize pass.
+  Option<int64_t> vectorizeSize{
+      *this, "vec-size", llvm::cl::init(1),
+      llvm::cl::desc("Specify the size of super vectorization")};
+
+  /// Configure the placement pass.
+  Option<std::string> placementAlgorithm{
+      *this, "algorithm", llvm::cl::init("naive"),
+      llvm::cl::desc("Specify the placement algorithm, possible values are: "
+                     "naive(default), simulated-annealing")};
+
   /// Configure the link-extern-kernel pass.
   Option<bool> enableLinkExternKernel{
       *this, "enable-link-extern-kernel", llvm::cl::init(false),
@@ -38,17 +49,6 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       *this, "object-file", llvm::cl::init("kernel.o"),
       llvm::cl::desc("Specify the path of the pre-compiled object file of "
                      "external kernels")};
-
-  /// Configure the placement pass.
-  Option<std::string> placementAlgorithm{
-      *this, "algorithm", llvm::cl::init("naive"),
-      llvm::cl::desc("Specify the placement algorithm, possible values are: "
-                     "naive(default), simulated-annealing")};
-
-  /// Configure the affine-super-vectorize and convert-to-aie pass.
-  Option<int64_t> vectorizeSize{
-      *this, "vec-size", llvm::cl::init(1),
-      llvm::cl::desc("Specify the size of super vectorization")};
 };
 
 std::unique_ptr<Pass> createPreprocessPass();
@@ -73,6 +73,7 @@ std::unique_ptr<Pass> createDataflowToAIEPass();
 std::unique_ptr<Pass> createLinkExternKernelPass();
 std::unique_ptr<Pass> createLinkExternKernelPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createMaterializeBroadcastPass();
+std::unique_ptr<Pass> createFlowPacketToCircuitPass();
 std::unique_ptr<Pass> createDoubleBufferPass();
 std::unique_ptr<Pass> createPostprocessPass();
 

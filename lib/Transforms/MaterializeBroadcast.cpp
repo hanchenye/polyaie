@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Pass/PassManager.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
 

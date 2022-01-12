@@ -14,6 +14,7 @@ add_mlir_library(MLIRPolyAIEPasses
   DataflowToAIE.cpp
   LinkExternKernel.cpp
   MaterializeBroadcast.cpp
+  FlowPacketToCircuit.cpp
   DoubleBuffer.cpp
   Postprocess.cpp
   Passes.cpp
