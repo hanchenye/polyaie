@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-ALGORITHM="naive" # "simulated-annealing"
+ALGORITHM="simulated-annealing"
 DRY_RUN=false
 EXTERN_KERNEL=false
 OBJECT_FILE="kernel.o"
@@ -18,30 +18,30 @@ MLIRAIE_DIR=${DIR}/../mlir-aie
 GEMMBOARD_DIR=${DIR}/tmp/gemm-board
 
 
-# # Run phism flow to generate the tiled IR of GEMM.
-# rm -rf ${DIR}/tmp
-# python pb-flow.py ${DIR}/polybench \
-#   --work-dir ${DIR}/tmp \
-#   --examples gemm \
-#   --dataset SMALL \
-#   --tile-sizes 32 32 32 \
-#   --polymer \
-#   --loop-transforms \
-#   --skip-vitis \
-#   --skip-csim
+# Run phism flow to generate the tiled IR of GEMM.
+rm -rf ${DIR}/tmp
+python pb-flow.py ${DIR}/polybench \
+  --work-dir ${DIR}/tmp \
+  --examples gemm \
+  --dataset SMALL \
+  --tile-sizes 32 32 32 \
+  --polymer \
+  --loop-transforms \
+  --skip-vitis \
+  --skip-csim
 
 
-# # Run polyaie to generate the AIE IR of GEMM.
-# polyaie-opt ${GEMM_DIR}/gemm.pre.kern.plmr.ca.lt.mlir \
-#   -polyaie-pipeline="top-func-name=kernel_gemm algorithm=${ALGORITHM} enable-link-extern-kernel=${EXTERN_KERNEL} object-file=${OBJECT_FILE}" \
-#   1> ${GEMM_DIR}/gemm.polyaie.mlir \
-#   2> ${GEMM_DIR}/gemm.polyaie.dot
+# Run polyaie to generate the AIE IR of GEMM.
+polyaie-opt ${GEMM_DIR}/gemm.pre.kern.plmr.ca.lt.mlir \
+  -polyaie-pipeline="top-func-name=kernel_gemm algorithm=${ALGORITHM} enable-link-extern-kernel=${EXTERN_KERNEL} object-file=${OBJECT_FILE}" \
+  1> ${GEMM_DIR}/gemm.polyaie.mlir \
+  2> ${GEMM_DIR}/gemm.polyaie.dot
 
-# dot -Tpng ${GEMM_DIR}/gemm.polyaie.dot \
-#   > ${GEMM_DIR}/gemm.polyaie.df.png
+dot -Tpng ${GEMM_DIR}/gemm.polyaie.dot \
+  > ${GEMM_DIR}/gemm.polyaie.df.png
 
-# dot -Tpng -Kfdp ${GEMM_DIR}/gemm.polyaie.dot \
-#   > ${GEMM_DIR}/gemm.polyaie.layout.png
+dot -Tpng -Kfdp ${GEMM_DIR}/gemm.polyaie.dot \
+  > ${GEMM_DIR}/gemm.polyaie.layout.png
 
 sed -E '/host_dma/d; /alloc/d' \
   ${GEMM_DIR}/gemm.polyaie.mlir \

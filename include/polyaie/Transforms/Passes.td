@@ -73,13 +73,12 @@ def ExtractMemrefDependency :
   let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
 }
 
-def BufferMemrefArg : FunctionPass<"polyaie-buffer-memref-arg"> {
-  let summary = "Buffer memref arguments";
+def BufferMemrefResult : FunctionPass<"polyaie-buffer-memref-result"> {
+  let summary = "Buffer memref results";
   let description = [{
-    Promote each memref argument to a local buffer and return the local buffer
-    as result.
+    Promote each memref result to a local buffer.
   }];
-  let constructor = "mlir::polyaie::createBufferMemrefArgPass()";
+  let constructor = "mlir::polyaie::createBufferMemrefResultPass()";
 }
 
 def TensorizeMemref : Pass<"polyaie-tensorize-memref", "ModuleOp"> {

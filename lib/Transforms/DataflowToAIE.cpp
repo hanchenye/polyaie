@@ -63,6 +63,45 @@ void DataflowToAIE::runOnOperation() {
     b.setInsertionPoint(process);
     auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
 
+    // Create BufferOp for each process argument.
+    for (auto arg : process.body().getArguments()) {
+      if (arg.getType().isa<TensorType>()) {
+        // Handle tensor argument.
+        auto toMemrefOp = getOnlyUserOfType<ToMemrefOp>(arg);
+        auto buf = b.create<BufferOp>(loc, toMemrefOp.getType(), tile);
+
+        auto operand = process.getOperandFromInternalVal(arg);
+        toMemrefOp.replaceAllUsesWith(buf.getResult());
+        toMemrefOp.erase();
+
+        // Handle predecessor of the argument.
+        if (auto sourceBuf = bufMap.lookup(operand))
+          // Record the data transfer from predecessor to the current buffer in
+          // order to generate the BroadcastOp later.
+          targetBufsMap[sourceBuf].push_back(buf);
+        else if (auto load = operand.getDefiningOp<TensorLoadOp>())
+          // Create a host DMA to load the data from host.
+          b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
+                              HostDMAKind::HostToAIE, buf, load.memory());
+      } else {
+        // Handle scalar argument.
+        auto type = MemRefType::get({1}, arg.getType());
+        auto buf = b.create<BufferOp>(loc, type, tile);
+        b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
+                            b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
+                            process.getOperandFromInternalVal(arg));
+        auto insertPoint = b.saveInsertionPoint();
+
+        b.setInsertionPointToStart(&process.body().front());
+        auto value = b.create<mlir::AffineLoadOp>(
+            loc, b.getConstantAffineMap(0), ValueRange(buf.getResult()));
+        arg.replaceAllUsesWith(value);
+        b.restoreInsertionPoint(insertPoint);
+      }
+    }
+    // Erase all process arguments as all of them have been converted.
+    process.body().front().eraseArguments([](auto) { return true; });
+
     // Create BufferOp for each local buffer.
     for (auto alloc :
          llvm::make_early_inc_range(process.getOps<memref::AllocOp>())) {
@@ -70,36 +109,15 @@ void DataflowToAIE::runOnOperation() {
       alloc.replaceAllUsesWith(buf.getResult());
       alloc.erase();
 
-      // Handle fanins of the local buffer.
-      if (auto copy = getOnlyUserOfType<memref::CopyOp>(buf))
-        if (auto toMemrefOp = copy.source().getDefiningOp<ToMemrefOp>()) {
-          // Record the data transfer from predecessor to local buffer in order
-          // to generate the BroadcastOp later.
-          auto operand = process.getOperandFromInternalVal(toMemrefOp.tensor());
-          assert(operand && toMemrefOp.tensor().hasOneUse() &&
-                 toMemrefOp.memref().hasOneUse());
-          auto sourceBuf = bufMap.lookup(operand);
-          if (sourceBuf)
-            targetBufsMap[sourceBuf].push_back(buf);
-          copy.erase();
-          toMemrefOp.erase();
-
-          // Create a host DMA to load the data from host.
-          if (auto load = operand.getDefiningOp<TensorLoadOp>())
-            b.create<HostDMAOp>(loc, load.offsets(), load.sizes(),
-                                load.strides(), HostDMAKind::HostToAIE, buf,
-                                load.memory());
-        }
-
-      // Handle fanouts of the local buffer.
+      // Handle successors if the local buffer is returned.
       if (auto toTensorOp = getOnlyUserOfType<ToTensorOp>(buf)) {
-        // Record the result-to-buffer mapping if the buffer is returned.
         auto result = process.getResultFromInternalVal(toTensorOp.result());
         assert(result && toTensorOp.result().hasOneUse());
-        bufMap[result] = buf;
         toTensorOp->dropAllUses();
         toTensorOp.erase();
 
+        // Record the result-to-buffer mapping if the buffer is returned.
+        bufMap[result] = buf;
         // Create a host DMA to store the result to host.
         if (auto store = getOnlyUserOfType<TensorStoreOp>(result))
           b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
@@ -107,28 +125,6 @@ void DataflowToAIE::runOnOperation() {
                               store.memory(), buf);
       }
     }
-
-    // Create BufferOp for each scalar argument.
-    for (auto arg : process.body().getArguments()) {
-      if (arg.getType().isa<TensorType>())
-        continue;
-
-      auto type = MemRefType::get({1}, arg.getType());
-      auto buf = b.create<BufferOp>(loc, type, tile);
-      b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
-                          b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
-                          process.getOperandFromInternalVal(arg));
-      auto insertPoint = b.saveInsertionPoint();
-
-      b.setInsertionPointToStart(&process.body().front());
-      auto value = b.create<mlir::AffineLoadOp>(loc, b.getConstantAffineMap(0),
-                                                ValueRange(buf.getResult()));
-      arg.replaceAllUsesWith(value);
-      b.restoreInsertionPoint(insertPoint);
-    }
-
-    // Erase all process arguments as all of them have been converted.
-    process.body().front().eraseArguments([](auto) { return true; });
 
     // Generate a CoreOp and inline the contents of the process.
     auto core = b.create<CoreOp>(loc, tile);

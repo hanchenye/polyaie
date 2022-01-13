@@ -55,6 +55,20 @@ public:
 };
 } // namespace
 
+template <typename OpType, typename... Args>
+static void removeLayoutMap(OpBuilder &b, OpType op, Args &&...args) {
+  auto type = op.getType().template cast<MemRefType>();
+  if (type.getLayout().isIdentity())
+    return;
+
+  auto newType = MemRefType::get(type.getShape(), type.getElementType());
+  b.setInsertionPoint(op);
+  auto newop =
+      b.create<OpType>(op.getLoc(), newType, std::forward<Args>(args)...);
+  op.replaceAllUsesWith(newop.memref());
+  op.erase();
+}
+
 void TensorizeMemref::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
@@ -84,15 +98,12 @@ void TensorizeMemref::runOnOperation() {
   if (failed(applyFullConversion(mod, target, std::move(patterns))))
     return signalPassFailure();
 
-  // Remove the layout information from all AllocOp.
-  mod.walk([&](memref::AllocOp alloc) {
-    auto type = alloc.getType();
-    auto newType = MemRefType::get(type.getShape(), type.getElementType());
-
-    b.setInsertionPoint(alloc);
-    auto newAlloc = b.create<memref::AllocOp>(alloc.getLoc(), newType);
-    alloc.replaceAllUsesWith(newAlloc.memref());
-    alloc.erase();
+  // Remove the layout information from all AllocOp and ToMemrefOp.
+  mod.walk([&](Operation *op) {
+    if (auto toMemrefOp = dyn_cast<bufferization::ToMemrefOp>(op))
+      removeLayoutMap(b, toMemrefOp, toMemrefOp.tensor());
+    else if (auto alloc = dyn_cast<memref::AllocOp>(op))
+      removeLayoutMap(b, alloc);
   });
 
   mod.walk([&](mlir::ReturnOp returnOp) {

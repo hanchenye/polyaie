@@ -138,7 +138,8 @@
       "__tree": "cpp",
       "queue": "cpp",
       "stack": "cpp",
-      "locale": "cpp"
+      "locale": "cpp",
+      "executor": "cpp"
     }
   },
   "extensions": {
