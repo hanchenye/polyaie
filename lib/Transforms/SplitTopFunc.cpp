@@ -176,7 +176,7 @@ struct SplitTopFunc : public polyaie::SplitTopFuncBase<SplitTopFunc> {
 
   void runOnOperation() override {
     auto mod = getOperation();
-    auto topFunc = getTopFunc(mod);
+    auto topFunc = getTopFunc<FuncOp>(mod);
 
     // Find the suitable function unroll factor.
     unsigned factor = numAIE / getNumCall(topFunc);

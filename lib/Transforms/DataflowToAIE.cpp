@@ -21,7 +21,7 @@ struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
 
 /// Inline `func` into its parent module.
 /// TODO: Use handshake function instead.
-static void inlineFuncIntoModule(FuncOp func) {
+static void inlineFuncIntoModule(circt::handshake::FuncOp func) {
   // Create alloc for all arguments of the top function.
   auto mod = func->getParentOfType<ModuleOp>();
   auto b = OpBuilder(mod);
@@ -39,7 +39,7 @@ static void inlineFuncIntoModule(FuncOp func) {
   auto &funcOps = func.front().getOperations();
   modOps.splice(modOps.end(), funcOps, funcOps.begin(),
                 std::prev(funcOps.end()));
-  mod->setAttr("sym_name", func.sym_nameAttr());
+  mod->setAttr("sym_name", func.getNameAttr());
   func.erase();
 }
 
@@ -47,7 +47,7 @@ void DataflowToAIE::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc(mod);
+  auto topFunc = getTopFunc<circt::handshake::FuncOp>(mod);
 
   // Map from a buffer to its target buffers.
   DenseMap<Value, SmallVector<Value, 4>> targetBufsMap;

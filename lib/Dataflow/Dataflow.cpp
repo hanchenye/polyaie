@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Dataflow/Dataflow.h"
+#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/IR/Builders.h"
 
 using namespace mlir;
@@ -35,12 +36,12 @@ void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 }
 
 static LogicalResult verify(ProcessOp op) {
-  // if (op.body().empty())
-  //   return op.emitOpError("must have at least one block");
+  if (op.body().empty())
+    return op.emitOpError("must have at least one block");
 
-  // if (op.getOperandTypes() != op.body().front().getArgumentTypes())
-  //   return op.emitOpError(
-  //       "operands types must align with arguments types of the entry block");
+  if (op.getOperandTypes() != op.body().front().getArgumentTypes())
+    return op.emitOpError(
+        "operands types must align with arguments types of the entry block");
 
   return success();
 }
@@ -73,11 +74,16 @@ Value ProcessOp::getReturnValFromResult(OpResult result) {
 }
 
 static LogicalResult verify(ReturnOp op) {
-  if (op.getOperandTypes() != op->getParentOfType<ProcessOp>().getResultTypes())
-    return op.emitOpError("operands types must align with result types of the "
-                          "parent process operation");
+  if (auto process = op->getParentOfType<ProcessOp>())
+    if (op.getOperandTypes() == process.getResultTypes())
+      return success();
 
-  return success();
+  if (auto func = op->getParentOfType<circt::handshake::FuncOp>())
+    if (op.getOperandTypes() == func.getType().getResults())
+      return success();
+
+  return op.emitOpError("operands types must align with result types of "
+                        "the parent process or handshake function op");
 }
 
 //===----------------------------------------------------------------------===//

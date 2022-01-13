@@ -8,6 +8,7 @@
 #define POLYAIE_UTILS_H
 
 #include "aie/AIEDialect.h"
+#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/BlockSupport.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -27,7 +28,13 @@ using AffineLoopBands = std::vector<AffineLoopBand>;
 void getLoopBands(Block &block, AffineLoopBands &bands, bool reverse = false,
                   bool allowHavingChilds = false);
 
-FuncOp getTopFunc(ModuleOp mod);
+template <typename FuncType> FuncType getTopFunc(ModuleOp mod) {
+  for (auto func : mod.template getOps<FuncType>())
+    if (func->hasAttr("polyaie.top_func"))
+      return func;
+  emitError(mod.getLoc(), "failed to find top function");
+  return FuncType();
+}
 
 unsigned getCol(Operation *op);
 unsigned getRow(Operation *op);

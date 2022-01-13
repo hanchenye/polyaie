@@ -13,7 +13,7 @@ using namespace polyaie;
 namespace {
 class Placer {
 public:
-  Placer(FuncOp func);
+  Placer(circt::handshake::FuncOp func);
 
   /// Place all nodes into a Z-style layout.
   void runNaive();
@@ -61,7 +61,7 @@ private:
 };
 } // namespace
 
-Placer::Placer(FuncOp func)
+Placer::Placer(circt::handshake::FuncOp func)
     : func(func), nodes(func.getOps<dataflow::ProcessOp>().begin(),
                         func.getOps<dataflow::ProcessOp>().end()),
       rowBegin(2), colBegin(0),
@@ -242,23 +242,23 @@ struct Placement : public polyaie::PlacementBase<Placement> {
   Placement(const Placement &) {}
   Placement(const PolyAIEOptions &opts) { algorithm = opts.placementAlgorithm; }
 
-  void runOnFunction() override {
-    Placer placer(getFunction());
+  void runOnOperation() override {
+    auto topFunc = getTopFunc<circt::handshake::FuncOp>(getOperation());
+    Placer placer(topFunc);
     if (algorithm == "naive")
       return placer.runNaive();
     else if (algorithm == "simulated-annealing")
       return placer.runSimulatedAnnealing();
 
-    emitError(getFunction().getLoc(), "unsupported placement algorithm");
+    emitError(topFunc.getLoc(), "unsupported placement algorithm");
     return signalPassFailure();
   }
 };
 } // namespace
 
-std::unique_ptr<FunctionPass> polyaie::createPlacementPass() {
+std::unique_ptr<Pass> polyaie::createPlacementPass() {
   return std::make_unique<Placement>();
 }
-std::unique_ptr<FunctionPass>
-polyaie::createPlacementPass(const PolyAIEOptions &opts) {
+std::unique_ptr<Pass> polyaie::createPlacementPass(const PolyAIEOptions &opts) {
   return std::make_unique<Placement>(opts);
 }

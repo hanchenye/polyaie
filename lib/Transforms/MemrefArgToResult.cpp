@@ -21,7 +21,7 @@ void MemrefArgToResult::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc(mod);
+  auto topFunc = getTopFunc<FuncOp>(mod);
 
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
@@ -39,7 +39,6 @@ void MemrefArgToResult::runOnOperation() {
         continue;
 
       // Return it if the argument is used by any state-changing operations.
-      // TODO: How to specify other arguments that need to be returned?
       if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
             return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
                        memref::TensorStoreOp, vector::TransferWriteOp>(op);

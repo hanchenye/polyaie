@@ -72,7 +72,7 @@ static void removeLayoutMap(OpBuilder &b, OpType op, Args &&...args) {
 void TensorizeMemref::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
-  auto topFunc = getTopFunc(mod);
+  auto topFunc = getTopFunc<FuncOp>(mod);
 
   // Tensorize memref types.
   MemrefTensorizeTypeConverter tensorizeConverter;

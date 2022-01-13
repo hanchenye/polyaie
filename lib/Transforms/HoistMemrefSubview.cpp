@@ -20,7 +20,7 @@ struct HoistMemrefSubview
 void HoistMemrefSubview::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
-  auto topFunc = getTopFunc(mod);
+  auto topFunc = getTopFunc<FuncOp>(mod);
 
   // Hold the subviews list of each global memory.
   DenseMap<Value, SmallVector<Value, 16>> subviewsMap;

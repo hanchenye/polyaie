@@ -11,6 +11,7 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
+using namespace circt;
 
 namespace {
 struct ConvertToDataflow
@@ -92,7 +93,8 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
 
 void ConvertToDataflow::runOnOperation() {
   auto mod = getOperation();
-  auto topFunc = getTopFunc(mod);
+  auto topFunc = getTopFunc<FuncOp>(mod);
+  auto b = OpBuilder(mod);
 
   RewritePatternSet patterns(mod.getContext());
   ConversionTarget target(*mod.getContext());
@@ -112,6 +114,33 @@ void ConvertToDataflow::runOnOperation() {
 
   if (failed(applyPartialConversion(topFunc, target, std::move(patterns))))
     return signalPassFailure();
+
+  // Create a new handshake function.
+  b.setInsertionPoint(topFunc);
+  SmallVector<NamedAttribute, 4> attrs;
+  for (const auto &attr : topFunc->getAttrs()) {
+    if (attr.getName() == SymbolTable::getSymbolAttrName() ||
+        attr.getName() == function_like_impl::getTypeAttrName())
+      continue;
+    attrs.push_back(attr);
+  }
+  auto dfFunc = b.create<circt::handshake::FuncOp>(
+      topFunc.getLoc(), topFunc.getName(), topFunc.getType(), attrs);
+  dfFunc.resolveArgAndResNames();
+
+  // Inline the contents of the top function.
+  auto &topFuncBlocks = topFunc.body().getBlocks();
+  auto &dfFuncBlocks = dfFunc.body().getBlocks();
+  dfFuncBlocks.splice(dfFuncBlocks.begin(), topFuncBlocks);
+
+  // Replace the ternimator with an EndOp.
+  auto returnOp = dfFuncBlocks.back().getTerminator();
+  b.setInsertionPoint(returnOp);
+  b.create<dataflow::ReturnOp>(returnOp->getLoc(), returnOp->getOperands());
+  returnOp->erase();
+
+  // We can erase the top function now.
+  topFunc->erase();
 }
 
 std::unique_ptr<Pass> polyaie::createConvertToDataflowPass() {

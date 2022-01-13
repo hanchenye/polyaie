@@ -8,7 +8,7 @@
 #define POLYAIE_INITALLDIALECTS_H
 
 #include "aie/AIEDialect.h"
-#include "circt/Dialect/Handshake/HandshakeDialect.h"
+#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"

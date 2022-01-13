@@ -65,9 +65,10 @@ std::unique_ptr<Pass> createTensorizeMemrefPass();
 std::unique_ptr<FunctionPass> createDetectLoopReductionPass();
 
 std::unique_ptr<Pass> createConvertToDataflowPass();
-std::unique_ptr<FunctionPass> createPlacementPass();
-std::unique_ptr<FunctionPass> createPlacementPass(const PolyAIEOptions &opts);
-std::unique_ptr<FunctionPass> createPrintDataflowPass();
+std::unique_ptr<Pass> createCreateIOProcessPass();
+std::unique_ptr<Pass> createPlacementPass();
+std::unique_ptr<Pass> createPlacementPass(const PolyAIEOptions &opts);
+std::unique_ptr<Pass> createPrintDataflowPass();
 
 std::unique_ptr<Pass> createDataflowToAIEPass();
 std::unique_ptr<Pass> createLinkExternKernelPass();

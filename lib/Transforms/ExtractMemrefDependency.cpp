@@ -19,7 +19,7 @@ struct ExtractMemrefDependency
 
 void ExtractMemrefDependency::runOnOperation() {
   auto mod = getOperation();
-  auto topFunc = getTopFunc(mod);
+  auto topFunc = getTopFunc<FuncOp>(mod);
 
   // Hold the subviews list (or itself) of each global memory.
   DenseMap<Value, SmallVector<Value, 16>> subviewsMap;

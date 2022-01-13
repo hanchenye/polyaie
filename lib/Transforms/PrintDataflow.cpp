@@ -14,8 +14,8 @@ using namespace polyaie;
 namespace llvm {
 // Specialize GraphTraits to treat ModuleOp as a graph of dataflow::ProcessOps
 // as nodes and uses as edges.
-template <> struct GraphTraits<FuncOp> {
-  using GraphType = FuncOp;
+template <> struct GraphTraits<circt::handshake::FuncOp> {
+  using GraphType = circt::handshake::FuncOp;
   using NodeRef = Operation *;
 
   static bool isProcess(Operation *op) { return isa<dataflow::ProcessOp>(op); }
@@ -30,34 +30,35 @@ template <> struct GraphTraits<FuncOp> {
 
   using nodes_iterator =
       mlir::detail::op_iterator<dataflow::ProcessOp, Region::OpIterator>;
-  static nodes_iterator nodes_begin(FuncOp m) {
+  static nodes_iterator nodes_begin(circt::handshake::FuncOp m) {
     return m.getOps<dataflow::ProcessOp>().begin();
   }
-  static nodes_iterator nodes_end(FuncOp m) {
+  static nodes_iterator nodes_end(circt::handshake::FuncOp m) {
     return m.getOps<dataflow::ProcessOp>().end();
   }
 };
 
 // Specialize DOTGraphTraits to produce more readable output.
-template <> struct DOTGraphTraits<FuncOp> : public DefaultDOTGraphTraits {
+template <>
+struct DOTGraphTraits<circt::handshake::FuncOp> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
-  static std::string getNodeLabel(Operation *op, FuncOp) {
+  static std::string getNodeLabel(Operation *op, circt::handshake::FuncOp) {
     // Reuse the print output for the node labels.
     std::string ostr;
     raw_string_ostream os(ostr);
-    auto call = cast<dataflow::ProcessOp>(op);
-    // os << call.callee().rsplit("_").second << "\n";
-    os << getCol(call) << ", " << getRow(call);
+    auto process = cast<dataflow::ProcessOp>(op);
+    os << getCol(process) << ", " << getRow(process);
     return os.str();
   }
 
-  static std::string getNodeAttributes(Operation *op, FuncOp) {
+  static std::string getNodeAttributes(Operation *op,
+                                       circt::handshake::FuncOp) {
     // Reuse the print output for the node labels.
     std::string ostr;
     raw_string_ostream os(ostr);
-    auto call = cast<dataflow::ProcessOp>(op);
-    os << "pos=\"" << getCol(call) << "," << getRow(call) << "!\"";
+    auto process = cast<dataflow::ProcessOp>(op);
+    os << "pos=\"" << getCol(process) << "," << getRow(process) << "!\"";
     return os.str();
   }
 };
@@ -67,8 +68,9 @@ namespace {
 class PrintDataflow : public polyaie::PrintDataflowBase<PrintDataflow> {
 public:
   PrintDataflow(raw_ostream &os) : os(os) {}
-  void runOnFunction() override {
-    llvm::WriteGraph(os, getFunction(), false, "");
+  void runOnOperation() override {
+    auto topFunc = getTopFunc<circt::handshake::FuncOp>(getOperation());
+    llvm::WriteGraph(os, topFunc, false, "");
   }
 
 private:
@@ -76,6 +78,6 @@ private:
 };
 } // namespace
 
-std::unique_ptr<FunctionPass> polyaie::createPrintDataflowPass() {
+std::unique_ptr<Pass> polyaie::createPrintDataflowPass() {
   return std::make_unique<PrintDataflow>(llvm::errs());
 }

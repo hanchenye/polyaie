@@ -89,7 +89,7 @@ def TensorizeMemref : Pass<"polyaie-tensorize-memref", "ModuleOp"> {
 }
 
 def DetectLoopReduction : FunctionPass<"polyaie-detect-loop-reduction"> {
-  let summary = "Detect reductions in AffineForOps";
+  let summary = "Detect reductions in affine loops";
   let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
 }
 
@@ -102,7 +102,17 @@ def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let constructor = "mlir::polyaie::createConvertToDataflowPass()";
 }
 
-def Placement : FunctionPass<"polyaie-placement"> {
+def CreateIOProcess : Pass<"polyaie-create-io-process", "ModuleOp"> {
+  let summary = "Create an empty process operation for each IO";
+  let description = [{
+    As ShimDMAOp cannot handle packet streaming, we create an empty process op
+    for each IO such that the ShimDMAOp can first stream data to the empty
+    process with circuit-switched mode. 
+  }];
+  let constructor = "mlir::polyaie::createCreateIOProcessPass()";
+}
+
+def Placement : Pass<"polyaie-placement", "ModuleOp"> {
   let summary = "Place function calls to a physical location";
   let description = [{
     Find a physical location for each function call in the module using the
@@ -118,7 +128,7 @@ def Placement : FunctionPass<"polyaie-placement"> {
   ];
 }
 
-def PrintDataflow : FunctionPass<"polyaie-print-dataflow"> {
+def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {
   let summary = "Print dataflow into a DOT graph";
   let constructor = "mlir::polyaie::createPrintDataflowPass()";
 }
