@@ -7,9 +7,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
+#include "llvm/ADT/BreadthFirstIterator.h"
 
 using namespace mlir;
 using namespace polyaie;
+using namespace bufferization;
 using namespace dataflow;
 using namespace xilinx::AIE;
 
@@ -51,58 +53,36 @@ void DataflowToAIE::runOnOperation() {
 
   // Map from a buffer to its target buffers.
   DenseMap<Value, SmallVector<Value, 4>> targetBufsMap;
-
   // Map from process result to its corresponding buffer.
   DenseMap<Value, BufferOp> bufMap;
 
-  // Generate TileOp, BufferOps, and CoreOp.
-  // TODO: Should use DFS traversal for graph region.
+  // Generate TileOp, BufferOps, and CoreOp from ProcessOp. Generate DMAHostOp
+  // from TensorLoad/StoreOp.
   for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
     // Generate TileOp based on the placement results.
     b.setInsertionPoint(process);
     auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
 
     // Create BufferOp for each local buffer.
-    // TODO: Make this more robust. The current implementation assumes the
-    // BufferStateChangedMemref pass has been applied.
-    for (auto &op : llvm::make_early_inc_range(process.body().getOps())) {
-      if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
-        // Replace uses of alloc with the BufferOp.
-        auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
-        alloc.replaceAllUsesWith(buf.getResult());
-        alloc.erase();
+    for (auto alloc :
+         llvm::make_early_inc_range(process.getOps<memref::AllocOp>())) {
+      auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
+      alloc.replaceAllUsesWith(buf.getResult());
+      alloc.erase();
 
-        // If the buffer is casted to a tensor and returned, it may be consumed
-        // by other processes. Therefore, we record the process result to buffer
-        // mapping in "bufMap".
-        if (auto castOp = getOnlyUserOfType<bufferization::ToTensorOp>(buf))
-          if (auto result = process.getResultFromInternalVal(castOp.result())) {
-            bufMap[result] = buf;
-            if (!castOp.result().hasOneUse()) {
-              castOp.emitOpError("should only be used by return op");
-              return signalPassFailure();
-            }
-            castOp->dropAllUses();
-            castOp.erase();
-
-            // Create a host DMA to store the result to host.
-            if (auto store = getOnlyUserOfType<TensorStoreOp>(result))
-              b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
-                                  store.strides(), HostDMAKind::AIEToHost,
-                                  store.memory(), buf);
-          }
-      } else if (auto castOp = dyn_cast<bufferization::ToMemrefOp>(op)) {
-        // Replace uses of the cast operation with the BufferOp.
-        auto buf = b.create<BufferOp>(loc, castOp.getType(), tile);
-        castOp.replaceAllUsesWith(buf.getResult());
-        castOp.erase();
-
-        if (auto operand = process.getOperandFromInternalVal(castOp.tensor())) {
-          // Construct the "targetBufsMap" to record the buffer dependencies,
-          // which is used to generate BroadcastOps later.
+      // Handle fanins of the local buffer.
+      if (auto copy = getOnlyUserOfType<memref::CopyOp>(buf))
+        if (auto toMemrefOp = copy.source().getDefiningOp<ToMemrefOp>()) {
+          // Record the data transfer from predecessor to local buffer in order
+          // to generate the BroadcastOp later.
+          auto operand = process.getOperandFromInternalVal(toMemrefOp.tensor());
+          assert(operand && toMemrefOp.tensor().hasOneUse() &&
+                 toMemrefOp.memref().hasOneUse());
           auto sourceBuf = bufMap.lookup(operand);
           if (sourceBuf)
             targetBufsMap[sourceBuf].push_back(buf);
+          copy.erase();
+          toMemrefOp.erase();
 
           // Create a host DMA to load the data from host.
           if (auto load = operand.getDefiningOp<TensorLoadOp>())
@@ -110,6 +90,21 @@ void DataflowToAIE::runOnOperation() {
                                 load.strides(), HostDMAKind::HostToAIE, buf,
                                 load.memory());
         }
+
+      // Handle fanouts of the local buffer.
+      if (auto toTensorOp = getOnlyUserOfType<ToTensorOp>(buf)) {
+        // Record the result-to-buffer mapping if the buffer is returned.
+        auto result = process.getResultFromInternalVal(toTensorOp.result());
+        assert(result && toTensorOp.result().hasOneUse());
+        bufMap[result] = buf;
+        toTensorOp->dropAllUses();
+        toTensorOp.erase();
+
+        // Create a host DMA to store the result to host.
+        if (auto store = getOnlyUserOfType<TensorStoreOp>(result))
+          b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                              store.strides(), HostDMAKind::AIEToHost,
+                              store.memory(), buf);
       }
     }
 
@@ -141,14 +136,14 @@ void DataflowToAIE::runOnOperation() {
     auto &coreBlocks = core.body().getBlocks();
     coreBlocks.splice(coreBlocks.begin(), procBlocks);
 
-    // Replace the ternimator with an EndOp.
+    // Set the ternimator as an EndOp.
     auto returnOp = coreBlocks.back().getTerminator();
     b.setInsertionPoint(returnOp);
     b.create<xilinx::AIE::EndOp>(loc);
     returnOp->erase();
   }
 
-  // Now we can safely erase all process and tensor load/store operations.
+  // Now we can safely erase all ProcessOps and TensorLoad/StoreOps.
   for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
     if (isa<ProcessOp, TensorLoadOp, TensorStoreOp>(op)) {
       op.dropAllUses();
@@ -162,6 +157,8 @@ void DataflowToAIE::runOnOperation() {
     b.create<BroadcastOp>(loc, pair.first, pair.second);
   }
 
+  // Finally, inline the top function into the module.
+  // TODO: Introduce AIE runtime-related operations.
   inlineFuncIntoModule(topFunc);
 }
 

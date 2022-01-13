@@ -7,13 +7,47 @@
 #ifndef POLYAIE_DATAFLOW_DATAFLOW_H
 #define POLYAIE_DATAFLOW_DATAFLOW_H
 
+#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpImplementation.h"
+#include "llvm/ADT/GraphTraits.h"
 
 #include "polyaie/Dataflow/DataflowDialect.h.inc"
 #include "polyaie/Dataflow/DataflowEnums.h.inc"
 
 #define GET_OP_CLASSES
 #include "polyaie/Dataflow/Dataflow.h.inc"
+
+namespace llvm {
+using namespace mlir;
+using namespace polyaie;
+using namespace circt;
+
+// Specialize GraphTraits to treat handshake::FuncOp as a graph of ProcessOps as
+// nodes and uses as edges.
+template <> struct GraphTraits<handshake::FuncOp> {
+  using GraphType = handshake::FuncOp;
+  using NodeRef = Operation *;
+
+  static bool isProcess(Operation *op) { return isa<dataflow::ProcessOp>(op); }
+  using ChildIteratorType =
+      filter_iterator<Operation::user_iterator, decltype(&isProcess)>;
+  static ChildIteratorType child_begin(NodeRef n) {
+    return {n->user_begin(), n->user_end(), &isProcess};
+  }
+  static ChildIteratorType child_end(NodeRef n) {
+    return {n->user_end(), n->user_end(), &isProcess};
+  }
+
+  using nodes_iterator =
+      mlir::detail::op_iterator<dataflow::ProcessOp, Region::OpIterator>;
+  static nodes_iterator nodes_begin(handshake::FuncOp f) {
+    return f.getOps<dataflow::ProcessOp>().begin();
+  }
+  static nodes_iterator nodes_end(handshake::FuncOp f) {
+    return f.getOps<dataflow::ProcessOp>().end();
+  }
+};
+} // namespace llvm
 
 #endif // POLYAIE_DATAFLOW_DATAFLOW_H

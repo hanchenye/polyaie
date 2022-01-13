@@ -12,32 +12,6 @@ using namespace mlir;
 using namespace polyaie;
 
 namespace llvm {
-// Specialize GraphTraits to treat ModuleOp as a graph of dataflow::ProcessOps
-// as nodes and uses as edges.
-template <> struct GraphTraits<circt::handshake::FuncOp> {
-  using GraphType = circt::handshake::FuncOp;
-  using NodeRef = Operation *;
-
-  static bool isProcess(Operation *op) { return isa<dataflow::ProcessOp>(op); }
-  using ChildIteratorType =
-      llvm::filter_iterator<Operation::user_iterator, decltype(&isProcess)>;
-  static ChildIteratorType child_begin(NodeRef n) {
-    return {n->user_begin(), n->user_end(), &isProcess};
-  }
-  static ChildIteratorType child_end(NodeRef n) {
-    return {n->user_end(), n->user_end(), &isProcess};
-  }
-
-  using nodes_iterator =
-      mlir::detail::op_iterator<dataflow::ProcessOp, Region::OpIterator>;
-  static nodes_iterator nodes_begin(circt::handshake::FuncOp m) {
-    return m.getOps<dataflow::ProcessOp>().begin();
-  }
-  static nodes_iterator nodes_end(circt::handshake::FuncOp m) {
-    return m.getOps<dataflow::ProcessOp>().end();
-  }
-};
-
 // Specialize DOTGraphTraits to produce more readable output.
 template <>
 struct DOTGraphTraits<circt::handshake::FuncOp> : public DefaultDOTGraphTraits {

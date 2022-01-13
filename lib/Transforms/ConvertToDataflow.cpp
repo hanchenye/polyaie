@@ -11,7 +11,6 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
-using namespace circt;
 
 namespace {
 struct ConvertToDataflow
