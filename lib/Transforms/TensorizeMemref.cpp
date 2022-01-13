@@ -55,20 +55,6 @@ public:
 };
 } // namespace
 
-template <typename OpType, typename... Args>
-static void removeLayoutMap(OpBuilder &b, OpType op, Args &&...args) {
-  auto type = op.getType().template cast<MemRefType>();
-  if (type.getLayout().isIdentity())
-    return;
-
-  auto newType = MemRefType::get(type.getShape(), type.getElementType());
-  b.setInsertionPoint(op);
-  auto newop =
-      b.create<OpType>(op.getLoc(), newType, std::forward<Args>(args)...);
-  op.replaceAllUsesWith(newop.memref());
-  op.erase();
-}
-
 void TensorizeMemref::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
@@ -98,25 +84,22 @@ void TensorizeMemref::runOnOperation() {
   if (failed(applyFullConversion(mod, target, std::move(patterns))))
     return signalPassFailure();
 
-  // Move ToTensorOp right before ReturnOp. Rewrite ToMemrefOp and AllocOp to
-  // remove layout information.
-  // TODO: This is a little weird, we should refactor this pass by not using the
-  // MLIR conversion infra -- it cannot meet our requirement here.
-  SmallVector<bufferization::ToTensorOp, 32> toTensorOps;
-  mod.walk([&](Operation *op) {
-    if (auto toTensorOp = dyn_cast<bufferization::ToTensorOp>(op))
-      toTensorOps.push_back(toTensorOp);
-    else if (auto toMemrefOp = dyn_cast<bufferization::ToMemrefOp>(op))
-      removeLayoutMap(b, toMemrefOp, toMemrefOp.tensor());
-    else if (auto alloc = dyn_cast<memref::AllocOp>(op))
-      removeLayoutMap(b, alloc);
+  // Remove the layout information from all AllocOp.
+  mod.walk([&](memref::AllocOp alloc) {
+    auto type = alloc.getType();
+    auto newType = MemRefType::get(type.getShape(), type.getElementType());
+
+    b.setInsertionPoint(alloc);
+    auto newAlloc = b.create<memref::AllocOp>(alloc.getLoc(), newType);
+    alloc.replaceAllUsesWith(newAlloc.memref());
+    alloc.erase();
   });
 
-  for (auto toTensorOp : toTensorOps) {
-    if (toTensorOp.result().hasOneUse())
-      if (auto returnOp = dyn_cast<mlir::ReturnOp>(*toTensorOp->user_begin()))
+  mod.walk([&](mlir::ReturnOp returnOp) {
+    for (auto operand : returnOp.getOperands())
+      if (auto toTensorOp = operand.getDefiningOp<bufferization::ToTensorOp>())
         toTensorOp->moveBefore(returnOp);
-  }
+  });
 }
 
 std::unique_ptr<Pass> polyaie::createTensorizeMemrefPass() {

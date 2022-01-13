@@ -31,7 +31,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
         pm.addPass(polyaie::createMemrefArgToResultPass());
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
-        pm.addPass(polyaie::createBufferStateChangedMemrefPass());
+        pm.addPass(polyaie::createBufferMemrefArgPass());
         pm.addPass(polyaie::createTensorizeMemrefPass());
         pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(mlir::createLoopFusionPass());
@@ -39,9 +39,9 @@ void polyaie::registerPolyAIEPassPipeline() {
         if (opts.vectorizeSize != 1)
           pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
 
-        pm.addPass(polyaie::createConvertToDataflowPass());
-        pm.addPass(mlir::createCanonicalizerPass());
-        pm.addPass(polyaie::createCreateIOProcessPass());
+        // pm.addPass(polyaie::createConvertToDataflowPass());
+        // pm.addPass(mlir::createCanonicalizerPass());
+        // // pm.addPass(polyaie::createCreateIOProcessPass());
         // pm.addPass(polyaie::createPlacementPass(opts));
         // pm.addPass(polyaie::createPrintDataflowPass());
 
@@ -52,8 +52,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         // pm.addPass(polyaie::createMaterializeBroadcastPass());
         // pm.addPass(polyaie::createFlowPacketToCircuitPass());
         // pm.addPass(xilinx::AIE::createAIECreateLocksPass());
-        // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
-        // pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+        // // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
+        // // pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
         // // pm.addPass(polyaie::createDoubleBufferPass());
         // pm.addPass(polyaie::createPostprocessPass());
       });

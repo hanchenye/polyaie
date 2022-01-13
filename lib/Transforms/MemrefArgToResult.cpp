@@ -26,26 +26,27 @@ void MemrefArgToResult::runOnOperation() {
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());
     auto returnOp = func.back().getTerminator();
-    SmallVector<Value, 4> returnVals(returnOp->getOperands());
-    SmallVector<Value, 4> resultMems;
+    SmallVector<Value, 8> returnVals(returnOp->getOperands());
+    SmallVector<Value, 8> resultMems;
+    SmallPtrSet<Value, 8> stateChangedMems;
 
     // Figure out all arguments that need to be returned.
-    // TODO: Currently we only return state-changed memref arguments, how to
-    // determine whether other arguments need to be returned?
+    // TODO: Currently we return all memref arguments, how to determine whether
+    // an argument need to be returned?
     for (auto arg : func.getArguments()) {
-      // Get the argument type and bypass single-element memories.
+      // Get the argument type and bypass non-memref arguments.
       auto argType = arg.getType().dyn_cast<MemRefType>();
       if (!argType)
         continue;
 
-      // Return it if the argument is used by any state-changing operations.
+      returnVals.push_back(arg);
+      auto memory = call.getOperand(arg.getArgNumber());
+      resultMems.push_back(memory);
+
       if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
-            return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
-                       memref::TensorStoreOp, vector::TransferWriteOp>(op);
-          })) {
-        returnVals.push_back(arg);
-        resultMems.push_back(call.getOperand(arg.getArgNumber()));
-      }
+            return isa<mlir::AffineStoreOp>(op);
+          }))
+        stateChangedMems.insert(memory);
     }
 
     // Update return operation and function signature.
@@ -62,10 +63,11 @@ void MemrefArgToResult::runOnOperation() {
     call.replaceAllUsesWith(newCall.getResults().take_front(numResults));
     call.erase();
 
-    // Create copy operation to copy the data back to global memory.
+    // Create copy operation if the state of memory is changed.
     for (auto zip :
          llvm::zip(newCall.getResults().drop_front(numResults), resultMems))
-      b.create<memref::CopyOp>(loc, std::get<0>(zip), std::get<1>(zip));
+      if (stateChangedMems.count(std::get<1>(zip)))
+        b.create<memref::CopyOp>(loc, std::get<0>(zip), std::get<1>(zip));
   }
 }
 

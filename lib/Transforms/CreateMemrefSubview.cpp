@@ -22,15 +22,15 @@ struct CreateMemrefSubview
 /// memref and replace all uses.
 void CreateMemrefSubview::runOnFunction() {
   auto func = getFunction();
+  if (func->hasAttr("polyaie.top_func"))
+    return;
   auto b = OpBuilder(func);
   auto loc = b.getUnknownLoc();
 
   for (auto arg : func.getArguments()) {
     // Get the argument type and bypass non-memref arguments.
     auto argType = arg.getType().dyn_cast<MemRefType>();
-    if (!argType || llvm::any_of(arg.getUsers(), [&](Operation *op) {
-          return !isa<mlir::AffineLoadOp, mlir::AffineStoreOp>(op);
-        }))
+    if (!argType)
       continue;
 
     // We assume that after the compilation of phism, all users have the same

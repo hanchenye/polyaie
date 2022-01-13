@@ -10,14 +10,15 @@ using namespace mlir;
 using namespace polyaie;
 
 namespace {
-struct BufferStateChangedMemref
-    : public polyaie::BufferStateChangedMemrefBase<BufferStateChangedMemref> {
+struct BufferMemrefArg : public polyaie::BufferMemrefArgBase<BufferMemrefArg> {
   void runOnFunction() override;
 };
 } // namespace
 
-void BufferStateChangedMemref::runOnFunction() {
+void BufferMemrefArg::runOnFunction() {
   auto func = getFunction();
+  if (func->hasAttr("polyaie.top_func"))
+    return;
   auto b = OpBuilder(func);
   auto loc = b.getUnknownLoc();
 
@@ -28,18 +29,17 @@ void BufferStateChangedMemref::runOnFunction() {
     if (!argType)
       continue;
 
-    // Create a local buffer for each state-changed memref argument and replace
-    // all its uses.
-    if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
-          return isa<mlir::AffineWriteOpInterface, memref::StoreOp,
-                     memref::TensorStoreOp, vector::TransferWriteOp>(op);
-        })) {
-      // FIXME: The alloc generated here shouldn't have layout information?
-      b.setInsertionPointToStart(&func.front());
-      auto buf = b.create<memref::AllocOp>(loc, argType);
-      arg.replaceAllUsesWith(buf);
+    // Create a local buffer for each memref argument.
+    b.setInsertionPointToStart(&func.front());
+    auto buf = b.create<memref::AllocOp>(loc, argType);
+    arg.replaceAllUsesWith(buf);
 
-      // Set insertion point to the ancestor of the first user.
+    // Handle state-changed memref differently with const memref.
+    if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
+          return isa<mlir::AffineStoreOp>(op);
+        })) {
+      // If the state of memref is changed, create explicit memory copy using an
+      // affine loop nest.
       auto firstUser = *buf->user_begin();
       b.setInsertionPoint(func.body().findAncestorOpInRegion(*firstUser));
 
@@ -54,10 +54,13 @@ void BufferStateChangedMemref::runOnFunction() {
       // Create affine load/store operations.
       auto value = b.create<mlir::AffineLoadOp>(loc, arg, ivs);
       b.create<mlir::AffineStoreOp>(loc, value, buf, ivs);
+    } else {
+      // Otherwise, create a memref copy operation.
+      b.create<memref::CopyOp>(loc, arg, buf);
     }
   }
 }
 
-std::unique_ptr<FunctionPass> polyaie::createBufferStateChangedMemrefPass() {
-  return std::make_unique<BufferStateChangedMemref>();
+std::unique_ptr<FunctionPass> polyaie::createBufferMemrefArgPass() {
+  return std::make_unique<BufferMemrefArg>();
 }
