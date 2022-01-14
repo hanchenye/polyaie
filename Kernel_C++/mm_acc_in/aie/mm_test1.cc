@@ -31,15 +31,10 @@ void mm_test1(input_window_int32* __restrict matA,
 		chess_loop_range(16,){
 			int jump=h1;
 			if (k==15){
-				if(i==3){
-				   jump=8;
-				}
-				else{
-				   jump=h1+8;
-				}
+			    jump=h1+8;
 			}
 			else{
-				jump=h1;
+			    jump=h1;
 			}
 			acc0=lups(window_read_v8(acc_in),0);
 			window_incr(acc_in,h1);
