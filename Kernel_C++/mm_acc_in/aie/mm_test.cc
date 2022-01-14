@@ -30,15 +30,9 @@ void mm_test(input_window_int32* __restrict matA,
 			v8acc80 acc1=null_v8acc80();//For second output column
 			int jump=h1;
 			if (k==15){
-				if(i==3){
-				   jump=8;
-				}
-				else{
-				   jump=h1+8;
-				}
+			    jump=h1+8;
 			}
 			else{
-				jump=h1;
 				jump=h1;
 			}
 			for (unsigned int j=0;j<3;j++)
