@@ -61,6 +61,11 @@ def MemrefArgToResult : Pass<"polyaie-memref-arg-to-result", "ModuleOp"> {
     the top-function to copy the data back to the original memories.
   }];
   let constructor = "mlir::polyaie::createMemrefArgToResultPass()";
+
+  let options = [
+    Option<"returnAllArg", "return-all-arg", "bool",
+           /*default=*/"false", "Return all arguments as results">
+  ];
 }
 
 def ExtractMemrefDependency :

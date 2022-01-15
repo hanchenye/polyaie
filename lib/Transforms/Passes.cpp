@@ -29,17 +29,17 @@ void polyaie::registerPolyAIEPassPipeline() {
 
         pm.addPass(polyaie::createCreateMemrefSubviewPass());
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
-        pm.addPass(polyaie::createMemrefArgToResultPass());
+        pm.addPass(polyaie::createMemrefArgToResultPass(opts));
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
-        pm.addPass(polyaie::createInsertIOFuncPass());
+        // pm.addPass(polyaie::createInsertIOFuncPass());
         pm.addPass(polyaie::createBufferMemrefResultPass());
 
         pm.addPass(polyaie::createTensorizeMemrefPass());
         pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(mlir::createLoopFusionPass());
         pm.addPass(mlir::createAffineScalarReplacementPass());
-        if (opts.vectorizeSize != 1)
-          pm.addPass(mlir::createSuperVectorizePass({opts.vectorizeSize}));
+        if (opts.superVectorizeSize != 1)
+          pm.addPass(mlir::createSuperVectorizePass({opts.superVectorizeSize}));
 
         pm.addPass(polyaie::createConvertToDataflowPass());
         pm.addPass(mlir::createCanonicalizerPass());
@@ -50,15 +50,15 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createCanonicalizerPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
-        pm.addPass(polyaie::createMaterializeBroadcastPass());
-        // pm.addPass(polyaie::createFlowPacketToCircuitPass());
+        // pm.addPass(polyaie::createMaterializeBroadcastPass());
+        // // pm.addPass(polyaie::createFlowPacketToCircuitPass());
 
-        pm.addPass(xilinx::AIE::createAIECreateLocksPass());
-        pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
-        pm.addPass(xilinx::AIE::createAIERouteFlowsPass());
-        // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
-        // pm.addPass(polyaie::createDoubleBufferPass());
-        pm.addPass(polyaie::createPostprocessPass());
+        // pm.addPass(xilinx::AIE::createAIECreateLocksPass());
+        // pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+        // pm.addPass(xilinx::AIE::createAIERouteFlowsPass());
+        // // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
+        // // pm.addPass(polyaie::createDoubleBufferPass());
+        // pm.addPass(polyaie::createPostprocessPass());
       });
 }
 

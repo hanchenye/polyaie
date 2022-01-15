@@ -13,6 +13,12 @@ using namespace polyaie;
 namespace {
 struct MemrefArgToResult
     : public polyaie::MemrefArgToResultBase<MemrefArgToResult> {
+  MemrefArgToResult() = default;
+  MemrefArgToResult(const MemrefArgToResult &) {}
+  MemrefArgToResult(const PolyAIEOptions &opts) {
+    returnAllArg = opts.memrefArgToResultReturnAllArg;
+  }
+
   void runOnOperation() override;
 };
 } // namespace
@@ -39,14 +45,18 @@ void MemrefArgToResult::runOnOperation() {
       if (!argType)
         continue;
 
-      returnVals.push_back(arg);
       auto memory = call.getOperand(arg.getArgNumber());
-      resultMems.push_back(memory);
 
       if (llvm::any_of(arg.getUsers(), [&](Operation *op) {
             return isa<mlir::AffineStoreOp>(op);
-          }))
+          })) {
+        returnVals.push_back(arg);
+        resultMems.push_back(memory);
         stateChangedMems.insert(memory);
+      } else if (returnAllArg) {
+        returnVals.push_back(arg);
+        resultMems.push_back(memory);
+      }
     }
 
     // Update return operation and function signature.
@@ -73,4 +83,8 @@ void MemrefArgToResult::runOnOperation() {
 
 std::unique_ptr<Pass> polyaie::createMemrefArgToResultPass() {
   return std::make_unique<MemrefArgToResult>();
+}
+std::unique_ptr<Pass>
+polyaie::createMemrefArgToResultPass(const PolyAIEOptions &opts) {
+  return std::make_unique<MemrefArgToResult>(opts);
 }

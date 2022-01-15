@@ -29,8 +29,13 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       *this, "num-aie", llvm::cl::init(256),
       llvm::cl::desc("Specify the available number of AIEs")};
 
+  /// Configure the link-extern-kernel pass.
+  Option<bool> memrefArgToResultReturnAllArg{
+      *this, "return-all-arg", llvm::cl::init(false),
+      llvm::cl::desc("Return all arguments as results")};
+
   /// Configure the affine-super-vectorize pass.
-  Option<int64_t> vectorizeSize{
+  Option<int64_t> superVectorizeSize{
       *this, "vec-size", llvm::cl::init(1),
       llvm::cl::desc("Specify the size of super vectorization")};
 
@@ -59,6 +64,7 @@ std::unique_ptr<Pass> createSplitTopFuncPass(const PolyAIEOptions &opts);
 std::unique_ptr<FunctionPass> createCreateMemrefSubviewPass();
 std::unique_ptr<Pass> createHoistMemrefSubviewPass();
 std::unique_ptr<Pass> createMemrefArgToResultPass();
+std::unique_ptr<Pass> createMemrefArgToResultPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createExtractMemrefDependencyPass();
 std::unique_ptr<Pass> createInsertIOFuncPass();
 std::unique_ptr<FunctionPass> createBufferMemrefResultPass();
