@@ -4,10 +4,34 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/Liveness.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
 using namespace polyaie;
+using namespace xilinx::AIE;
+
+// Because we need to maintain a deterministic order of arguments to accommodate
+// the external kernel design, we cannot use liveness analysis here.
+static void getLiveIns(CoreOp core, SmallVectorImpl<Value> &liveIns,
+                       SmallVectorImpl<Type> &liveInTypes) {
+  liveIns.clear();
+  liveInTypes.clear();
+
+  core.walk([&](Operation *op) {
+    Value memref;
+    if (auto load = dyn_cast<mlir::AffineLoadOp>(op))
+      memref = load.memref();
+    else if (auto store = dyn_cast<mlir::AffineStoreOp>(op))
+      memref = store.memref();
+
+    if (memref && llvm::find(liveIns, memref) == liveIns.end())
+      liveIns.push_back(memref);
+  });
+
+  for (auto liveIn : liveIns)
+    liveInTypes.push_back(liveIn.getType());
+}
 
 namespace {
 struct LinkExternKernel
@@ -24,48 +48,39 @@ struct LinkExternKernel
     auto b = OpBuilder(mod);
     auto loc = b.getUnknownLoc();
 
-    auto firstFunc = *mod.getOps<FuncOp>().begin();
-    auto kernelType = b.getFunctionType(firstFunc.getType().getInputs(), {});
+    // We simply assume all CoreOp has the same content.
+    auto firstCore = *mod.getOps<CoreOp>().begin();
+    SmallVector<Value, 8> firstLiveIns;
+    SmallVector<Type, 8> firstLiveInTypes;
+    getLiveIns(firstCore, firstLiveIns, firstLiveInTypes);
 
-    // Create the non-private reference kernel function.
+    // Create the private external kernel function.
+    auto kernelType = b.getFunctionType(firstLiveInTypes, {});
     b.setInsertionPointToStart(mod.getBody());
-    auto kernel = firstFunc.clone();
-    b.insert(kernel);
-    kernel.setName("kernel");
-    kernel.front().getTerminator()->eraseOperands(0, kernel.getNumResults());
-    kernel.setType(kernelType);
+    auto kernel = b.create<FuncOp>(loc, "extern_kernel", kernelType);
+    kernel.setPrivate();
 
-    for (auto func : llvm::drop_begin(mod.getOps<FuncOp>(), 1)) {
-      if (func->getAttr("polyaie.top_func"))
-        continue;
+    for (auto core : mod.getOps<CoreOp>()) {
+      SmallVector<Value, 8> liveIns;
+      SmallVector<Type, 8> liveInTypes;
+      getLiveIns(core, liveIns, liveInTypes);
 
-      if (func.getType() != firstFunc.getType()) {
-        func.emitOpError("All functions must have the same type");
+      if (liveInTypes != firstLiveInTypes) {
+        core.emitOpError("All cores must have the same live-in types");
         return signalPassFailure();
       }
 
       // Remove all operations contained by the function and replace them with a
       // function call.
-      for (auto &op : llvm::make_early_inc_range(func.front()))
-        if (!isa<ReturnOp>(op)) {
+      for (auto &op : llvm::make_early_inc_range(core.body().front()))
+        if (!isa<xilinx::AIE::EndOp>(op)) {
           op.dropAllUses();
           op.erase();
         }
 
-      b.setInsertionPointToStart(&func.front());
-      if (objectFile != "") {
-        b.create<CallOp>(loc, "extern_kernel", TypeRange({}),
-                         func.getArguments());
-        func->setAttr("polyaie.link_with", b.getStringAttr(objectFile));
-      } else
-        b.create<CallOp>(loc, "kernel", TypeRange({}), func.getArguments());
-    }
-
-    // Create the private external kernel function.
-    b.setInsertionPointToStart(mod.getBody());
-    if (objectFile != "") {
-      auto kernel = b.create<FuncOp>(loc, "extern_kernel", kernelType);
-      kernel.setPrivate();
+      b.setInsertionPointToStart(&core.body().front());
+      b.create<CallOp>(loc, kernel, liveIns);
+      core->setAttr("link_with", b.getStringAttr(objectFile));
     }
   }
 };

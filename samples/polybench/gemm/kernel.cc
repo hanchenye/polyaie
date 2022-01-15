@@ -9,13 +9,13 @@
 #include <stdio.h>
 
 extern "C" {
-void extern_kernel(int32_t *C, int32_t *B, int32_t *A) {
+void extern_kernel(int32_t *acc, int32_t *C, int32_t *A, int32_t *B) {
   input_window_int32 matAImpl = {(window_datatype *)A, (window_datatype *)A,
                                  (window_datatype *)A, 4096, 1024};
   input_window_int32 matBImpl = {(window_datatype *)B, (window_datatype *)B,
                                  (window_datatype *)B, 4096, 1024};
-  input_window_int32 accImpl = {(window_datatype *)C, (window_datatype *)C,
-                                (window_datatype *)C, 4096, 1024};
+  input_window_int32 accImpl = {(window_datatype *)acc, (window_datatype *)acc,
+                                (window_datatype *)acc, 4096, 1024};
   output_window_int32 matCImpl = {(window_datatype *)C, (window_datatype *)C,
                                   (window_datatype *)C, 4096, 1024};
 
@@ -46,11 +46,7 @@ void extern_kernel(int32_t *C, int32_t *B, int32_t *A) {
         chess_prepare_for_pipelining chess_loop_range(16, ) {
           int jump = h1;
           if (k == 15) {
-            if (i == 3) {
-              jump = 8;
-            } else {
-              jump = h1 + 8;
-            }
+            jump = h1 + 8;
           } else {
             jump = h1;
           }

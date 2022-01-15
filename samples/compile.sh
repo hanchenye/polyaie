@@ -5,8 +5,8 @@ set -o pipefail
 set -o nounset
 
 ALGORITHM="simulated-annealing"
-DRY_RUN=false
-EXTERN_KERNEL=false
+DRY_RUN="false"
+EXTERN_KERNEL="true"
 OBJECT_FILE="kernel.o"
 VITIS_DIR=/tools/Xilinx/Vitis/2020.1
 
@@ -64,7 +64,10 @@ cp ${UTIL_DIR}/polybench.c ${UTIL_DIR}/polybench.cpp
 # Generate the executables on VCK190.
 source ${VITIS_DIR}/settings64.sh
 cd ${GEMM_DIR}
-${VITIS_DIR}/cardano/bin/xchesscc -p me -P ${VITIS_DIR}/cardano/data/cervino/lib -I${VITIS_DIR}/cardano/include -c ${GEMM_DIR}/kernel.cc
+if [ ${EXTERN_KERNEL} = true ]
+then
+  ${VITIS_DIR}/cardano/bin/xchesscc -p me -P ${VITIS_DIR}/cardano/data/cervino/lib -I${VITIS_DIR}/cardano/include -c ${GEMM_DIR}/kernel.cc
+fi
 ${MLIRAIE_DIR}/build/bin/aiecc.py -j10 \
   --sysroot=${MLIRAIE_DIR}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
   ${GEMM_DIR}/gemm.polyaie.mliraie.mlir \

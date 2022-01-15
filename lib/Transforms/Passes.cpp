@@ -48,17 +48,17 @@ void polyaie::registerPolyAIEPassPipeline() {
 
         pm.addPass(polyaie::createDataflowToAIEPass());
         pm.addPass(mlir::createCanonicalizerPass());
-        // if (opts.enableLinkExternKernel)
-        //   pm.addPass(polyaie::createLinkExternKernelPass(opts));
-        // pm.addPass(polyaie::createMaterializeBroadcastPass());
-        // // pm.addPass(polyaie::createFlowPacketToCircuitPass());
+        if (opts.enableLinkExternKernel)
+          pm.addPass(polyaie::createLinkExternKernelPass(opts));
+        pm.addPass(polyaie::createMaterializeBroadcastPass());
+        pm.addPass(polyaie::createFlowPacketToCircuitPass());
 
-        // pm.addPass(xilinx::AIE::createAIECreateLocksPass());
-        // pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
+        pm.addPass(xilinx::AIE::createAIECreateLocksPass());
+        pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
         // pm.addPass(xilinx::AIE::createAIERouteFlowsPass());
-        // // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
-        // // pm.addPass(polyaie::createDoubleBufferPass());
-        // pm.addPass(polyaie::createPostprocessPass());
+        pm.addPass(xilinx::AIE::createAIEPathfinderPass());
+        // pm.addPass(polyaie::createDoubleBufferPass());
+        pm.addPass(polyaie::createPostprocessPass());
       });
 }
 

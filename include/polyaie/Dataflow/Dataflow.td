@@ -124,7 +124,7 @@ def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
 
   let arguments = (ins I64ArrayAttr:$offsets, I64ArrayAttr:$sizes,
                        I64ArrayAttr:$strides, HostDMAKind:$kind,
-                       AnyMemRef:$target, AnyType:$source);
+                       AnyMemRef:$target, AnyMemRef:$source);
 
   let verifier = "return ::verify(*this);";
 }

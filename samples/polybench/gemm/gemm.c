@@ -64,7 +64,7 @@ void print_array(int ni, int nj, DATA_TYPE POLYBENCH_2D(C, NI, NJ, ni, nj)) {
 /* Main computational kernel. The whole function will be timed,
    including the call and return. */
 
-void kernel_gemm(int ni, int nj, int nk, DATA_TYPE alpha, DATA_TYPE beta,
+void kernel_gemm(int ni, int nj, int nk,
                  DATA_TYPE POLYBENCH_2D(C, NI, NJ, ni, nj),
                  DATA_TYPE POLYBENCH_2D(A, NI, NK, ni, nk),
                  DATA_TYPE POLYBENCH_2D(B, NK, NJ, nk, nj)) {
@@ -72,11 +72,9 @@ void kernel_gemm(int ni, int nj, int nk, DATA_TYPE alpha, DATA_TYPE beta,
 
 #pragma scop
   for (i = 0; i < _PB_NI; i++) {
-    for (j = 0; j < _PB_NJ; j++)
-      C[i][j] *= beta;
     for (k = 0; k < _PB_NK; k++) {
       for (j = 0; j < _PB_NJ; j++)
-        C[i][j] += alpha * A[i][k] * B[k][j];
+        C[i][j] += A[i][k] * B[k][j];
     }
   }
 #pragma endscop
@@ -107,12 +105,12 @@ int main(int argc, char **argv) {
   // unsigned iter_num = atoi(argv[2]);
   // if (run_aie) {
   //   printf("Running on AIE for %d times...\n", iter_num);
-  //   kernel_gemm(alpha, beta, POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A),
-  //               POLYBENCH_ARRAY(B), iter_num);
+  //   kernel_gemm(POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B),
+  //               iter_num);
   // } else {
   //   printf("Running on ARM CPU for %d times...\n", iter_num);
   //   for (unsigned i = 0; i < iter_num; ++i)
-  kernel_gemm(ni, nj, nk, alpha, beta, POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A),
+  kernel_gemm(ni, nj, nk, POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A),
               POLYBENCH_ARRAY(B));
   // }
 
