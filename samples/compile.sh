@@ -4,8 +4,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-ALGORITHM="simulated-annealing"
-DRY_RUN="false"
+ALGORITHM="naive"
+DRY_RUN="true"
 EXTERN_KERNEL="true"
 OBJECT_FILE="kernel.o"
 VITIS_DIR=/tools/Xilinx/Vitis/2020.1

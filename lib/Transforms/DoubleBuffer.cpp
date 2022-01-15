@@ -13,22 +13,32 @@ using namespace polyaie;
 using namespace dataflow;
 using namespace xilinx::AIE;
 
+/// A buffer is shared as long as it is used outside of the associated core.
+static bool bufIsShared(BufferOp buf) {
+  auto core = buf.getTileOp().getCoreOp();
+  for (auto user : buf->getUsers())
+    if (!core->isAncestor(user) && !isa<HostDMAOp>(user))
+      return true;
+  return false;
+}
+
 namespace {
 struct DoubleBuffer : public polyaie::DoubleBufferBase<DoubleBuffer> {
   void runOnOperation() override;
 
-  // void recursivelyInsertPongBlocks(Block &block) {
-  //   pongBlocks.insert(&block);
-  //   for (auto &op : block)
-  //     for (auto &region : op.getRegions())
-  //       for (auto &child : region)
-  //         recursivelyInsertPongBlocks(child);
-  // }
+  void recursivelyInsertPongBlocks(Block &block) {
+    pongBlocks.insert(&block);
+    for (auto &op : block)
+      for (auto &region : op.getRegions())
+        for (auto &child : region)
+          recursivelyInsertPongBlocks(child);
+  }
 
-  // // Hold all locks and buffers that need to be duplicated.
-  // DenseMap<Value, Value> lockAndBufMap;
-  // // Hold all pong blocks.
-  // DenseSet<Block *> pongBlocks;
+  /// Hold all locks and buffers that need to be duplicated.
+  DenseMap<Value, Value> lockAndBufMap;
+
+  /// Hold all pong blocks.
+  DenseSet<Block *> pongBlocks;
 };
 } // namespace
 
@@ -42,48 +52,45 @@ void DoubleBuffer::runOnOperation() {
     auto tile = core.getTileOp();
     b.setInsertionPointAfter(tile);
 
-    // // Collect all locks and buffers associated with the tile.
-    // SmallVector<LockOp, 8> locks;
-    // SmallVector<BufferOp, 8> bufs;
-    // for (auto user : tile.result().getUsers()) {
-    //   if (auto lock = dyn_cast<LockOp>(user))
-    //     locks.push_back(lock);
-    //   else if (auto buf = dyn_cast<BufferOp>(user))
-    //     bufs.push_back(buf);
-    // }
+    // Collect all locks and buffers associated with the tile.
+    SmallVector<LockOp, 8> locks;
+    SmallVector<BufferOp, 8> bufs;
+    for (auto user : tile.result().getUsers()) {
+      if (auto lock = dyn_cast<LockOp>(user))
+        locks.push_back(lock);
+      else if (auto buf = dyn_cast<BufferOp>(user))
+        bufs.push_back(buf);
+    }
 
-    // // Duplicate each lock and store them in the map.
-    // auto lockIdx = locks.size();
-    // for (auto lock : locks) {
-    //   auto newLock = b.create<LockOp>(loc, tile, lockIdx++);
-    //   lockAndBufMap[lock] = newLock;
-    // }
+    // Duplicate each lock and record them in the map.
+    auto lockIdx = locks.size();
+    for (auto lock : locks) {
+      auto newLock = b.create<LockOp>(loc, tile, lockIdx++);
+      lockAndBufMap[lock] = newLock;
+    }
 
-    // // Duplicate each buffer and store them in the map.
-    // for (auto buf : bufs) {
-    //   if (!buf->getAttr("polyaie.double_buf"))
-    //     continue;
-    //   auto newBuf = buf.clone();
-    //   b.insert(newBuf);
-    //   lockAndBufMap[buf] = newBuf;
+    // Duplicate each shared buffer and record them in the map.
+    for (auto buf : bufs) {
+      if (!bufIsShared(buf))
+        continue;
+      auto newBuf = buf.clone();
+      b.insert(newBuf);
+      lockAndBufMap[buf] = newBuf;
 
-    //   // Annotate buffers with "ping" or "pong" mark.
-    //   buf->setAttr("polyaie.ping_buf", b.getUnitAttr());
-    //   newBuf->setAttr("polyaie.pong_buf", b.getUnitAttr());
+      // Annotate buffers with "ping" or "pong" mark.
+      buf->setAttr("polyaie.ping_buf", b.getUnitAttr());
+      newBuf->setAttr("polyaie.pong_buf", b.getUnitAttr());
 
-    //   // Duplicate MemCpyOps as well for each buffer.
-    //   for (auto &use : llvm::make_early_inc_range(buf->getUses())) {
-    //     auto user = use.getOwner();
-    //     if (isa<dataflow::MemCpyOp>(user)) {
-    //       auto insertPoint = b.saveInsertionPoint();
-    //       b.setInsertionPoint(user);
-    //       auto newMemCpy = user->clone();
-    //       newMemCpy->setOperand(use.getOperandNumber(), newBuf);
-    //       b.insert(newMemCpy);
-    //       b.restoreInsertionPoint(insertPoint);
-    //     }
-    //   }
-    // }
+      // Duplicate HostDMAOps as well for each buffer.
+      for (auto &use : llvm::make_early_inc_range(buf->getUses())) {
+        auto user = use.getOwner();
+        if (isa<HostDMAOp>(user)) {
+          auto newHostDMA = user->clone();
+          newHostDMA->setOperand(use.getOperandNumber(), newBuf);
+          b.insert(newHostDMA);
+        }
+      }
+    }
 
     // Iterate the body of each AIE for N times, where N is loaded from an
     // index-typed local buffer.
@@ -109,64 +116,84 @@ void DoubleBuffer::runOnOperation() {
                    std::prev(blockOps.end()));
   }
 
-  // // Duplicate the body of CoreOp.
-  // for (auto core : mod.getOps<CoreOp>()) {
-  //   auto loop = *core.body().getOps<scf::ForOp>().begin();
-  //   b.setInsertionPointToStart(loop.getBody());
+  // Duplicate the body of CoreOp.
+  for (auto core : mod.getOps<CoreOp>()) {
+    auto loop = *core.body().getOps<scf::ForOp>().begin();
+    b.setInsertionPointToStart(loop.getBody());
 
-  //   // Create an IfOp to branch ping/pong computing phase.
-  //   auto iv = loop.getInductionVar();
-  //   auto two = b.create<arith::ConstantIndexOp>(loc, 2);
-  //   auto modTwo = b.create<UnsignedRemIOp>(loc, iv, two);
-  //   auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
-  //   auto cond = b.create<CmpIOp>(loc, CmpIPredicate::eq, modTwo, zero);
-  //   auto ifOp = b.create<scf::IfOp>(loc, cond, /*withElseRegion=*/true);
+    // Create an IfOp to branch ping/pong computing phase.
+    auto iv = loop.getInductionVar();
+    auto two = b.create<arith::ConstantIndexOp>(loc, 2);
+    auto modTwo = b.create<arith::RemUIOp>(loc, iv, two);
+    auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
+    auto cond =
+        b.create<arith::CmpIOp>(loc, arith::CmpIPredicate ::eq, modTwo, zero);
+    auto ifOp = b.create<scf::IfOp>(loc, cond, /*withElseRegion=*/true);
 
-  //   auto &loopOps = loop.getBody()->getOperations();
-  //   auto &pingOps = ifOp.thenBlock()->getOperations();
-  //   pingOps.splice(pingOps.begin(), loopOps, std::next(loopOps.begin(), 5),
-  //                  std::prev(loopOps.end()));
+    auto &loopOps = loop.getBody()->getOperations();
+    auto &pingOps = ifOp.thenBlock()->getOperations();
+    pingOps.splice(pingOps.begin(), loopOps, std::next(loopOps.begin(), 5),
+                   std::prev(loopOps.end()));
 
-  //   auto tmpIfOp = ifOp.clone();
-  //   auto &tmpPongOps = tmpIfOp.thenBlock()->getOperations();
-  //   auto &pongOps = ifOp.elseBlock()->getOperations();
-  //   pongOps.splice(pongOps.begin(), tmpPongOps, tmpPongOps.begin(),
-  //                  std::prev(tmpPongOps.end()));
-  //   tmpIfOp.erase();
+    auto tmpIfOp = ifOp.clone();
+    auto &tmpPongOps = tmpIfOp.thenBlock()->getOperations();
+    auto &pongOps = ifOp.elseBlock()->getOperations();
+    pongOps.splice(pongOps.begin(), tmpPongOps, tmpPongOps.begin(),
+                   std::prev(tmpPongOps.end()));
+    tmpIfOp.erase();
 
-  //   // Insert all child blocks of the else block.
-  //   recursivelyInsertPongBlocks(*ifOp.elseBlock());
-  // }
+    // Insert all child blocks of the else block.
+    recursivelyInsertPongBlocks(*ifOp.elseBlock());
+  }
 
-  // // Duplicate the BD block of MemOp.
-  // for (auto mem : mod.getOps<MemOp>()) {
-  //   for (auto dma : mem.getOps<DMAStartOp>()) {
-  //     auto pingBlock = dma.dest();
-  //     auto pingBranch = cast<BranchOp>(pingBlock->getTerminator());
-  //     // TODO: Support more than one blocks under the same channel.
-  //     if (pingBranch.dest() != pingBlock)
-  //       mem.emitOpError("dmaBd block must branch to itself");
+  // Duplicate the BD block of MemOp.
+  for (auto mem : mod.getOps<MemOp>()) {
+    for (auto start : mem.getOps<DMAStartOp>()) {
+      Block *pingBdBlock = start.dest();
+      Block *firstPongBdBlock = nullptr;
+      Block *lastPongBdBlock = nullptr;
 
-  //     // FIXME: This is risky? Pong block is not necessary to be the block
-  //     // before the chain block of DMAStartOp.
-  //     auto pongBlock = b.createBlock(dma.chain());
-  //     for (auto &op : pingBlock->getOperations())
-  //       b.insert(op.clone());
-  //     pingBranch.setDest(pongBlock);
+      while (true) {
+        // Generate a new pong block by cloning the current ping block. Record
+        // the pong block in the global pong blocks set.
+        auto pongBdBlock = b.createBlock(start.chain());
+        for (auto &op : pingBdBlock->getOperations())
+          b.insert(op.clone());
+        pongBlocks.insert(pongBdBlock);
 
-  //     pongBlocks.insert(pongBlock);
-  //   }
-  // }
+        // If the current pong block is the first one, record it for later use.
+        if (!firstPongBdBlock)
+          firstPongBdBlock = pongBdBlock;
 
-  // // Replace all locks and buffers in the pong blocks.
-  // for (auto pair : lockAndBufMap) {
-  //   auto pingLockOrBuf = pair.first;
-  //   auto pongLockOrBuf = pair.second;
+        // Set the current pong block as the successor the last one.
+        if (lastPongBdBlock)
+          cast<BranchOp>(lastPongBdBlock->getTerminator()).setDest(pongBdBlock);
 
-  //   pingLockOrBuf.replaceUsesWithIf(pongLockOrBuf, [&](OpOperand &use) {
-  //     return pongBlocks.count(use.getOwner()->getBlock());
-  //   });
-  // }
+        lastPongBdBlock = pongBdBlock;
+
+        // Enter the next ping block if it exists.
+        if (pingBdBlock->getSuccessor(0) == start.dest())
+          break;
+        pingBdBlock = pingBdBlock->getSuccessor(0);
+      }
+
+      // Set the first pong block as the successor of the last ping block.
+      cast<BranchOp>(pingBdBlock->getTerminator()).setDest(firstPongBdBlock);
+
+      // Set the first ping block as the successor of the last pong block.
+      cast<BranchOp>(lastPongBdBlock->getTerminator()).setDest(start.dest());
+    }
+  }
+
+  // Replace all locks and buffers in the pong blocks.
+  for (auto pair : lockAndBufMap) {
+    auto pingLockOrBuf = pair.first;
+    auto pongLockOrBuf = pair.second;
+
+    pingLockOrBuf.replaceUsesWithIf(pongLockOrBuf, [&](OpOperand &use) {
+      return pongBlocks.count(use.getOwner()->getBlock());
+    });
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createDoubleBufferPass() {
