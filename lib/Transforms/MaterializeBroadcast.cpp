@@ -153,6 +153,9 @@ void MaterializeBroadcast::runOnOperation() {
     // Check if the source buffer need to DMA to stream.
     if (nonMergeableBufs.empty())
       continue;
+    // As the source buffer may have been re-allocated, we need to update the
+    // current associated tile of the source buffer.
+    srcTile = srcBuf.getTileOp();
 
     // First, create a new packet_flow operation and construct the source DMA
     // info. The info will be used to generate MemOps later.
@@ -224,6 +227,8 @@ void MaterializeBroadcast::runOnOperation() {
 
       unsigned dmaIdx = 0;
       for (auto dma : dmaList) {
+        assert(dma.buf.getTileOp() == tile &&
+               "DMA and buffer should have the same associated tile");
         // Connect all description blocks into a chained loop.
         auto bdBlock = b.createBlock(endBlock);
         if (dmaIdx++ == 0) {

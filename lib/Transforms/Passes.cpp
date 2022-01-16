@@ -31,7 +31,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
         pm.addPass(polyaie::createMemrefArgToResultPass(opts));
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
-        // pm.addPass(polyaie::createInsertIOFuncPass());
+        pm.addPass(polyaie::createInsertIOFuncPass());
         pm.addPass(polyaie::createBufferMemrefResultPass());
 
         pm.addPass(polyaie::createTensorizeMemrefPass());
@@ -55,9 +55,9 @@ void polyaie::registerPolyAIEPassPipeline() {
 
         pm.addPass(xilinx::AIE::createAIECreateLocksPass());
         pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
-        // pm.addPass(xilinx::AIE::createAIERouteFlowsPass());
-        pm.addPass(xilinx::AIE::createAIEPathfinderPass());
-        pm.addPass(polyaie::createDoubleBufferPass());
+        pm.addPass(xilinx::AIE::createAIERouteFlowsPass());
+        // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
+        // pm.addPass(polyaie::createDoubleBufferPass());
         pm.addPass(polyaie::createPostprocessPass());
       });
 }

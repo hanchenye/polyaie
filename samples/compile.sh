@@ -4,9 +4,10 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-ALGORITHM="naive"
-DRY_RUN="true"
-EXTERN_KERNEL="true"
+DRY_RUN="false"
+RETURN_ALL_ARG="true"
+ALGORITHM="simulated-annealing"
+EXTERN_KERNEL="false"
 OBJECT_FILE="kernel.o"
 VITIS_DIR=/tools/Xilinx/Vitis/2020.1
 
@@ -32,14 +33,19 @@ python pb-flow.py ${DIR}/polybench \
 
 
 # Run polyaie to generate the AIE IR of GEMM.
+PIPELINE_OPTS="top-func-name=kernel_gemm "
+PIPELINE_OPTS+="return-all-arg=${RETURN_ALL_ARG} "
+PIPELINE_OPTS+="algorithm=${ALGORITHM} "
+PIPELINE_OPTS+="enable-link-extern-kernel=${EXTERN_KERNEL} "
+PIPELINE_OPTS+="object-file=${OBJECT_FILE}"
+
 polyaie-opt ${GEMM_DIR}/gemm.pre.kern.plmr.ca.lt.mlir \
-  -polyaie-pipeline="top-func-name=kernel_gemm algorithm=${ALGORITHM} enable-link-extern-kernel=${EXTERN_KERNEL} object-file=${OBJECT_FILE}" \
+  -polyaie-pipeline="${PIPELINE_OPTS}" \
   1> ${GEMM_DIR}/gemm.polyaie.mlir \
   2> ${GEMM_DIR}/gemm.polyaie.dot
 
 dot -Tpng ${GEMM_DIR}/gemm.polyaie.dot \
   > ${GEMM_DIR}/gemm.polyaie.df.png
-
 dot -Tpng -Kfdp ${GEMM_DIR}/gemm.polyaie.dot \
   > ${GEMM_DIR}/gemm.polyaie.layout.png
 
@@ -66,8 +72,11 @@ source ${VITIS_DIR}/settings64.sh
 cd ${GEMM_DIR}
 if [ ${EXTERN_KERNEL} = true ]
 then
-  ${VITIS_DIR}/cardano/bin/xchesscc -p me -P ${VITIS_DIR}/cardano/data/cervino/lib -I${VITIS_DIR}/cardano/include -c ${GEMM_DIR}/kernel.cc
+  ${VITIS_DIR}/cardano/bin/xchesscc -p me \
+    -P ${VITIS_DIR}/cardano/data/cervino/lib \
+    -I${VITIS_DIR}/cardano/include -c ${GEMM_DIR}/kernel.cc
 fi
+
 ${MLIRAIE_DIR}/build/bin/aiecc.py -j10 \
   --sysroot=${MLIRAIE_DIR}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
   ${GEMM_DIR}/gemm.polyaie.mliraie.mlir \
