@@ -66,12 +66,12 @@ std::unique_ptr<Pass> createHoistMemrefSubviewPass();
 std::unique_ptr<Pass> createMemrefArgToResultPass();
 std::unique_ptr<Pass> createMemrefArgToResultPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createExtractMemrefDependencyPass();
-std::unique_ptr<Pass> createInsertIOFuncPass();
 std::unique_ptr<FunctionPass> createBufferMemrefResultPass();
 std::unique_ptr<Pass> createTensorizeMemrefPass();
 std::unique_ptr<FunctionPass> createDetectLoopReductionPass();
 
 std::unique_ptr<Pass> createConvertToDataflowPass();
+std::unique_ptr<Pass> createCreateInterfacePass();
 std::unique_ptr<Pass> createPlacementPass();
 std::unique_ptr<Pass> createPlacementPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createPrintDataflowPass();

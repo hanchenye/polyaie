@@ -27,7 +27,7 @@
 
 #ifdef SMALL_DATASET
 #define NI 64
-#define NJ 128
+#define NJ 64
 #define NK 128
 #endif
 

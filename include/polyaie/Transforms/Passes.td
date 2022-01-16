@@ -78,16 +78,6 @@ def ExtractMemrefDependency :
   let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
 }
 
-def InsertIOFunc : Pass<"polyaie-insert-io-func", "ModuleOp"> {
-  let summary = "Create an empty function for each IO";
-  let description = [{
-    As ShimDMAOp cannot handle packet streaming, we create an empty function for
-    each IO such that the ShimDMAOp can first stream data to the empty function
-    using circuit-switched mode. 
-  }];
-  let constructor = "mlir::polyaie::createInsertIOFuncPass()";
-}
-
 def BufferMemrefResult : FunctionPass<"polyaie-buffer-memref-result"> {
   let summary = "Buffer memref results";
   let description = [{
@@ -113,6 +103,14 @@ def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
     type analysis. Then, create a dataflow based on the dependencies.
   }];
   let constructor = "mlir::polyaie::createConvertToDataflowPass()";
+}
+
+def CreateInterface : Pass<"polyaie-create-interface", "ModuleOp"> {
+  let summary = "Create interfaces for the dataflow";
+  let description = [{
+    For now, we only support to create NoC interfaces.
+  }];
+  let constructor = "mlir::polyaie::createCreateInterfacePass()";
 }
 
 def Placement : Pass<"polyaie-placement", "ModuleOp"> {

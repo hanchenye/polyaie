@@ -15,7 +15,7 @@ using namespace dataflow;
 using ValuesMap = DenseMap<Value, SmallVector<Value, 32>>;
 
 namespace {
-struct InsertIOFunc : public polyaie::InsertIOFuncBase<InsertIOFunc> {
+struct CreateInterface : public polyaie::CreateInterfaceBase<CreateInterface> {
   const unsigned maxGroupNumBytes = 16000;
 
   std::vector<SmallVector<Value, 8>> groups;
@@ -91,6 +91,6 @@ struct InsertIOFunc : public polyaie::InsertIOFuncBase<InsertIOFunc> {
 };
 } // namespace
 
-std::unique_ptr<Pass> polyaie::createInsertIOFuncPass() {
-  return std::make_unique<InsertIOFunc>();
+std::unique_ptr<Pass> polyaie::createCreateInterfacePass() {
+  return std::make_unique<CreateInterface>();
 }
