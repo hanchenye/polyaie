@@ -42,6 +42,7 @@ void polyaie::registerPolyAIEPassPipeline() {
 
         pm.addPass(polyaie::createConvertToDataflowPass());
         pm.addPass(mlir::createCanonicalizerPass());
+        pm.addPass(polyaie::createInsertGMIOAdapterPass());
         pm.addPass(polyaie::createPlacementPass(opts));
         pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPrintDataflowPass());

@@ -71,9 +71,10 @@ std::unique_ptr<Pass> createTensorizeMemrefPass();
 std::unique_ptr<FunctionPass> createDetectLoopReductionPass();
 
 std::unique_ptr<Pass> createConvertToDataflowPass();
-std::unique_ptr<Pass> createCreateInterfacePass();
+std::unique_ptr<Pass> createInsertGMIOAdapterPass();
 std::unique_ptr<Pass> createPlacementPass();
 std::unique_ptr<Pass> createPlacementPass(const PolyAIEOptions &opts);
+std::unique_ptr<Pass> createCreateInterfacePass();
 std::unique_ptr<Pass> createPrintDataflowPass();
 
 std::unique_ptr<Pass> createDataflowToAIEPass();

@@ -12,13 +12,14 @@ using namespace polyaie;
 using namespace dataflow;
 
 namespace {
-struct CreateInterface : public polyaie::CreateInterfaceBase<CreateInterface> {
+struct InsertGMIOAdapter
+    : public polyaie::InsertGMIOAdapterBase<InsertGMIOAdapter> {
   void runOnOperation() override;
 };
 } // namespace
 
-void CreateInterface::runOnOperation() {}
+void InsertGMIOAdapter::runOnOperation() {}
 
-std::unique_ptr<Pass> polyaie::createCreateInterfacePass() {
-  return std::make_unique<CreateInterface>();
+std::unique_ptr<Pass> polyaie::createInsertGMIOAdapterPass() {
+  return std::make_unique<InsertGMIOAdapter>();
 }

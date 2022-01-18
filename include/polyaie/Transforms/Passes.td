@@ -105,12 +105,14 @@ def ConvertToDataflow : Pass<"polyaie-convert-to-dataflow", "ModuleOp"> {
   let constructor = "mlir::polyaie::createConvertToDataflowPass()";
 }
 
-def CreateInterface : Pass<"polyaie-create-interface", "ModuleOp"> {
-  let summary = "Create interfaces for the dataflow";
+def InsertGMIOAdapter : Pass<"polyaie-insert-gmio-adapter", "ModuleOp"> {
+  let summary = "Insert empty process node for each GMIO";
   let description = [{
-    For now, we only support to create NoC interfaces.
+    As GMIO cannot transmit packet streams, we need an adapter for each GMIO
+    such that we can first stream the data from GMIO to the adapter using
+    circuit-switched mode and then transmit packet from the adapter.
   }];
-  let constructor = "mlir::polyaie::createCreateInterfacePass()";
+  let constructor = "mlir::polyaie::createInsertGMIOAdapterPass()";
 }
 
 def Placement : Pass<"polyaie-placement", "ModuleOp"> {
@@ -127,6 +129,15 @@ def Placement : Pass<"polyaie-placement", "ModuleOp"> {
            "Specify the placement algorithm, possible values are: "
            "naive(default), simulated-annealing">
   ];
+}
+
+def CreateInterface : Pass<"polyaie-create-interface", "ModuleOp"> {
+  let summary = "Create interfaces for the dataflow";
+  let description = [{
+    Packet tensor load/store operations that is associated to the same NoC or
+    PL interface into PLIO/GMIO process operations.
+  }];
+  let constructor = "mlir::polyaie::createCreateInterfacePass()";
 }
 
 def PrintDataflow : Pass<"polyaie-print-dataflow", "ModuleOp"> {

@@ -9,8 +9,9 @@ add_mlir_library(MLIRPolyAIEPasses
   TensorizeMemref.cpp
   DetectLoopReduction.cpp
   ConvertToDataflow.cpp
-  CreateInterface.cpp
+  InsertGMIOAdapter.cpp
   Placement.cpp
+  CreateInterface.cpp
   PrintDataflow.cpp
   DataflowToAIE.cpp
   LinkExternKernel.cpp
