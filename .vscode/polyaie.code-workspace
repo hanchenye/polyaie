@@ -139,7 +139,8 @@
       "queue": "cpp",
       "stack": "cpp",
       "locale": "cpp",
-      "executor": "cpp"
+      "executor": "cpp",
+      "__node_handle": "cpp"
     }
   },
   "extensions": {
