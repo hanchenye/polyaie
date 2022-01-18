@@ -26,11 +26,14 @@ void DataflowDialect::initialize() {
 //===----------------------------------------------------------------------===//
 
 void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                      TypeRange resultTypes, ValueRange operands) {
+                      TypeRange resultTypes, ValueRange operands,
+                      ProcessKind kind) {
   odsState.addOperands(operands);
-  auto body = odsState.addRegion();
+  odsState.addAttribute(kindAttrName(odsState.name),
+                        ProcessKindAttr::get(odsBuilder.getContext(), kind));
   odsState.addTypes(resultTypes);
 
+  auto body = odsState.addRegion();
   auto &entry = body->emplaceBlock();
   entry.addArguments(operands.getTypes());
 }
@@ -42,6 +45,12 @@ static LogicalResult verify(ProcessOp op) {
   if (op.getOperandTypes() != op.body().front().getArgumentTypes())
     return op.emitOpError(
         "operands types must align with arguments types of the entry block");
+
+  if (op.kind() != ProcessKind::AIE)
+    for (auto &op : op.getOps())
+      if (!isa<dataflow::TensorLoadOp, dataflow::TensorStoreOp>(op))
+        return op.emitOpError(
+            "GMIO or PLIO process must only contain tensor load/store op");
 
   return success();
 }

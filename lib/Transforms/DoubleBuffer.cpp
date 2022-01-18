@@ -13,15 +13,6 @@ using namespace polyaie;
 using namespace dataflow;
 using namespace xilinx::AIE;
 
-/// A buffer is shared as long as it is used outside of the associated core.
-static bool bufIsShared(BufferOp buf) {
-  auto core = buf.getTileOp().getCoreOp();
-  for (auto user : buf->getUsers())
-    if (!core->isAncestor(user) && !isa<HostDMAOp>(user))
-      return true;
-  return false;
-}
-
 namespace {
 struct DoubleBuffer : public polyaie::DoubleBufferBase<DoubleBuffer> {
   void runOnOperation() override;
@@ -41,6 +32,15 @@ struct DoubleBuffer : public polyaie::DoubleBufferBase<DoubleBuffer> {
   DenseSet<Block *> pongBlocks;
 };
 } // namespace
+
+/// A buffer is shared as long as it is used outside of the associated core.
+static bool bufIsShared(BufferOp buf) {
+  auto core = buf.getTileOp().getCoreOp();
+  for (auto user : buf->getUsers())
+    if (!core->isAncestor(user) && !isa<HostDMAOp>(user))
+      return true;
+  return false;
+}
 
 void DoubleBuffer::runOnOperation() {
   auto mod = getOperation();

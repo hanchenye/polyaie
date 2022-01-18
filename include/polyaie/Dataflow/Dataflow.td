@@ -23,22 +23,31 @@ class DataflowOp<string mnemonic, list<OpTrait> traits = []> :
     Op<DataflowDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
-// Process-related Operation
+// Dataflow Operations
 //===----------------------------------------------------------------------===//
 
-def ProcessOp : DataflowOp<"process", []> {
+def AIE:  I64EnumAttrCase<"AIE", 0>;
+def GMIO:  I64EnumAttrCase<"GMIO", 1>;
+def PLIO:  I64EnumAttrCase<"PLIO", 2>;
+def ProcessKind: I64EnumAttr<"ProcessKind", "Kind of Process",
+    [AIE, GMIO, PLIO]> {
+  let cppNamespace = "mlir::polyaie";
+}
+
+def ProcessOp : DataflowOp<"process", [IsolatedFromAbove]> {
   let summary = "process operation";
   let description = [{
     This operation represents a process in a dataflow graph.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$operands);
+  let arguments = (ins ProcessKind:$kind, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region AnyRegion:$body);
 
   let skipDefaultBuilders = 1;
   let builders =[
-    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands)>
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
+                   CArg<"ProcessKind", "ProcessKind::AIE">:$kind)>
   ];
 
   let verifier = "return ::verify(*this);";
@@ -72,10 +81,6 @@ def ReturnOp : DataflowOp<"return", [Terminator]> {
   let verifier = "return ::verify(*this);";
 }
 
-//===----------------------------------------------------------------------===//
-// Tensor Load/Store Operation
-//===----------------------------------------------------------------------===//
-
 def TensorLoadOp : DataflowOp<"tensor_load",
     [SameOperandsAndResultElementType]> {
   let summary = "tensor load operation";
@@ -104,7 +109,7 @@ def TensorStoreOp : DataflowOp<"tensor_store", [SameOperandsElementType]> {
 }
 
 //===----------------------------------------------------------------------===//
-// Runtime Operation - should be factored out to a new dialect
+// Runtime Operations - should be factored out to a new dialect
 //===----------------------------------------------------------------------===//
 
 def HostToDDR:  I64EnumAttrCase<"HostToDDR", 0>;
@@ -130,7 +135,7 @@ def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
 }
 
 //===----------------------------------------------------------------------===//
-// AIE Operation - should be factored out to AIE dialect
+// AIE Operations - should be factored out to AIE dialect
 //===----------------------------------------------------------------------===//
 
 def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {

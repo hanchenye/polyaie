@@ -31,7 +31,6 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
         pm.addPass(polyaie::createMemrefArgToResultPass(opts));
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
-        pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createBufferMemrefResultPass());
 
         pm.addPass(polyaie::createTensorizeMemrefPass());
@@ -43,8 +42,8 @@ void polyaie::registerPolyAIEPassPipeline() {
 
         pm.addPass(polyaie::createConvertToDataflowPass());
         pm.addPass(mlir::createCanonicalizerPass());
-        // pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPlacementPass(opts));
+        pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPrintDataflowPass());
 
         pm.addPass(polyaie::createDataflowToAIEPass());
