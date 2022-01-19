@@ -76,8 +76,8 @@ void MaterializeBroadcast::runOnOperation() {
   auto loc = b.getUnknownLoc();
 
   // Map from TileOp to its associated S2MM/MM2S DMAs.
-  DenseMap<Operation *, SmallVector<DMAInfo, 8>> S2MMInfoMap;
-  DenseMap<Operation *, SmallVector<DMAInfo, 8>> MM2SInfoMap;
+  llvm::SmallDenseMap<Operation *, SmallVector<DMAInfo, 8>, 32> S2MMInfoMap;
+  llvm::SmallDenseMap<Operation *, SmallVector<DMAInfo, 8>, 32> MM2SInfoMap;
 
   unsigned tokIdx = 0;
   uint8_t packetIdx = 0;

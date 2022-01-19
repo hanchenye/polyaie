@@ -33,7 +33,7 @@ void MemrefArgToResult::runOnOperation() {
     auto returnOp = func.back().getTerminator();
     SmallVector<Value, 8> returnVals(returnOp->getOperands());
     SmallVector<Value, 8> resultMems;
-    SmallPtrSet<Value, 8> stateChangedMems;
+    llvm::SmallDenseSet<Value, 8> stateChangedMems;
 
     // Figure out all arguments that need to be returned.
     // TODO: Currently we return all memref arguments, how to determine whether

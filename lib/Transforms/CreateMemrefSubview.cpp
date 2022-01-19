@@ -49,7 +49,7 @@ void CreateMemrefSubview::runOnFunction() {
     }
 
     // Construct the dimension size map based on the loop trip counts.
-    DenseMap<unsigned, unsigned> dimSizeMap;
+    llvm::SmallDenseMap<unsigned, unsigned, 8> dimSizeMap;
     unsigned idx = 0;
     for (auto operand : operands) {
       auto loop = getForInductionVarOwner(operand);

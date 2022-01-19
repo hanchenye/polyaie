@@ -26,10 +26,10 @@ struct DoubleBuffer : public polyaie::DoubleBufferBase<DoubleBuffer> {
   }
 
   /// Hold all locks and buffers that need to be duplicated.
-  DenseMap<Value, Value> lockAndBufMap;
+  llvm::SmallDenseMap<Value, Value, 64> lockAndBufMap;
 
   /// Hold all pong blocks.
-  DenseSet<Block *> pongBlocks;
+  llvm::SmallDenseSet<Block *, 32> pongBlocks;
 };
 } // namespace
 

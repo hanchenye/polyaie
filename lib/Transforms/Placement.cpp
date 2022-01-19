@@ -62,7 +62,7 @@ public:
   /// Check whether all nodes have been placed.
   LogicalResult
   checkFullyPlaced(const SmallVector<Operation *, 32> &nodes) const {
-    DenseSet<Operation *> placedNodes;
+    llvm::SmallDenseSet<Operation *, 32> placedNodes;
     for (auto node : getNodes())
       if (!placedNodes.insert(node).second)
         return failure();
@@ -111,9 +111,9 @@ public:
 
 protected:
   /// Find the logical location given a node.
-  /// TODO: We should finally have a DenseMap<Operation *, unsigned> to find the
-  /// logical location to get O(logn) performance. This requires all non-const
-  /// methods to be enhanced.
+  /// TODO: We should finally have a SmallDenseMap<Operation *, unsigned> to
+  /// find the logical location to get O(logn) performance. This requires all
+  /// non-const methods to be enhanced.
   Optional<unsigned> find(Operation *node) const {
     auto nodePtr = llvm::find(layout, node);
     if (nodePtr == layout.end())
@@ -309,6 +309,10 @@ Placer::Placer(handshake::FuncOp func)
   unsigned rowBegin = 2, colBegin = 0;
   unsigned rowNum = std::min((int)sqrt(procs.size()), (int)7);
   unsigned colNum = std::min((int)(1.5 * procs.size() / rowNum), (int)50);
+
+  // Shift the design to the middle of the chip.
+  colBegin += (50 - colNum) / 2;
+
   layout.aie = {rowBegin, colBegin, rowNum, colNum};
 
   std::srand(std::time(0));

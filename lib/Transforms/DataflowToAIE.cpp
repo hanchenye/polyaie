@@ -52,9 +52,9 @@ void DataflowToAIE::runOnOperation() {
   auto topFunc = getTopFunc<circt::handshake::FuncOp>(mod);
 
   // Map from a buffer to its target buffers.
-  DenseMap<Value, SmallVector<Value, 4>> targetBufsMap;
+  llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 64> targetBufsMap;
   // Map from process result to its corresponding buffer.
-  DenseMap<Value, BufferOp> bufMap;
+  llvm::SmallDenseMap<Value, BufferOp, 64> bufMap;
 
   // Generate TileOp, BufferOps, and CoreOp from ProcessOp. Generate DMAHostOp
   // from TensorLoad/StoreOp.

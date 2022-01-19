@@ -23,7 +23,7 @@ void HoistMemrefSubview::runOnOperation() {
   auto topFunc = getTopFunc<FuncOp>(mod);
 
   // Hold the subviews list of each global memory.
-  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
+  llvm::SmallDenseMap<Value, SmallVector<Value, 16>, 32> subviewsMap;
 
   for (auto call : topFunc.getOps<CallOp>()) {
     auto func = mod.lookupSymbol<FuncOp>(call.callee());

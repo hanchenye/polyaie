@@ -48,7 +48,8 @@ static LogicalResult verify(ProcessOp op) {
 
   if (op.kind() != ProcessKind::AIE)
     for (auto &op : op.getOps())
-      if (!isa<dataflow::TensorLoadOp, dataflow::TensorStoreOp>(op))
+      if (!isa<dataflow::TensorLoadOp, dataflow::TensorStoreOp,
+               dataflow::ReturnOp>(op))
         return op.emitOpError(
             "GMIO or PLIO process must only contain tensor load/store op");
 

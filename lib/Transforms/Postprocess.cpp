@@ -32,7 +32,7 @@ void Postprocess::runOnOperation() {
 
   // Traverse all operations.
   unsigned bufIdx = 0;
-  SmallPtrSet<Operation *, 16> leafTiles;
+  llvm::SmallDenseSet<Operation *, 16> leafTiles;
   for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {
     if (auto buf = dyn_cast<BufferOp>(op)) {
       // Create symbol name for each BufferOp.

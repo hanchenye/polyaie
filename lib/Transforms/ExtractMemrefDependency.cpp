@@ -22,7 +22,7 @@ void ExtractMemrefDependency::runOnOperation() {
   auto topFunc = getTopFunc<FuncOp>(mod);
 
   // Hold the subviews list (or itself) of each global memory.
-  DenseMap<Value, SmallVector<Value, 16>> subviewsMap;
+  llvm::SmallDenseMap<Value, SmallVector<Value, 16>, 32> subviewsMap;
 
   // Construct explicit dependencies between memrefs.
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
