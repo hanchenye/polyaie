@@ -46,6 +46,10 @@ static LogicalResult verify(ProcessOp op) {
     return op.emitOpError(
         "operands types must align with arguments types of the entry block");
 
+  for (auto result : op.getResultTypes())
+    if (!result.isa<TensorType>())
+      return op.emitOpError("process can only produce tensor type results");
+
   if (op.kind() != ProcessKind::AIE)
     for (auto &op : op.getOps())
       if (!isa<dataflow::TensorLoadOp, dataflow::TensorStoreOp,

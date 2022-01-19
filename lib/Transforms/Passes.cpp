@@ -47,7 +47,7 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPrintDataflowPass());
 
-        // pm.addPass(polyaie::createDataflowToAIEPass());
+        pm.addPass(polyaie::createDataflowToAIEPass());
         // pm.addPass(mlir::createCanonicalizerPass());
         // if (opts.enableLinkExternKernel)
         //   pm.addPass(polyaie::createLinkExternKernelPass(opts));

@@ -7,7 +7,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
-#include "llvm/ADT/BreadthFirstIterator.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -18,6 +17,8 @@ using namespace xilinx::AIE;
 namespace {
 struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
   void runOnOperation() override;
+
+  const uint64_t baseAddress = 0x020100004000;
 };
 } // namespace
 
@@ -51,45 +52,91 @@ void DataflowToAIE::runOnOperation() {
   auto loc = b.getUnknownLoc();
   auto topFunc = getTopFunc<circt::handshake::FuncOp>(mod);
 
-  // Map from a buffer to its target buffers.
-  llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 64> targetBufsMap;
-  // Map from process result to its corresponding buffer.
-  llvm::SmallDenseMap<Value, BufferOp, 64> bufMap;
+  // using BufferOpUnion = PointerUnion<BufferOp, ExternalBufferOp>;
 
-  // Generate TileOp, BufferOps, and CoreOp from ProcessOp. Generate DMAHostOp
-  // from TensorLoad/StoreOp.
+  // Map from process to its corresponding tile.
+  llvm::SmallDenseMap<Operation *, TileOp, 32> tileMap;
+  // Map from process result to its corresponding buffer or external buffer.
+  llvm::SmallDenseMap<Value, Operation *, 64> bufMap;
+
+  // Hold the address allocated for external buffers.
+  uint64_t address = baseAddress;
+
+  // In the first iteration of traversing processes, we create a TileOp for each
+  // process and convert all results returned by the process to a BufferOp and
+  // record the mapping in "tileMap" and "BufMap", respectively.
   for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
     // Generate TileOp based on the placement results.
     b.setInsertionPoint(process);
     auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
+    tileMap[process] = tile;
+
+    auto returnOp = process.body().back().getTerminator();
+    for (auto result : process.getResults()) {
+      auto operand = returnOp->getOperand(result.getResultNumber());
+      assert(operand.hasOneUse() && "return operand must only be used once");
+      // For now, all results should be tensor-typed.
+      auto tensorType = result.getType().cast<TensorType>();
+
+      if (auto toTensorOp = operand.getDefiningOp<ToTensorOp>()) {
+        // Handle the case when the memref is an local buffer.
+        auto alloc = toTensorOp.memref().getDefiningOp<memref::AllocOp>();
+        assert(alloc && "memref must be defined by an alloc operation");
+
+        auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
+        bufMap[result] = buf;
+
+        alloc.replaceAllUsesWith(buf.getResult());
+        alloc.erase();
+        toTensorOp->dropAllUses();
+        toTensorOp.erase();
+
+      } else if (auto load = operand.getDefiningOp<dataflow::TensorLoadOp>()) {
+        // Handle the case when the memref is a external buffer.
+        assert(process.kind() != ProcessKind::AIE);
+        auto arg = load.memory().dyn_cast<BlockArgument>();
+        assert(arg && "tensor must be loaded from a block argument");
+
+        auto bufType =
+            MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+        auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
+        address += bufType.getSizeInBits() / 8;
+        bufMap[result] = buf;
+
+        // Create a host DMA op to load data from host to external buffer.
+        auto mem = process.getOperandFromInternalVal(arg);
+        b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
+                            HostDMAKind::HostToDDR, buf, mem);
+        load->dropAllUses();
+        load.erase();
+      } else
+        llvm_unreachable(
+            "return operand must be defined by ToTensorOp or TensorLoadOp");
+    }
+  }
+
+  // Map from a buffer to its target buffers.
+  llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 64> broadcastMap;
+
+  // In the second iteration of traversing processes, we convert all arguments
+  // of the process to local buffers and create CoreOps for each AIE tile.
+  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+    b.setInsertionPoint(process);
+    assert(tileMap.count(process) && "cannot find tile op");
+    auto tile = tileMap.lookup(process);
 
     // Create BufferOp for each process argument.
     for (auto arg : process.body().getArguments()) {
-      if (arg.getType().isa<TensorType>()) {
-        // Handle tensor argument.
-        auto toMemrefOp = getOnlyUserOfType<ToMemrefOp>(arg);
-        auto buf = b.create<BufferOp>(loc, toMemrefOp.getType(), tile);
+      auto operand = process.getOperandFromInternalVal(arg);
 
-        auto operand = process.getOperandFromInternalVal(arg);
-        toMemrefOp.replaceAllUsesWith(buf.getResult());
-        toMemrefOp.erase();
-
-        // Handle predecessor of the argument.
-        if (auto sourceBuf = bufMap.lookup(operand))
-          // Record the data transfer from predecessor to the current buffer in
-          // order to generate the BroadcastOp later.
-          targetBufsMap[sourceBuf].push_back(buf);
-        else if (auto load = operand.getDefiningOp<TensorLoadOp>())
-          // Create a host DMA to load the data from host.
-          b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
-                              HostDMAKind::HostToAIE, buf, load.memory());
-      } else {
-        // Handle scalar argument.
+      // Handle scalar argument. Basically we need to create a local buffer for
+      // each scalar.
+      if (!arg.getType().isa<ShapedType>()) {
         auto type = MemRefType::get({1}, arg.getType());
         auto buf = b.create<BufferOp>(loc, type, tile);
         b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
                             b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
-                            process.getOperandFromInternalVal(arg));
+                            operand);
         auto insertPoint = b.saveInsertionPoint();
 
         b.setInsertionPointToStart(&process.body().front());
@@ -98,60 +145,74 @@ void DataflowToAIE::runOnOperation() {
         arg.replaceAllUsesWith(value);
         b.restoreInsertionPoint(insertPoint);
       }
+
+      // Handle tensor argument.
+      auto tensorType = arg.getType().dyn_cast<TensorType>();
+      if (!tensorType)
+        continue;
+      assert(arg.hasOneUse() && "tensor argument must only be used once");
+      auto srcBuf = bufMap.lookup(operand);
+      assert(srcBuf && "cannot find source buffer");
+
+      if (auto toMemrefOp = getOnlyUserOfType<ToMemrefOp>(arg)) {
+        // If the tensor argument is converted to a memref, then create a
+        // local buffer for it and record in the broadcast map.
+        auto buf = b.create<BufferOp>(loc, toMemrefOp.getType(), tile);
+        broadcastMap[srcBuf->getResult(0)].push_back(buf);
+
+        toMemrefOp.replaceAllUsesWith(buf.getResult());
+        toMemrefOp.erase();
+
+      } else if (auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(arg)) {
+        // If the tensor argument is stored to a memory, then create an
+        // external buffer for it and record in the broadcast map.
+        assert(process.kind() != ProcessKind::AIE);
+        auto arg = store.memory().dyn_cast<BlockArgument>();
+        assert(arg && "tensor must be stored to a block argument");
+
+        auto bufType =
+            MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+        auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
+        address += bufType.getSizeInBits() / 8;
+        broadcastMap[srcBuf->getResult(0)].push_back(buf);
+
+        // Create a host DMA to store from external memory to host.
+        auto mem = process.getOperandFromInternalVal(arg);
+        b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                            store.strides(), HostDMAKind::DDRToHost, mem, buf);
+        store.erase();
+      } else
+        llvm_unreachable(
+            "tensor argument must be used by ToMemrefOp or TensorStoreOp");
     }
     // Erase all process arguments as all of them have been converted.
     process.body().front().eraseArguments([](auto) { return true; });
 
-    // Create BufferOp for each local buffer.
-    for (auto alloc :
-         llvm::make_early_inc_range(process.getOps<memref::AllocOp>())) {
-      auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
-      alloc.replaceAllUsesWith(buf.getResult());
-      alloc.erase();
+    if (process.kind() == ProcessKind::AIE) {
+      // Generate a CoreOp and inline the contents of the process.
+      auto core = b.create<CoreOp>(loc, tile);
+      auto &procBlocks = process.body().getBlocks();
+      auto &coreBlocks = core.body().getBlocks();
+      coreBlocks.splice(coreBlocks.begin(), procBlocks);
 
-      // Handle successors if the local buffer is returned.
-      if (auto toTensorOp = getOnlyUserOfType<ToTensorOp>(buf)) {
-        auto result = process.getResultFromInternalVal(toTensorOp.result());
-        assert(result && toTensorOp.result().hasOneUse());
-        toTensorOp->dropAllUses();
-        toTensorOp.erase();
-
-        // Record the result-to-buffer mapping if the buffer is returned.
-        bufMap[result] = buf;
-        // Create a host DMA to store the result to host.
-        if (auto store = getOnlyUserOfType<TensorStoreOp>(result))
-          b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
-                              store.strides(), HostDMAKind::AIEToHost,
-                              store.memory(), buf);
-      }
+      // Set the ternimator as an EndOp.
+      auto returnOp = coreBlocks.back().getTerminator();
+      b.setInsertionPoint(returnOp);
+      b.create<xilinx::AIE::EndOp>(loc);
+      returnOp->erase();
     }
-
-    // Generate a CoreOp and inline the contents of the process.
-    auto core = b.create<CoreOp>(loc, tile);
-    auto &procBlocks = process.body().getBlocks();
-    auto &coreBlocks = core.body().getBlocks();
-    coreBlocks.splice(coreBlocks.begin(), procBlocks);
-
-    // Set the ternimator as an EndOp.
-    auto returnOp = coreBlocks.back().getTerminator();
-    b.setInsertionPoint(returnOp);
-    b.create<xilinx::AIE::EndOp>(loc);
-    returnOp->erase();
   }
 
-  // Now we can safely erase all ProcessOps and TensorLoad/StoreOps.
-  for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
-    if (isa<ProcessOp, TensorLoadOp, TensorStoreOp>(op)) {
-      op.dropAllUses();
-      op.erase();
-    }
+  // For the third iteration, now we can safely erase all the ProcessOps...
+  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+    process->dropAllUses();
+    process->erase();
+  }
 
-  // Create BroadcastOps.
-  for (auto pair : targetBufsMap) {
-    b.setInsertionPointAfter(
-        pair.first.getDefiningOp<BufferOp>().getTileOp().getCoreOp());
+  // Create BroadcastOps from the "broadcastMap".
+  b.setInsertionPoint(topFunc.back().getTerminator());
+  for (auto pair : broadcastMap)
     b.create<BroadcastOp>(loc, pair.first, pair.second);
-  }
 
   // Finally, inline the top function into the module.
   // TODO: Introduce AIE runtime-related operations.
