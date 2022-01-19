@@ -33,6 +33,13 @@ struct DOTGraphTraits<circt::handshake::FuncOp> : public DefaultDOTGraphTraits {
     raw_string_ostream os(ostr);
     auto process = cast<dataflow::ProcessOp>(op);
     os << "pos=\"" << getCol(process) << "," << getRow(process) << "!\"";
+
+    if (process.kind() != ProcessKind::AIE)
+      os << ",style=filled,fillcolor=\"/ylgnbu5/3\"";
+    else if (!process.getOps<memref::CopyOp>().empty())
+      os << ",style=filled,fillcolor=\"/ylgnbu5/2\"";
+    else
+      os << ",style=filled,fillcolor=\"/ylgnbu5/1\"";
     return os.str();
   }
 };

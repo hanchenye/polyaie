@@ -41,7 +41,8 @@ struct LinkExternKernel
     objectFile = opts.linkExternKernelObjectFile;
   }
 
-  // TODO: Note that this pass is highly experimental!
+  // TODO: Note that this pass is highly experimental and just designed for
+  // measuring the on-board performance of Jinming's GEMM kernel.
   void runOnOperation() override {
     auto mod = getOperation();
     auto b = OpBuilder(mod);

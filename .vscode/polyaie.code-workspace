@@ -141,7 +141,9 @@
       "locale": "cpp",
       "executor": "cpp",
       "__node_handle": "cpp",
-      "span": "cpp"
+      "span": "cpp",
+      "__string": "cpp",
+      "filesystem": "cpp"
     }
   },
   "extensions": {

@@ -10,6 +10,7 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
+using namespace circt;
 
 namespace {
 struct InsertGMIOAdapter
@@ -18,7 +19,47 @@ struct InsertGMIOAdapter
 };
 } // namespace
 
-void InsertGMIOAdapter::runOnOperation() {}
+// TODO: Note that this pass is highly experimental and just for the on-board
+// test of GMIO and DDR communication.
+void InsertGMIOAdapter::runOnOperation() {
+  auto mod = getOperation();
+  auto b = OpBuilder(mod);
+  auto loc = b.getUnknownLoc();
+  auto topFunc = getTopFunc<handshake::FuncOp>(mod);
+
+  SmallVector<Value, 32> ioVals;
+  for (auto &op : topFunc.getOps()) {
+    if (auto load = dyn_cast<dataflow::TensorLoadOp>(op))
+      ioVals.push_back(load.tensor());
+    else if (auto store = dyn_cast<dataflow::TensorStoreOp>(op))
+      ioVals.push_back(store.tensor());
+  }
+
+  for (auto value : ioVals) {
+    // Create a new empty process op.
+    b.setInsertionPointAfterValue(value);
+    auto process = b.create<dataflow::ProcessOp>(loc, value.getType(), value);
+    if (value.getDefiningOp<dataflow::TensorLoadOp>())
+      value.replaceAllUsesExcept(process.getResult(0), process);
+    else
+      value.replaceUsesWithIf(process.getResult(0), [](OpOperand &operand) {
+        return isa<dataflow::TensorStoreOp>(operand.getOwner());
+      });
+
+    auto type = value.getType().cast<RankedTensorType>();
+    auto memrefType = MemRefType::get(type.getShape(), type.getElementType());
+    auto entryBlock = &process.body().front();
+    b.setInsertionPointToStart(entryBlock);
+
+    // Create a local buffer to hold the input data, then return it as result.
+    auto toMemrefOp = b.create<bufferization::ToMemrefOp>(
+        loc, memrefType, entryBlock->getArgument(0));
+    auto alloc = b.create<memref::AllocOp>(loc, memrefType);
+    b.create<memref::CopyOp>(loc, toMemrefOp.memref(), alloc.memref());
+    auto toTensorOp = b.create<bufferization::ToTensorOp>(loc, alloc.memref());
+    b.create<dataflow::ReturnOp>(loc, toTensorOp.result());
+  }
+}
 
 std::unique_ptr<Pass> polyaie::createInsertGMIOAdapterPass() {
   return std::make_unique<InsertGMIOAdapter>();
