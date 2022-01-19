@@ -14,7 +14,6 @@ namespace {
 struct MemrefArgToResult
     : public polyaie::MemrefArgToResultBase<MemrefArgToResult> {
   MemrefArgToResult() = default;
-  MemrefArgToResult(const MemrefArgToResult &) {}
   MemrefArgToResult(const PolyAIEOptions &opts) {
     returnAllArg = opts.memrefArgToResultReturnAllArg;
   }

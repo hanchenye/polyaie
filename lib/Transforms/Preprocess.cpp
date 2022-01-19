@@ -12,7 +12,6 @@ using namespace polyaie;
 namespace {
 struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
   Preprocess() = default;
-  Preprocess(const Preprocess &) {}
   Preprocess(const PolyAIEOptions &opts) {
     topFuncName = opts.preprocessTopFuncName;
   }

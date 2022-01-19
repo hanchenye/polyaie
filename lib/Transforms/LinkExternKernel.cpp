@@ -37,7 +37,6 @@ namespace {
 struct LinkExternKernel
     : public polyaie::LinkExternKernelBase<LinkExternKernel> {
   LinkExternKernel() = default;
-  LinkExternKernel(const LinkExternKernel &) {}
   LinkExternKernel(const PolyAIEOptions &opts) {
     objectFile = opts.linkExternKernelObjectFile;
   }

@@ -171,7 +171,6 @@ static void removeRedundantFuncs(ModuleOp mod) {
 namespace {
 struct SplitTopFunc : public polyaie::SplitTopFuncBase<SplitTopFunc> {
   SplitTopFunc() = default;
-  SplitTopFunc(const SplitTopFunc &) {}
   SplitTopFunc(const PolyAIEOptions &opts) { numAIE = opts.splitTopFuncNumAIE; }
 
   void runOnOperation() override {

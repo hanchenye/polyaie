@@ -12,7 +12,13 @@ using namespace polyaie;
 using namespace dataflow;
 using namespace circt;
 
+namespace {
 using PhysicalLocation = std::pair<unsigned, unsigned>;
+
+enum LayoutKind { AIE, NOCIN, NOCOUT, PLIN, PLOUT };
+using SwapPair = std::pair<unsigned, unsigned>;
+using SwapRecord = std::pair<LayoutKind, SwapPair>;
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // A general-purpose layout class
@@ -54,17 +60,21 @@ public:
   }
 
   /// Check whether all nodes have been placed.
-  LogicalResult checkFullyPlaced(const DenseSet<Operation *> &nodes) const {
+  LogicalResult
+  checkFullyPlaced(const SmallVector<Operation *, 32> &nodes) const {
     DenseSet<Operation *> placedNodes;
     for (auto node : getNodes())
       if (!placedNodes.insert(node).second)
         return failure();
 
-    return placedNodes == nodes ? success() : failure();
+    for (auto node : nodes)
+      if (!placedNodes.count(node))
+        return failure();
+    return success();
   }
 
   /// Initialize all nodes to a random logical location.
-  void randomInitialize(const DenseSet<Operation *> nodes) {
+  void randomInitialize(const SmallVector<Operation *, 32> &nodes) {
     assert(layout.size() >= nodes.size() && "layout size is not enough");
     for (auto &node : layout)
       node = nullptr;
@@ -76,35 +86,27 @@ public:
     llvm::shuffle(layout.begin(), layout.end(), []() { return std::rand(); });
   }
 
-  /// Swap a random node into a new random location.
-  void randomSwap(SmallVectorImpl<std::pair<unsigned, unsigned>> &records,
-                  unsigned iteration = 1) {
-    for (unsigned i = 0; i < iteration; ++i) {
-      // TODO: This needs to be rewritten.
-      unsigned loc = std::rand() % layout.size();
-      while (!layout[loc])
-        loc = std::rand() % layout.size();
-      auto node = layout[loc];
+  /// Swap the node into a new random location.
+  SwapPair randomSwap(Operation *node) {
+    auto loc = find(node);
+    assert(loc && "node must have been placed");
 
-      auto swapLoc = std::rand() % layout.size();
-      auto swapNode = layout[swapLoc];
+    auto swapLoc = std::rand() % layout.size();
+    auto swapNode = layout[swapLoc];
 
-      layout[loc] = swapNode;
-      layout[swapLoc] = node;
+    layout[loc.getValue()] = swapNode;
+    layout[swapLoc] = node;
 
-      records.push_back({loc, swapLoc});
-    }
+    return {loc.getValue(), swapLoc};
   }
 
   /// Reverse a swap based on the records.
-  void reverseSwap(SmallVectorImpl<std::pair<unsigned, unsigned>> &records) {
-    for (auto i = records.rbegin(), e = records.rend(); i < e; ++i) {
-      auto node = layout[i->first];
-      auto swapNode = layout[i->second];
+  void reverseSwap(SwapPair pair) {
+    auto node = layout[pair.first];
+    auto swapNode = layout[pair.second];
 
-      layout[i->first] = swapNode;
-      layout[i->second] = node;
-    }
+    layout[pair.first] = swapNode;
+    layout[pair.second] = node;
   }
 
 protected:
@@ -153,6 +155,10 @@ public:
            "illegal AIE range");
   }
 
+  LayoutAIE(const LayoutAIE &other)
+      : Layout(other), rowBegin(other.rowBegin), colBegin(other.colBegin),
+        rowNum(other.rowNum), colNum(other.colNum) {}
+
   LayoutAIE &operator=(const LayoutAIE &other) {
     Layout::operator=(other);
     rowBegin = other.rowBegin, colBegin = other.colBegin;
@@ -197,6 +203,9 @@ public:
       : Layout(portNum * shimCols.size()),
         shimCols(shimCols.begin(), shimCols.end()), portNum(portNum) {}
 
+  LayoutShim(const LayoutShim &other)
+      : Layout(other), shimCols(other.shimCols), portNum(other.portNum) {}
+
   LayoutShim &operator=(const LayoutShim &other) {
     Layout::operator=(other);
     shimCols = other.shimCols, portNum = other.portNum;
@@ -231,103 +240,182 @@ private:
 } // namespace
 
 //===----------------------------------------------------------------------===//
-// ShimNOC and ShimPL layout class
+// Placer class
 //===----------------------------------------------------------------------===//
 
-/// There're in total 16 ShimNOCs that can directly access the external DDR.
-/// They are distributed to the 50 shim tiles and each ShimNOC has two input and
+/// There're in total 16 ShimNocs that can directly access the external DDR.
+/// They are distributed to the 50 shim tiles and each ShimNoc has two input and
 /// two output ports that can be connected to AIE. This array holds the columns
-/// that have ShimNOC available.
-static const unsigned shimNOC[16] = {2,  3,  6,  7,  10, 11, 18, 19,
+/// that have ShimNoc available.
+static const unsigned shimNoc[16] = {2,  3,  6,  7,  10, 11, 18, 19,
                                      26, 27, 34, 35, 42, 43, 46, 47};
 
 namespace {
-/// Can be used for both input and output ports.
-class LayoutShimNOC : public LayoutShim {
-public:
-  LayoutShimNOC() : LayoutShim(shimNOC, /*portNum=*/2) {}
-  using LayoutShim::operator=;
-};
-} // namespace
-
-//===----------------------------------------------------------------------===//
-// A placer class extensible for multiple algorithms
-//===----------------------------------------------------------------------===//
-
-namespace {
-/// TODO: Support multi-threads for multi-layouts placement.
 class Placer {
 public:
-  Placer(handshake::FuncOp func)
-      : func(func), procs(func.getOps<dataflow::ProcessOp>().begin(),
-                          func.getOps<dataflow::ProcessOp>().end()) {
-    unsigned rowBegin = 2, colBegin = 0;
-    unsigned rowNum = std::min((int)sqrt(procs.size()), (int)7);
-    unsigned colNum = std::min((int)(1.5 * procs.size() / rowNum), (int)50);
-
-    layoutAie = LayoutAIE(rowBegin, colBegin, rowNum, colNum);
-    layoutAie.randomInitialize(procs);
-
-    std::srand(std::time(0));
-  }
-
-  /// Place all nodes into a random layout.
-  void runNaive() {
-    layoutAie.randomInitialize(procs);
-    applyLayout();
-  }
+  Placer(handshake::FuncOp func);
 
   /// Place all nodes with simulated annealing.
   void runSA(double, double, unsigned, unsigned, unsigned);
 
-private:
+  /// Get the physical location given any type of node.
+  Optional<PhysicalLocation> getPhysicalLoc(Operation *node) const;
+
+  /// Check whether all nodes have been placed.
+  LogicalResult checkFullyPlaced() const;
+
+  /// Initialize all nodes to a random logical location.
+  void randomInitialize();
+
+  /// Swap a random node into a new random location.
+  void randomSwap(SmallVectorImpl<SwapRecord> &records, unsigned iteration = 1);
+
+  /// Reverse a swap based on the records.
+  void reverseSwap(SmallVectorImpl<SwapRecord> &records);
+
   /// Calculate the cost of the layout.
-  double getLayoutCost() const;
+  double getCost() const;
 
   /// Apply the current layout to the IR.
-  void applyLayout() const {
-    auto b = Builder(func);
-    for (auto node : layoutAie.getNodes()) {
-      auto loc = layoutAie.getPhysicalLoc(node).getValue();
-      node->setAttr("polyaie.row", b.getI64IntegerAttr(loc.first));
-      node->setAttr("polyaie.col", b.getI64IntegerAttr(loc.second));
-    }
-  }
+  void materializeLayout() const;
 
 private:
   handshake::FuncOp func;
 
   /// All types of nodes in the placement problem.
-  DenseSet<Operation *> procs;
-  // const SmallVector<Operation *, 32> loads;
-  // const SmallVector<Operation *, 32> stores;
+  SmallVector<Operation *, 32> procs;
+  SmallVector<Operation *, 32> loads;
+  SmallVector<Operation *, 32> stores;
 
-  /// All types of layouts in the placement problem.
-  LayoutAIE layoutAie;
-  // LayoutShimNOC layoutNocIn;
-  // LayoutShimNOC layoutNocOut;
+  struct CompoundLayout {
+    LayoutAIE aie;
+    LayoutShim nocIn = {shimNoc, 2};
+    LayoutShim nocOut = {shimNoc, 2};
+    // LayoutShim plIn = {shimPl, 8};
+    // LayoutShim plOut = {shimPl, 6};
+  };
+
+  /// The current layout of the placement problem.
+  CompoundLayout layout;
 };
 } // namespace
 
+Placer::Placer(handshake::FuncOp func)
+    : func(func), procs(func.getOps<dataflow::ProcessOp>()),
+      loads(func.getOps<dataflow::TensorLoadOp>()),
+      stores(func.getOps<dataflow::TensorStoreOp>()) {
+
+  // FIXME: rowBegin should be 1 by default.
+  unsigned rowBegin = 2, colBegin = 0;
+  unsigned rowNum = std::min((int)sqrt(procs.size()), (int)7);
+  unsigned colNum = std::min((int)(1.5 * procs.size() / rowNum), (int)50);
+  layout.aie = {rowBegin, colBegin, rowNum, colNum};
+
+  std::srand(std::time(0));
+  randomInitialize();
+}
+
+/// Get the physical location given any type of node.
+Optional<PhysicalLocation> Placer::getPhysicalLoc(Operation *node) const {
+  if (isa<dataflow::ProcessOp>(node))
+    return layout.aie.getPhysicalLoc(node);
+
+  else if (isa<dataflow::TensorLoadOp>(node)) {
+    if (auto loc = layout.nocIn.getPhysicalLoc(node))
+      return PhysicalLocation({(unsigned)0, loc.getValue().first});
+
+  } else if (isa<dataflow::TensorStoreOp>(node)) {
+    if (auto loc = layout.nocOut.getPhysicalLoc(node))
+      return PhysicalLocation({(unsigned)0, loc.getValue().first});
+  }
+  return llvm::None;
+}
+
+/// Check whether all nodes have been placed.
+LogicalResult Placer::checkFullyPlaced() const {
+  if (failed(layout.aie.checkFullyPlaced(procs)) ||
+      failed(layout.nocIn.checkFullyPlaced(loads)) ||
+      failed(layout.nocOut.checkFullyPlaced(stores)))
+    return failure();
+  return success();
+}
+
+/// Initialize all nodes to a random logical location.
+void Placer::randomInitialize() {
+  layout.aie.randomInitialize(procs);
+  layout.nocIn.randomInitialize(loads);
+  layout.nocOut.randomInitialize(stores);
+}
+
+/// Swap a random node into a new random location.
+void Placer::randomSwap(SmallVectorImpl<SwapRecord> &records,
+                        unsigned iteration) {
+  for (unsigned i = 0; i < iteration; ++i) {
+    int index = std::rand() % (procs.size() + loads.size() + stores.size());
+
+    auto procIndex = index;
+    auto loadIndex = index - (int)procs.size();
+    auto storeIndex = index - (int)procs.size() - (int)loads.size();
+
+    LayoutKind kind;
+    std::pair<unsigned, unsigned> pair;
+
+    if (storeIndex >= 0) {
+      kind = LayoutKind::NOCOUT;
+      pair = layout.nocOut.randomSwap(stores[storeIndex]);
+    } else if (loadIndex >= 0) {
+      kind = LayoutKind::NOCIN;
+      pair = layout.nocIn.randomSwap(loads[loadIndex]);
+    } else {
+      kind = LayoutKind::AIE;
+      pair = layout.aie.randomSwap(procs[procIndex]);
+    }
+
+    records.push_back({kind, pair});
+  }
+}
+
+/// Reverse a swap based on the records.
+void Placer::reverseSwap(SmallVectorImpl<SwapRecord> &records) {
+  for (auto i = records.rbegin(), e = records.rend(); i < e; ++i) {
+    auto kind = i->first;
+    auto pair = i->second;
+
+    switch (kind) {
+    case LayoutKind::NOCOUT:
+      layout.nocOut.reverseSwap(pair);
+      break;
+    case LayoutKind::NOCIN:
+      layout.nocIn.reverseSwap(pair);
+      break;
+    case LayoutKind::AIE:
+      layout.aie.reverseSwap(pair);
+      break;
+    default:
+      llvm_unreachable("invalid layout kind");
+      break;
+    }
+  }
+}
+
 /// Calculate the cost of the layout.
-double Placer::getLayoutCost() const {
+double Placer::getCost() const {
   double cost = 0;
-  for (auto node : procs) {
-    auto srcLoc = layoutAie.getPhysicalLoc(node).getValue();
-    auto srcRow = srcLoc.first;
-    auto srcCol = srcLoc.second;
+  for (const auto node : llvm::concat<Operation *const>(procs, loads, stores)) {
+    auto srcLoc = getPhysicalLoc(node);
+    assert(srcLoc && "node must have been placed");
+    auto srcRow = srcLoc.getValue().first;
+    auto srcCol = srcLoc.getValue().second;
 
     for (auto result : node->getResults()) {
       SmallVector<unsigned, 4> rows({srcRow});
       SmallVector<unsigned, 4> cols({srcCol});
 
       for (auto user : result.getUsers()) {
-        if (!isa<dataflow::ProcessOp>(user))
-          continue;
-
-        auto tgtLoc = layoutAie.getPhysicalLoc(user).getValue();
-        auto tgtRow = tgtLoc.first;
-        auto tgtCol = tgtLoc.second;
+        auto tgtLoc = getPhysicalLoc(user);
+        assert(tgtLoc && "node must have been placed");
+        auto tgtRow = tgtLoc.getValue().first;
+        auto tgtCol = tgtLoc.getValue().second;
 
         // We don't count the cost between tiles that are neighbors.
         if (!adjacent(srcRow, srcCol, tgtRow, tgtCol)) {
@@ -350,13 +438,24 @@ double Placer::getLayoutCost() const {
   return cost;
 }
 
+/// Apply the current layout to the IR.
+void Placer::materializeLayout() const {
+  auto b = Builder(func);
+  for (const auto node : llvm::concat<Operation *const>(procs, loads, stores)) {
+    auto loc = getPhysicalLoc(node);
+    assert(loc && "node must have been placed");
+    node->setAttr("polyaie.row", b.getI64IntegerAttr(loc.getValue().first));
+    node->setAttr("polyaie.col", b.getI64IntegerAttr(loc.getValue().second));
+  }
+}
+
 /// Place all nodes with simulated annealing.
 void Placer::runSA(double startTemp = 10, double finalTemp = 0.01,
                    unsigned adjustNum = 200, unsigned mutatePerTemp = 1000,
                    unsigned swapPerMutate = 2) {
-  layoutAie.randomInitialize(procs);
-  auto minCost = getLayoutCost();
-  LayoutAIE minLayout;
+  randomInitialize();
+  auto minCost = getCost();
+  auto minLayout = layout;
 
   // Calculate the start and frozen temperatur and adjustment factor.
   startTemp *= minCost;
@@ -368,9 +467,9 @@ void Placer::runSA(double startTemp = 10, double finalTemp = 0.01,
   unsigned counter = 0;
   while (temp > finalTemp) {
     // Generate a new layout by random nodes swapping.
-    SmallVector<std::pair<unsigned, unsigned>, 4> swapRecords;
-    layoutAie.randomSwap(swapRecords, swapPerMutate);
-    auto cost = getLayoutCost();
+    SmallVector<SwapRecord, 4> swapRecords;
+    randomSwap(swapRecords, swapPerMutate);
+    auto cost = getCost();
 
     if (cost > minCost) {
       // If the new solution is worse than the current solution, determine
@@ -378,11 +477,11 @@ void Placer::runSA(double startTemp = 10, double finalTemp = 0.01,
       auto randNum = (double)std::rand() / (double)RAND_MAX;
       auto threshold = std::exp((minCost - cost) / temp);
       if (randNum > threshold)
-        layoutAie.reverseSwap(swapRecords);
+        reverseSwap(swapRecords);
     } else {
       // Otherwise, update the current solution.
       minCost = cost;
-      minLayout = layoutAie;
+      minLayout = layout;
     }
 
     // Cool down the temperature.
@@ -390,29 +489,35 @@ void Placer::runSA(double startTemp = 10, double finalTemp = 0.01,
       // llvm::dbgs() << temp << "\t" << minCost << "\n";
       temp *= factor;
       counter = 0;
-      layoutAie = minLayout;
+      layout = minLayout;
     }
   }
-  layoutAie = minLayout;
-  applyLayout();
+  layout = minLayout;
 }
 
 namespace {
 struct Placement : public polyaie::PlacementBase<Placement> {
   Placement() = default;
-  Placement(const Placement &) {}
   Placement(const PolyAIEOptions &opts) { algorithm = opts.placementAlgorithm; }
 
   void runOnOperation() override {
     auto topFunc = getTopFunc<handshake::FuncOp>(getOperation());
     Placer placer(topFunc);
-    if (algorithm == "naive")
-      return placer.runNaive();
-    else if (algorithm == "simulated-annealing")
-      return placer.runSA();
 
-    emitError(topFunc.getLoc(), "unsupported placement algorithm");
-    return signalPassFailure();
+    if (algorithm == "naive")
+      placer.randomInitialize();
+    else if (algorithm == "simulated-annealing")
+      placer.runSA();
+    else {
+      emitError(topFunc.getLoc(), "unsupported placement algorithm");
+      return signalPassFailure();
+    }
+
+    if (failed(placer.checkFullyPlaced())) {
+      emitError(topFunc.getLoc(), "failed to fully place all nodes");
+      return signalPassFailure();
+    }
+    placer.materializeLayout();
   }
 };
 } // namespace

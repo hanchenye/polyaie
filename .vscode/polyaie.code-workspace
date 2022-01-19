@@ -140,7 +140,8 @@
       "stack": "cpp",
       "locale": "cpp",
       "executor": "cpp",
-      "__node_handle": "cpp"
+      "__node_handle": "cpp",
+      "span": "cpp"
     }
   },
   "extensions": {
