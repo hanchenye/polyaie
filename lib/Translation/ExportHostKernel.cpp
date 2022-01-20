@@ -187,14 +187,24 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 )XXX";
 
   // Collect tile operations.
+  // TODO: The lock user collection is highly experimental! We need a more
+  // systematic runtime IR.
   SmallVector<TileOp, 32> tiles;
-  SmallPtrSet<Operation *, 16> leafTiles;
-  for (auto tile : mod.getOps<TileOp>()) {
-    if (tile.getCoreOp())
+  SmallVector<UseLockOp, 16> acquires;
+  SmallVector<UseLockOp, 16> releases;
+  for (auto tile : mod.getOps<TileOp>())
+    if (auto core = tile.getCoreOp()) {
       tiles.push_back(tile);
-    if (tile->getAttr("polyaie.leaf"))
-      leafTiles.insert(tile);
-  }
+
+      if (!tile.isShimNOCTile())
+        continue;
+      for (auto useLock : core.getOps<UseLockOp>()) {
+        if (useLock.release())
+          releases.push_back(useLock);
+        else
+          acquires.push_back(useLock);
+      }
+    }
 
   // Collect memory copy operations.
   SmallVector<dataflow::HostDMAOp, 8> loads;
@@ -236,7 +246,7 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
   // Create a "results" array to indicate the completion of the kernel and then
   // start the execution.
-  indent() << "bool results[" << leafTiles.size() << "];\n";
+  indent() << "bool results[" << acquires.size() << "];\n";
 
   os << R"XXX(
   for (auto &result : results)
@@ -258,39 +268,51 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
 )XXX";
 
-  // Iterate until all elements in "results" are set.
+  // Release all locks.
+  for (auto release : releases) {
+    auto lock = release.lock().getDefiningOp<LockOp>();
+    auto tile = lock.tile().getDefiningOp<TileOp>();
+
+    indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
+             << tile.row() << ", " << lock.lockID() << ", " << release.value()
+             << ", 0);\n";
+  }
+  os << "\n";
+
+  // Iterate until all locks in "results" are acquired.
   indent() << "while(!kernel_complete()) {\n";
   addIndent();
 
   unsigned tileIdx = 0;
-  for (auto op : leafTiles) {
-    auto tile = cast<TileOp>(op);
+  for (auto acquire : acquires) {
+    auto lock = acquire.lock().getDefiningOp<LockOp>();
+    auto tile = lock.tile().getDefiningOp<TileOp>();
+
     indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
-             << tile.row() << ", 15, 1, 0))\n";
-    // indent() << "if (XAieTile_CoreReadStatusDone(&(_xaie->TileInst["
-    //          << tile.col() << "][" << tile.row() << "])))\n";
+             << tile.row() << ", " << lock.lockID() << ", " << acquire.value()
+             << ", 0))\n";
     addIndent();
     indent() << "results[" << tileIdx++ << "] = true;\n";
     reduceIndent();
   }
 
-  for (auto load : loads) {
-    if (!load->getAttr("polyaie.load_each_iter"))
-      continue;
+  // for (auto load : loads) {
+  //   if (!load->getAttr("polyaie.load_each_iter"))
+  //     continue;
 
-    auto tile = load.target().getDefiningOp<BufferOp>().getTileOp();
-    indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
-             << tile.row() << ", 15, 1, 0)) {\n";
-    addIndent();
+  //   auto tile = load.target().getDefiningOp<BufferOp>().getTileOp();
+  //   indent() << "if (mlir_aie_acquire_lock(_xaie, " << tile.col() << ", "
+  //            << tile.row() << ", 15, 1, 0)) {\n";
+  //   addIndent();
 
-    if (!dryRunHostKernel)
-      emitHostDMA(load, argIdxMap[load.source()]);
+  //   if (!dryRunHostKernel)
+  //     emitHostDMA(load, argIdxMap[load.source()]);
 
-    indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
-             << tile.row() << ", 15, 0, 0);\n";
-    reduceIndent();
-    indent() << "}\n";
-  }
+  //   indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
+  //            << tile.row() << ", 15, 0, 0);\n";
+  //   reduceIndent();
+  //   indent() << "}\n";
+  // }
 
   reduceIndent();
   indent() << "}\n\n";
@@ -304,6 +326,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   }
 
   os << R"XXX(
+  mlir_aie_deinit_libxaie(_xaie);
+
   printf("Complete compute.\n");
 )XXX";
 

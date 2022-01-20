@@ -98,6 +98,8 @@ void Postprocess::runOnOperation() {
       auto lock = b.create<LockOp>(loc, tile, 15);
       b.setInsertionPoint(tile.getCoreOp().body().front().getTerminator());
       b.create<UseLockOp>(loc, lock, 1, LockAction::Release);
+      // TODO: How to implement this?
+      // useLock->setAttr("polyaie.runtime", b.getUnitAttr());
     }
   }
 }

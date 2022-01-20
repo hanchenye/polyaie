@@ -86,7 +86,7 @@ ${MLIRAIE_DIR}/build/bin/aiecc.py -j10 \
 
 
 # Generate the folder for on-board evaluation.
-mkdir ${GEMMBOARD_DIR}
+mkdir -p ${GEMMBOARD_DIR}
 cp gemm.elf ${GEMMBOARD_DIR}
 cp core_*.elf ${GEMMBOARD_DIR}
 rm core_*
