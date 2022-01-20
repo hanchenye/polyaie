@@ -67,11 +67,8 @@ bool polyaie::adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
           std::abs((int64_t)srcCol - (int64_t)tgtCol)) == 1;
 }
 
-xilinx::AIE::TileOp polyaie::getShareableTile(xilinx::AIE::BufferOp bufA,
-                                              xilinx::AIE::BufferOp bufB) {
-  auto tileA = bufA.getTileOp();
-  auto tileB = bufB.getTileOp();
-
+xilinx::AIE::TileOp polyaie::getShareableTile(xilinx::AIE::TileOp tileA,
+                                              xilinx::AIE::TileOp tileB) {
   auto colA = tileA.col();
   auto rowA = tileA.row();
   auto colB = tileB.col();

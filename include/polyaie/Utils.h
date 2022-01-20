@@ -42,8 +42,8 @@ unsigned getRow(Operation *op);
 bool adjacent(unsigned srcRow, unsigned srcCol, unsigned tgtRow,
               unsigned tgtCol);
 
-xilinx::AIE::TileOp getShareableTile(xilinx::AIE::BufferOp bufA,
-                                     xilinx::AIE::BufferOp bufB);
+xilinx::AIE::TileOp getShareableTile(xilinx::AIE::TileOp tileA,
+                                     xilinx::AIE::TileOp tileB);
 
 using UserIterator = Value::user_iterator;
 

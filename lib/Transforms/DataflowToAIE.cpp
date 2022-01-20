@@ -193,19 +193,19 @@ void DataflowToAIE::runOnOperation() {
     // Erase all process arguments as all of them have been converted.
     process.body().front().eraseArguments([](auto) { return true; });
 
-    if (process.kind() == ProcessKind::AIE) {
-      // Generate a CoreOp and inline the contents of the process.
-      auto core = b.create<CoreOp>(loc, tile);
-      auto &procBlocks = process.body().getBlocks();
-      auto &coreBlocks = core.body().getBlocks();
-      coreBlocks.splice(coreBlocks.begin(), procBlocks);
+    // FIXME: Here, shim tiles should not have CoreOp. We temporally use CoreOp
+    // to contain the runtime information. Generate a CoreOp and inline the
+    // contents of the process.
+    auto core = b.create<CoreOp>(loc, tile);
+    auto &procBlocks = process.body().getBlocks();
+    auto &coreBlocks = core.body().getBlocks();
+    coreBlocks.splice(coreBlocks.begin(), procBlocks);
 
-      // Set the ternimator as an EndOp.
-      auto returnOp = coreBlocks.back().getTerminator();
-      b.setInsertionPoint(returnOp);
-      b.create<xilinx::AIE::EndOp>(loc);
-      returnOp->erase();
-    }
+    // Set the ternimator as an EndOp.
+    auto returnOp = coreBlocks.back().getTerminator();
+    b.setInsertionPoint(returnOp);
+    b.create<xilinx::AIE::EndOp>(loc);
+    returnOp->erase();
   }
 
   // For the third iteration, now we can safely erase all the ProcessOps...

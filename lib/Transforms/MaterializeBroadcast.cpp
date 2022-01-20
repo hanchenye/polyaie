@@ -60,15 +60,27 @@ struct DMAInfo {
   StringAttr tokName;
   unsigned acqTokVal;
   unsigned relTokVal;
-  BufferOp buf;
+  Operation *buf;
   PacketFlowOp flow;
 
   DMAInfo(StringAttr tokName, unsigned acqTokVal, unsigned relTokVal,
-          BufferOp buf, PacketFlowOp flow)
+          Operation *buf, PacketFlowOp flow)
       : tokName(tokName), acqTokVal(acqTokVal), relTokVal(relTokVal), buf(buf),
         flow(flow) {}
 };
 } // namespace
+
+/// Get the tile operation given an external buffer or buffer.
+static TileOp getTileOp(Operation *op) {
+  if (auto buf = dyn_cast<BufferOp>(op))
+    return buf.getTileOp();
+  else if (auto externBuf = dyn_cast<ExternalBufferOp>(op)) {
+    auto interface = getOnlyUserOfType<InterfaceOp>(externBuf);
+    assert(interface && "external buffer is not associated to an interface");
+    return interface.tile().getDefiningOp<TileOp>();
+  }
+  return TileOp();
+}
 
 void MaterializeBroadcast::runOnOperation() {
   auto mod = getOperation();
@@ -82,17 +94,24 @@ void MaterializeBroadcast::runOnOperation() {
   unsigned tokIdx = 0;
   uint8_t packetIdx = 0;
   for (auto broadcast : llvm::make_early_inc_range(mod.getOps<BroadcastOp>())) {
-    auto srcBuf = broadcast.source().getDefiningOp<BufferOp>();
-    auto srcTile = srcBuf.getTileOp();
+    auto srcBuf = broadcast.source().getDefiningOp();
+    auto srcTile = getTileOp(srcBuf);
 
-    SmallVector<BufferOp, 4> shareSrcTileBufs;
-    SmallVector<BufferOp, 4> shareTgtTileBufs;
-    SmallVector<BufferOp, 4> nonAdjacentBufs;
+    SmallVector<Operation *, 4> shareSrcTileBufs;
+    SmallVector<Operation *, 4> shareTgtTileBufs;
+    SmallVector<Operation *, 4> nonAdjacentBufs;
     for (auto tgt : broadcast.targets()) {
-      auto tgtBuf = tgt.getDefiningOp<BufferOp>();
-      auto tgtTile = tgtBuf.getTileOp();
+      auto tgtBuf = tgt.getDefiningOp();
+      auto tgtTile = getTileOp(tgtBuf);
 
-      auto shareableTile = getShareableTile(srcBuf, tgtBuf);
+      // External buffer is always not adjacent with other buffers.
+      if (isa<ExternalBufferOp>(srcBuf) || isa<ExternalBufferOp>(tgtBuf)) {
+        nonAdjacentBufs.push_back(tgtBuf);
+        continue;
+      }
+
+      // Check whether two buffers are adjacent with each other.
+      auto shareableTile = getShareableTile(srcTile, tgtTile);
       if (shareableTile == srcTile)
         shareSrcTileBufs.push_back(tgtBuf);
       else if (shareableTile == tgtTile)
@@ -108,17 +127,19 @@ void MaterializeBroadcast::runOnOperation() {
 
     // Collect mergeable and non-mergeable target buffers.
     SmallVector<BufferOp, 4> mergeableBufs;
-    SmallVector<BufferOp, 4> nonMergeableBufs;
+    SmallVector<Operation *, 4> nonMergeableBufs;
     if (shareSrcTileBufs.size() == 1 && shareTgtTileBufs.size() == 0) {
       // Reallocate source buffer to the target tile.
-      srcBuf.tileMutable().assign(shareSrcTileBufs.front().tile());
+      auto tgtBuf = cast<BufferOp>(shareSrcTileBufs.front());
+      cast<BufferOp>(srcBuf).tileMutable().assign(tgtBuf.tile());
 
       // After reallocate, the target tile can access the source buffer thus the
       // target buffer is mergeable now.
-      mergeableBufs.append(shareSrcTileBufs);
+      mergeableBufs.push_back(tgtBuf);
       nonMergeableBufs.append(nonAdjacentBufs);
     } else {
-      mergeableBufs.append(shareTgtTileBufs);
+      for (auto tgtBuf : shareTgtTileBufs)
+        mergeableBufs.push_back(cast<BufferOp>(tgtBuf));
       nonMergeableBufs.append(shareSrcTileBufs);
       nonMergeableBufs.append(nonAdjacentBufs);
     }
@@ -146,7 +167,7 @@ void MaterializeBroadcast::runOnOperation() {
     for (auto tgtBuf : mergeableBufs) {
       // Insert token uses in each target core.
       insertTokenUses(tgtBuf.getTileOp().getCoreOp(), srcRelTokVal);
-      tgtBuf.replaceAllUsesWith(srcBuf.getResult());
+      tgtBuf.replaceAllUsesWith(cast<BufferOp>(srcBuf).getResult());
       tgtBuf.erase();
     }
 
@@ -155,7 +176,7 @@ void MaterializeBroadcast::runOnOperation() {
       continue;
     // As the source buffer may have been re-allocated, we need to update the
     // current associated tile of the source buffer.
-    srcTile = srcBuf.getTileOp();
+    srcTile = getTileOp(srcBuf);
 
     // First, create a new packet_flow operation and construct the source DMA
     // info. The info will be used to generate MemOps later.
@@ -169,7 +190,7 @@ void MaterializeBroadcast::runOnOperation() {
 
     // Handle non-mergeable target buffers.
     for (auto tgtBuf : nonMergeableBufs) {
-      auto tgtTile = tgtBuf.getTileOp();
+      auto tgtTile = getTileOp(tgtBuf);
 
       // Construct the target DMA info.
       auto tgtInfo = DMAInfo(tokName, srcRelTokVal, ++tokVal, tgtBuf, flow);
@@ -200,10 +221,16 @@ void MaterializeBroadcast::runOnOperation() {
     auto MM2S0s = llvm::make_range(MM2Ss.begin(), MM2Ss.begin() + sizeMM2S0);
     auto MM2S1s = llvm::make_range(MM2Ss.begin() + sizeMM2S0, MM2Ss.end());
 
-    // Construct the MemOp.
+    // Construct the MemOp or ShimDMAOp.
     b.setInsertionPointAfter(tile.getCoreOp());
-    auto mem = b.create<MemOp>(loc, tile);
-    auto endBlock = &mem.body().emplaceBlock();
+    Block *endBlock;
+    if (tile.isShimNOCorPLTile()) {
+      auto shimDma = b.create<ShimDMAOp>(loc, b.getIndexType(), tile);
+      endBlock = &shimDma.body().emplaceBlock();
+    } else {
+      auto mem = b.create<MemOp>(loc, tile);
+      endBlock = &mem.body().emplaceBlock();
+    }
     b.setInsertionPointToEnd(endBlock);
     b.create<xilinx::AIE::EndOp>(loc);
 
@@ -227,7 +254,7 @@ void MaterializeBroadcast::runOnOperation() {
 
       unsigned dmaIdx = 0;
       for (auto dma : dmaList) {
-        assert(dma.buf.getTileOp() == tile &&
+        assert(getTileOp(dma.buf) == tile &&
                "DMA and buffer should have the same associated tile");
         // Connect all description blocks into a chained loop.
         auto bdBlock = b.createBlock(endBlock);
@@ -242,8 +269,10 @@ void MaterializeBroadcast::runOnOperation() {
         auto tokName = dma.tokName.strref();
         b.create<UseTokenOp>(loc, tokName, dma.acqTokVal, LockAction::Acquire);
         b.create<DMABDPACKETOp>(loc, 0, dma.flow.ID());
-        b.create<DMABDOp>(loc, dma.buf, /*offset=*/0,
-                          dma.buf.getType().getNumElements(), /*AB=*/0);
+
+        auto buf = dma.buf->getResult(0);
+        auto bufType = buf.getType().cast<MemRefType>();
+        b.create<DMABDOp>(loc, buf, /*offset=*/0, bufType.getNumElements(), 0);
         b.create<UseTokenOp>(loc, tokName, dma.relTokVal, LockAction::Release);
         currentBDBranch = b.create<BranchOp>(loc, currentHeadBDBlock);
 
@@ -263,6 +292,9 @@ void MaterializeBroadcast::runOnOperation() {
     createMemBlocks(S2MM1s, DMAChan::S2MM1);
     createMemBlocks(MM2S0s, DMAChan::MM2S0);
     createMemBlocks(MM2S1s, DMAChan::MM2S1);
+
+    if (auto interface = getOnlyUserOfType<InterfaceOp>(tile))
+      interface.erase();
   }
 }
 
