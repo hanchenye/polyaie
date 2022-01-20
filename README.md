@@ -101,7 +101,11 @@ $ export PYTHONPATH=$PYTHONPATH:$PWD
 ## GEMM Example
 ```sh
 # Compile a GEMM kernel in C/C++ to executables.
-cd samples && ./compile.sh
+$ cd samples && ./compile.sh
+$ scp -r ./tmp/gemm-board/ petalinux@192.168.0.106:/home/petalinux/.
+
+# Run on VCK190 board.
+$ cd /home/petalinux/gemm-board/ && ./gemm.elf 1 1
 
 # Only compile the host kernel.
 $ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \

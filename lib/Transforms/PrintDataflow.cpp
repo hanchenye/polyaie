@@ -36,7 +36,7 @@ struct DOTGraphTraits<circt::handshake::FuncOp> : public DefaultDOTGraphTraits {
 
     if (process.kind() != ProcessKind::AIE)
       os << ",style=filled,fillcolor=\"/ylgnbu5/3\"";
-    else if (!process.getOps<memref::CopyOp>().empty())
+    else if (process->getAttr("polyaie.adapter"))
       os << ",style=filled,fillcolor=\"/ylgnbu5/2\"";
     else
       os << ",style=filled,fillcolor=\"/ylgnbu5/1\"";

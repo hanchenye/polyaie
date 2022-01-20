@@ -18,7 +18,8 @@ namespace {
 struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
   void runOnOperation() override;
 
-  const uint64_t baseAddress = 0x020100004000;
+  const uint64_t baseAddress = 0x000000004000;
+  // const uint64_t baseAddress = 0x020100004000;
 };
 } // namespace
 
@@ -72,6 +73,8 @@ void DataflowToAIE::runOnOperation() {
     // Generate TileOp based on the placement results.
     b.setInsertionPoint(process);
     auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
+    if (auto leaf = process->getAttr("polyaie.leaf"))
+      tile->setAttr("polyaie.leaf", leaf);
     tileMap[process] = tile;
 
     auto returnOp = process.body().back().getTerminator();

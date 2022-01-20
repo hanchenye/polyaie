@@ -114,6 +114,12 @@ void ConvertToDataflow::runOnOperation() {
   if (failed(applyPartialConversion(topFunc, target, std::move(patterns))))
     return signalPassFailure();
 
+  // Mark leaf processes that drives tensor store ops.
+  for (auto store : topFunc.getOps<dataflow::TensorStoreOp>()) {
+    auto leafProcess = store.tensor().getDefiningOp<dataflow::ProcessOp>();
+    leafProcess->setAttr("polyaie.leaf", b.getUnitAttr());
+  }
+
   // Create a new handshake function.
   b.setInsertionPoint(topFunc);
   SmallVector<NamedAttribute, 4> attrs;

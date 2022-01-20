@@ -35,27 +35,43 @@ void InsertGMIOAdapter::runOnOperation() {
       ioVals.push_back(store.tensor());
   }
 
-  for (auto value : ioVals) {
+  for (auto tensor : ioVals) {
     // Create a new empty process op.
-    b.setInsertionPointAfterValue(value);
-    auto process = b.create<dataflow::ProcessOp>(loc, value.getType(), value);
-    if (value.getDefiningOp<dataflow::TensorLoadOp>())
-      value.replaceAllUsesExcept(process.getResult(0), process);
+    b.setInsertionPointAfterValue(tensor);
+    auto process = b.create<dataflow::ProcessOp>(loc, tensor.getType(), tensor);
+    process->setAttr("polyaie.adapter", b.getUnitAttr());
+    if (tensor.getDefiningOp<dataflow::TensorLoadOp>())
+      tensor.replaceAllUsesExcept(process.getResult(0), process);
     else
-      value.replaceUsesWithIf(process.getResult(0), [](OpOperand &operand) {
+      tensor.replaceUsesWithIf(process.getResult(0), [](OpOperand &operand) {
         return isa<dataflow::TensorStoreOp>(operand.getOwner());
       });
 
-    auto type = value.getType().cast<RankedTensorType>();
+    auto type = tensor.getType().cast<RankedTensorType>();
     auto memrefType = MemRefType::get(type.getShape(), type.getElementType());
     auto entryBlock = &process.body().front();
     b.setInsertionPointToStart(entryBlock);
 
-    // Create a local buffer to hold the input data, then return it as result.
+    // Create a local buffer to hold the input data.
     auto toMemrefOp = b.create<bufferization::ToMemrefOp>(
         loc, memrefType, entryBlock->getArgument(0));
     auto alloc = b.create<memref::AllocOp>(loc, memrefType);
-    b.create<memref::CopyOp>(loc, toMemrefOp.memref(), alloc.memref());
+
+    // Create explicit memory copy using an affine loop nest.
+    auto insertPoint = b.saveInsertionPoint();
+    SmallVector<Value, 4> ivs;
+    for (auto dimSize : memrefType.getShape()) {
+      auto loop = b.create<mlir::AffineForOp>(loc, 0, dimSize);
+      b.setInsertionPointToStart(loop.getBody());
+      ivs.push_back(loop.getInductionVar());
+    }
+
+    // Create affine load/store operations.
+    auto value = b.create<mlir::AffineLoadOp>(loc, toMemrefOp.memref(), ivs);
+    b.create<mlir::AffineStoreOp>(loc, value, alloc.memref(), ivs);
+    b.restoreInsertionPoint(insertPoint);
+
+    // Return the local buffer as result.
     auto toTensorOp = b.create<bufferization::ToTensorOp>(loc, alloc.memref());
     b.create<dataflow::ReturnOp>(loc, toTensorOp.result());
   }

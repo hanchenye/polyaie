@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-DRY_RUN="false"
+DRY_RUN="true"
 RETURN_ALL_ARG="true"
 ALGORITHM="simulated-annealing"
 EXTERN_KERNEL="false"

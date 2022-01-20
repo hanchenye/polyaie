@@ -307,8 +307,8 @@ Placer::Placer(handshake::FuncOp func)
 
   // FIXME: rowBegin should be 1 by default.
   unsigned rowBegin = 2, colBegin = 0;
-  unsigned rowNum = std::min((int)sqrt(procs.size()), (int)7);
-  unsigned colNum = std::min((int)(1.5 * procs.size() / rowNum), (int)50);
+  unsigned rowNum = std::min((int)ceil(sqrt(procs.size())), (int)7);
+  unsigned colNum = std::min((int)ceil(1.5 * procs.size() / rowNum), (int)50);
 
   // Shift the design to the middle of the chip.
   colBegin += (50 - colNum) / 2;

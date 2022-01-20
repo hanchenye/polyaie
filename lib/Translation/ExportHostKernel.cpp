@@ -20,6 +20,16 @@ static llvm::cl::opt<bool>
                      llvm::cl::desc("run the host kernel without real data"),
                      llvm::cl::init(false));
 
+static StringRef emitType(Type type) {
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    if (intType.getWidth() != 32 || !intType.isSignless())
+      return "UNKNOWN_TYPE";
+    return "int32_t";
+  } else if (auto floatType = type.dyn_cast<Float32Type>())
+    return "float";
+  return "UNKNOWN_TYPE";
+}
+
 namespace {
 class HostKernelExporter : public ExporterBase {
 public:
@@ -31,13 +41,28 @@ public:
 
 void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
                                      unsigned argIdx) {
-  auto isWrite = hostDMA.kind() == HostDMAKind::HostToAIE;
+  auto isDDR = hostDMA.kind() == HostDMAKind::HostToDDR ||
+               hostDMA.kind() == HostDMAKind::DDRToHost;
+  auto isWrite = hostDMA.kind() == HostDMAKind::HostToAIE ||
+                 hostDMA.kind() == HostDMAKind::HostToDDR;
+
   auto buf = isWrite ? hostDMA.target() : hostDMA.source();
   auto bufType = buf.getType().dyn_cast<MemRefType>();
-  auto bufName = buf.getDefiningOp<BufferOp>().name().getValue();
+  auto bufOp = buf.getDefiningOp();
+
+  auto bufName = bufOp->getAttrOfType<StringAttr>("sym_name").getValue();
   auto bufSize = bufType.getNumElements();
 
-  // Generate the loop head.
+  if (isDDR) {
+    // Navigate to the external memory address.
+    indent() << emitType(bufType.getElementType()) << " *" << bufName
+             << "_ptr = (" << emitType(bufType.getElementType())
+             << " *)mmap(NULL, " << bufType.getSizeInBits() / 8
+             << ", PROT_READ | PROT_WRITE, MAP_SHARED, fd, "
+             << cast<ExternalBufferOp>(bufOp).address() << ");\n";
+  }
+
+  // Generate the loop head if buffer size is not 1.
   // TODO: Make this more robust. Now we assume we won't read and write buffer
   // simultaneously in the host kernel.
   if (bufSize != 1) {
@@ -51,43 +76,47 @@ void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
     }
   }
 
+  // A helper to emit the argument fetching verbatim.
   auto emitArgValue = [&]() {
     os << "arg" << argIdx;
-    if (bufSize == 1)
-      return;
-    for (unsigned ivIdx = 0; ivIdx < bufType.getRank(); ++ivIdx) {
-      reduceIndent();
-      os << "[idx" << ivIdx;
-      auto offset = hostDMA.offsets()[ivIdx].cast<IntegerAttr>().getInt();
-      if (offset)
-        os << " + " << offset << "]";
-      else
-        os << "]";
-    }
+    if (bufSize != 1)
+      for (unsigned ivIdx = 0; ivIdx < bufType.getRank(); ++ivIdx) {
+        reduceIndent();
+        os << "[idx" << ivIdx;
+        auto offset = hostDMA.offsets()[ivIdx].cast<IntegerAttr>().getInt();
+        if (offset)
+          os << " + " << offset << "]";
+        else
+          os << "]";
+      }
   };
 
-  // Generate the loop body.
-  if (isWrite) {
-    indent() << "mlir_aie_write_buffer_" << bufName << "(_xaie, "
-             << (bufSize != 1 ? "bufIdx++" : "0") << ", ";
-    emitArgValue();
-    os << ");\n\n";
+  auto bufIdx = bufSize != 1 ? "bufIdx++" : "0";
+  if (isDDR) {
+    // Generate the DMA for external memories.
+    if (isWrite) {
+      indent() << bufName << "_ptr[" << bufIdx << "] = ";
+      emitArgValue();
+      os << ";\n\n";
+    } else {
+      indent();
+      emitArgValue();
+      os << " = " << bufName << "_ptr[" << bufIdx << "];\n\n";
+    }
   } else {
-    indent();
-    emitArgValue();
-    os << " = mlir_aie_read_buffer_" << bufName << "(_xaie, "
-       << (bufSize != 1 ? "bufIdx++" : "0") << ");\n\n";
+    // Generate the DMA for on-chip buffers.
+    if (isWrite) {
+      indent() << "mlir_aie_write_buffer_" << bufName << "(_xaie, " << bufIdx
+               << ", ";
+      emitArgValue();
+      os << ");\n\n";
+    } else {
+      indent();
+      emitArgValue();
+      os << " = mlir_aie_read_buffer_" << bufName << "(_xaie, " << bufIdx
+         << ");\n\n";
+    }
   }
-}
-
-static StringRef emitType(Type type) {
-  if (auto intType = type.dyn_cast<IntegerType>()) {
-    if (intType.getWidth() != 32 || !intType.isSignless())
-      return "UNKNOWN_TYPE";
-    return "int32_t";
-  } else if (auto floatType = type.dyn_cast<Float32Type>())
-    return "float";
-  return "UNKNOWN_TYPE";
 }
 
 void HostKernelExporter::exportHostKernel(ModuleOp mod) {
@@ -163,7 +192,7 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   for (auto tile : mod.getOps<TileOp>()) {
     if (tile.getCoreOp())
       tiles.push_back(tile);
-    if (tile->getAttr("polyaie.leaf_tile"))
+    if (tile->getAttr("polyaie.leaf"))
       leafTiles.insert(tile);
   }
 
@@ -172,14 +201,20 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   SmallVector<dataflow::HostDMAOp, 8> stores;
 
   for (auto hostDMA : mod.getOps<dataflow::HostDMAOp>())
-    if (hostDMA.kind() == HostDMAKind::HostToAIE)
+    if (hostDMA.kind() == HostDMAKind::HostToAIE ||
+        hostDMA.kind() == HostDMAKind::HostToDDR)
       loads.push_back(hostDMA);
-    else if (hostDMA.kind() == HostDMAKind::AIEToHost)
+    else if (hostDMA.kind() == HostDMAKind::AIEToHost ||
+             hostDMA.kind() == HostDMAKind::DDRToHost)
       stores.push_back(hostDMA);
     else
-      hostDMA.emitOpError("only support host-aie DMAs");
+      llvm_unreachable("invalid host DMA kind");
 
   if (!dryRunHostKernel) {
+    // Open the ddr device.
+    indent() << "int fd = open(\"/dev/mem\", O_RDWR | O_SYNC);\n";
+    indent() << "assert(fd != -1 && \"memory is not available\");\n\n";
+
     // Clear the local memory of all tiles.
     for (auto tile : tiles)
       indent() << "mlir_aie_clear_tile_memory(_xaie, " << tile.col() << ", "
@@ -261,6 +296,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   indent() << "}\n\n";
 
   if (!dryRunHostKernel) {
+    indent() << "sleep(1);\n\n";
+
     // Write back results from local to global memory.
     for (auto hostDMA : stores)
       emitHostDMA(hostDMA, argIdxMap[hostDMA.target()]);
