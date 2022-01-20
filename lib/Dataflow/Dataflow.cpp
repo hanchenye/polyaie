@@ -5,6 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "polyaie/Dataflow/Dataflow.h"
+#include "aie/AIEDialect.h"
 #include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/IR/Builders.h"
 
@@ -22,7 +23,7 @@ void DataflowDialect::initialize() {
 #include "polyaie/Dataflow/DataflowEnums.cpp.inc"
 
 //===----------------------------------------------------------------------===//
-// Process-related Operation
+// ProcessOp
 //===----------------------------------------------------------------------===//
 
 void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
@@ -87,7 +88,11 @@ Value ProcessOp::getReturnValFromResult(OpResult result) {
   return body().back().getTerminator()->getOperand(result.getResultNumber());
 }
 
-static LogicalResult verify(ReturnOp op) {
+//===----------------------------------------------------------------------===//
+// ReturnOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(dataflow::ReturnOp op) {
   if (auto process = op->getParentOfType<ProcessOp>())
     if (op.getOperandTypes() == process.getResultTypes())
       return success();
@@ -101,7 +106,7 @@ static LogicalResult verify(ReturnOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Tensor Load/Store Operation
+// TensorLoad/StoreOp
 //===----------------------------------------------------------------------===//
 
 template <class OpType>
@@ -136,10 +141,35 @@ static LogicalResult verify(TensorStoreOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// Runtime Operation - should be factored out to a new dialect
+// Runtime Operations - should be factored out to a new dialect
 //===----------------------------------------------------------------------===//
 
 static LogicalResult verify(HostDMAOp op) { return success(); }
+
+//===----------------------------------------------------------------------===//
+// AIE Operations - should be factored out to AIE dialect
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verify(InterfaceOp op) {
+  if (!op.tile().getDefiningOp<xilinx::AIE::TileOp>())
+    return op.emitOpError("operand tile must be defined by TileOp");
+
+  for (auto buf : op.externalBuffers())
+    if (!buf.getDefiningOp<xilinx::AIE::ExternalBufferOp>())
+      return op.emitOpError("buffers must be defined by ExternalBufferOp");
+
+  return success();
+}
+
+static LogicalResult verify(BroadcastOp op) {
+  for (auto operand : op.getOperands())
+    if (!operand.getDefiningOp<xilinx::AIE::BufferOp>() &&
+        !operand.getDefiningOp<xilinx::AIE::ExternalBufferOp>())
+      return op.emitOpError(
+          "operand must be defined by BufferOp or ExternalBufferOp");
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // Include TableGen files

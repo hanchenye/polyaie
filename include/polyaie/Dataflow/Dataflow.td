@@ -138,6 +138,19 @@ def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
 // AIE Operations - should be factored out to AIE dialect
 //===----------------------------------------------------------------------===//
 
+def InterfaceOp : DataflowOp<"aie.interface", []> {
+  let summary = "Represent a logical tile interface";
+  let description = [{
+    This operation indicates all "externalBuffers" are accessed through the
+    logical interface of "tile". Note that the "tile" must be a shim tile,
+    either a ShimNoc or a ShimPL.
+  }];
+
+  let arguments = (ins Index:$tile, Variadic<AnyMemRef>:$externalBuffers);
+
+  let verifier = "return ::verify(*this);";
+}
+
 def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {
   let summary = "Memory broadcast operation";
   let description = [{
@@ -145,6 +158,8 @@ def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {
   }];
 
   let arguments = (ins AnyMemRef:$source, Variadic<AnyMemRef>:$targets);
+
+  let verifier = "return ::verify(*this);";
 }
 
 #endif // POLYAIE_DATAFLOW_DATAFLOW_TD

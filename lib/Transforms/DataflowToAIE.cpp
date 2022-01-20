@@ -59,6 +59,9 @@ void DataflowToAIE::runOnOperation() {
   // Map from process result to its corresponding buffer or external buffer.
   llvm::SmallDenseMap<Value, Operation *, 64> bufMap;
 
+  // Map from a tile to the external buffers interfaced through it.
+  llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 16> interfaceMap;
+
   // Hold the address allocated for external buffers.
   uint64_t address = baseAddress;
 
@@ -102,6 +105,7 @@ void DataflowToAIE::runOnOperation() {
         auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
         address += bufType.getSizeInBits() / 8;
         bufMap[result] = buf;
+        interfaceMap[tile].push_back(buf);
 
         // Create a host DMA op to load data from host to external buffer.
         auto mem = process.getOperandFromInternalVal(arg);
@@ -175,6 +179,7 @@ void DataflowToAIE::runOnOperation() {
         auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
         address += bufType.getSizeInBits() / 8;
         broadcastMap[srcBuf->getResult(0)].push_back(buf);
+        interfaceMap[tile].push_back(buf);
 
         // Create a host DMA to store from external memory to host.
         auto mem = process.getOperandFromInternalVal(arg);
@@ -209,10 +214,16 @@ void DataflowToAIE::runOnOperation() {
     process->erase();
   }
 
-  // Create BroadcastOps from the "broadcastMap".
+  // Create BroadcastOps from the "broadcastMap", also create InterfaceOps from
+  // the "interfaceMap".
   b.setInsertionPoint(topFunc.back().getTerminator());
   for (auto pair : broadcastMap)
     b.create<BroadcastOp>(loc, pair.first, pair.second);
+
+  for (auto pair : interfaceMap) {
+    b.setInsertionPointAfterValue(pair.first);
+    b.create<InterfaceOp>(loc, pair.first, pair.second);
+  }
 
   // Finally, inline the top function into the module.
   // TODO: Introduce AIE runtime-related operations.
