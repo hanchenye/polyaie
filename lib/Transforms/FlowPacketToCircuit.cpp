@@ -34,8 +34,14 @@ template <typename OpType> static DMABDPACKETOp getBdPacket(OpType port) {
     return DMABDPACKETOp();
 
   // Find the target DMA start operation.
-  auto portMem = port.tile().template getDefiningOp<TileOp>().getMemOp();
-  auto dmaStarts = portMem.body().template getOps<DMAStartOp>();
+  auto portTile = port.tile().template getDefiningOp<TileOp>();
+  Region *dmaRegion;
+  if (portTile.isShimNOCorPLTile())
+    dmaRegion = &getOnlyUserOfType<ShimDMAOp>(port.tile()).body();
+  else
+    dmaRegion = &portTile.getMemOp().body();
+
+  auto dmaStarts = dmaRegion->template getOps<DMAStartOp>();
   auto dmaStartPtr = llvm::find_if(
       dmaStarts, [&](DMAStartOp op) { return op.dmaChan() == channel; });
   assert(dmaStartPtr != dmaStarts.end() &&
