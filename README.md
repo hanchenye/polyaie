@@ -105,7 +105,7 @@ $ cd samples && ./compile.sh
 $ scp -r ./tmp/gemm-board/ petalinux@192.168.0.106:/home/petalinux/.
 
 # Run on VCK190 board.
-$ cd /home/petalinux/gemm-board/ && ./gemm.elf 1 1
+$ export XILINX_XRT=/usr && cd /home/petalinux/gemm-board/ && ./gemm.elf 1 1
 
 # Only compile the host kernel.
 $ /usr/bin/clang --target=aarch64-linux-gnu -std=c++11 \

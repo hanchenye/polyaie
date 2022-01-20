@@ -20,6 +20,10 @@ static llvm::cl::opt<bool>
                      llvm::cl::desc("run the host kernel without real data"),
                      llvm::cl::init(false));
 
+static llvm::cl::opt<bool>
+    debugTile("debug-tile", llvm::cl::desc("print out the tile status"),
+              llvm::cl::init(false));
+
 static StringRef emitType(Type type) {
   if (auto intType = type.dyn_cast<IntegerType>()) {
     if (intType.getWidth() != 32 || !intType.isSignless())
@@ -58,8 +62,9 @@ void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
     indent() << emitType(bufType.getElementType()) << " *" << bufName
              << "_ptr = (" << emitType(bufType.getElementType())
              << " *)mmap(NULL, " << bufType.getSizeInBits() / 8
-             << ", PROT_READ | PROT_WRITE, MAP_SHARED, fd, "
-             << cast<ExternalBufferOp>(bufOp).address() << ");\n";
+             << ", PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x"
+             << llvm::utohexstr(cast<ExternalBufferOp>(bufOp).address())
+             << ");\n";
   }
 
   // Generate the loop head if buffer size is not 1.
@@ -201,7 +206,7 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
       for (auto useLock : core.getOps<UseLockOp>()) {
         if (useLock.release())
           releases.push_back(useLock);
-        else
+        else if (useLock.value() == 1)
           acquires.push_back(useLock);
       }
     }
@@ -227,8 +232,9 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
     // Clear the local memory of all tiles.
     for (auto tile : tiles)
-      indent() << "mlir_aie_clear_tile_memory(_xaie, " << tile.col() << ", "
-               << tile.row() << ");\n";
+      if (!tile.isShimNOCorPLTile())
+        indent() << "mlir_aie_clear_tile_memory(_xaie, " << tile.col() << ", "
+                 << tile.row() << ");\n";
     os << "\n";
 
     // Initialize local memories.
@@ -268,16 +274,28 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
 )XXX";
 
-  // Release all locks.
-  for (auto release : releases) {
-    auto lock = release.lock().getDefiningOp<LockOp>();
-    auto tile = lock.tile().getDefiningOp<TileOp>();
+  // Release locks to 1.
+  for (auto release : releases)
+    if (release.value() == 1) {
+      auto lock = release.lock().getDefiningOp<LockOp>();
+      auto tile = lock.tile().getDefiningOp<TileOp>();
 
-    indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
-             << tile.row() << ", " << lock.lockID() << ", " << release.value()
-             << ", 0);\n";
-  }
+      indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
+               << tile.row() << ", " << lock.lockID() << ", 1, 0);\n";
+    }
   os << "\n";
+
+  if (debugTile) {
+    // Debug the tiles.
+    indent() << "sleep(1);\n";
+    for (auto tile : tiles)
+      if (!tile.isShimNOCorPLTile()) {
+        indent() << "mlir_aie_print_tile_status(_xaie, " << tile.col() << ", "
+                 << tile.row() << ");\n";
+        indent() << "printf(\"\\n\");\n";
+      }
+    os << "\n";
+  }
 
   // Iterate until all locks in "results" are acquired.
   indent() << "while(!kernel_complete()) {\n";
@@ -318,12 +336,21 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   indent() << "}\n\n";
 
   if (!dryRunHostKernel) {
-    indent() << "sleep(1);\n\n";
-
     // Write back results from local to global memory.
     for (auto hostDMA : stores)
       emitHostDMA(hostDMA, argIdxMap[hostDMA.target()]);
   }
+
+  // Release locks back to 0.
+  for (auto release : releases)
+    if (release.value() == 0) {
+      auto lock = release.lock().getDefiningOp<LockOp>();
+      auto tile = lock.tile().getDefiningOp<TileOp>();
+
+      indent() << "mlir_aie_release_lock(_xaie, " << tile.col() << ", "
+               << tile.row() << ", " << lock.lockID() << ", 0, 0);\n";
+    }
+  os << "\n";
 
   os << R"XXX(
   mlir_aie_deinit_libxaie(_xaie);

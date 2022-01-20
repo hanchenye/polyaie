@@ -4,7 +4,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-DRY_RUN="true"
+DRY_RUN="false"
+DEBUG_TILE="false"
 RETURN_ALL_ARG="true"
 ALGORITHM="simulated-annealing"
 EXTERN_KERNEL="false"
@@ -58,6 +59,7 @@ sed -E '/host_dma/d; /alloc/d' \
 polyaie-translate ${GEMM_DIR}/gemm.polyaie.mlir \
   -export-host-kernel \
   -dry-run-host-kernel=${DRY_RUN} \
+  -debug-tile=${DEBUG_TILE} \
   > ${GEMM_DIR}/gemm.host.cpp
 
 sed -E 's/\/\/[[:space:]]//g' \
