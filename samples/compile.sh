@@ -92,3 +92,4 @@ mkdir -p ${GEMMBOARD_DIR}
 cp gemm.elf ${GEMMBOARD_DIR}
 cp core_*.elf ${GEMMBOARD_DIR}
 rm core_*
+rm gemm.pre.*
