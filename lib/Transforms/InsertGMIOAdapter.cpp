@@ -31,7 +31,7 @@ void InsertGMIOAdapter::runOnOperation() {
   for (auto &op : topFunc.getOps()) {
     if (auto load = dyn_cast<dataflow::TensorLoadOp>(op))
       ioVals.push_back(load.tensor());
-    else if (auto store = dyn_cast<dataflow::TensorStoreOp>(op))
+    if (auto store = dyn_cast<dataflow::TensorStoreOp>(op))
       ioVals.push_back(store.tensor());
   }
 

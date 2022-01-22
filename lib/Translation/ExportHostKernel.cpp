@@ -274,7 +274,22 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 
 )XXX";
 
+  if (debugTile) {
+    // Debug the tiles.
+    indent() << "sleep(1);\n";
+    for (auto tile : tiles)
+      if (!tile.isShimNOCorPLTile()) {
+        indent() << "mlir_aie_print_tile_status(_xaie, " << tile.col() << ", "
+                 << tile.row() << ");\n";
+        indent() << "mlir_aie_print_dma_status(_xaie, " << tile.col() << ", "
+                 << tile.row() << ");\n";
+        indent() << "printf(\"\\n\");\n";
+      }
+    os << "\n";
+  }
+
   // Release locks to 1.
+  indent() << "printf(\"Release locks...\\n\\n\");\n";
   for (auto release : releases)
     if (release.value() == 1) {
       auto lock = release.lock().getDefiningOp<LockOp>();
@@ -291,6 +306,8 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
     for (auto tile : tiles)
       if (!tile.isShimNOCorPLTile()) {
         indent() << "mlir_aie_print_tile_status(_xaie, " << tile.col() << ", "
+                 << tile.row() << ");\n";
+        indent() << "mlir_aie_print_dma_status(_xaie, " << tile.col() << ", "
                  << tile.row() << ");\n";
         indent() << "printf(\"\\n\");\n";
       }
