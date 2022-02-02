@@ -144,7 +144,8 @@
       "span": "cpp",
       "__string": "cpp",
       "filesystem": "cpp",
-      "__mutex_base": "cpp"
+      "__mutex_base": "cpp",
+      "*.def": "cpp"
     }
   },
   "extensions": {
