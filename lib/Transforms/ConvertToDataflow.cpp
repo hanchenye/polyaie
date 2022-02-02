@@ -27,10 +27,22 @@ struct TensorLoadConversion
   LogicalResult
   matchAndRewrite(bufferization::ToTensorOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (auto subview = op.memref().getDefiningOp<memref::SubViewOp>()) {
+    auto mem = op.memref();
+    if (auto subview = mem.getDefiningOp<memref::SubViewOp>()) {
       rewriter.replaceOpWithNewOp<dataflow::TensorLoadOp>(
           op, op.getType(), subview.static_offsets(), subview.static_sizes(),
           subview.static_strides(), subview.source());
+      return success();
+
+    } else if (auto cast = mem.getDefiningOp<memref::CastOp>()) {
+      rewriter.replaceOpWithNewOp<dataflow::TensorLoadOp>(op, op.getType(),
+                                                          cast.source());
+      return success();
+
+    } else if (mem.isa<BlockArgument>() ||
+               isa<memref::AllocOp, memref::AllocaOp>(mem.getDefiningOp())) {
+      rewriter.replaceOpWithNewOp<dataflow::TensorLoadOp>(op, op.getType(),
+                                                          op.memref());
       return success();
     }
     return failure();
@@ -45,12 +57,24 @@ struct TensorStoreConversion : public OpConversionPattern<memref::CopyOp> {
   LogicalResult
   matchAndRewrite(memref::CopyOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (auto subview = op.target().getDefiningOp<memref::SubViewOp>()) {
-      if (auto toMemrefOp =
-              op.source().getDefiningOp<bufferization::ToMemrefOp>()) {
+    if (auto toMemrefOp =
+            op.source().getDefiningOp<bufferization::ToMemrefOp>()) {
+      auto mem = op.target();
+      if (auto subview = mem.getDefiningOp<memref::SubViewOp>()) {
         rewriter.replaceOpWithNewOp<dataflow::TensorStoreOp>(
             op, subview.static_offsets(), subview.static_sizes(),
             subview.static_strides(), subview.source(), toMemrefOp.tensor());
+        return success();
+
+      } else if (auto cast = mem.getDefiningOp<memref::CastOp>()) {
+        rewriter.replaceOpWithNewOp<dataflow::TensorStoreOp>(
+            op, cast.source(), toMemrefOp.tensor());
+        return success();
+
+      } else if (mem.isa<BlockArgument>() ||
+                 isa<memref::AllocOp, memref::AllocaOp>(mem.getDefiningOp())) {
+        rewriter.replaceOpWithNewOp<dataflow::TensorStoreOp>(
+            op, mem, toMemrefOp.tensor());
         return success();
       }
     }

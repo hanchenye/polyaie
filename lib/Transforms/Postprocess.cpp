@@ -24,12 +24,6 @@ void Postprocess::runOnOperation() {
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
 
-  // Try to convert vector.transfer_read/write operation with permutation maps
-  // to memref.load and vector.broadcast.
-  RewritePatternSet patterns(mod.getContext());
-  vector::populateVectorTransferLoweringPatterns(patterns);
-  (void)applyPatternsAndFoldGreedily(mod, std::move(patterns));
-
   // Traverse all operations.
   unsigned bufIdx = 0;
   for (auto &op : llvm::make_early_inc_range(mod.getBody()->getOperations())) {

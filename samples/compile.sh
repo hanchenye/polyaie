@@ -10,6 +10,7 @@ RETURN_ALL_ARG="true"
 ALGORITHM="simulated-annealing"
 EXTERN_KERNEL="false"
 OBJECT_FILE="kernel.o"
+VEC_SIZE=8
 VITIS_DIR=/tools/Xilinx/Vitis/2020.1
 
 # Get the absolute path of the current directory.
@@ -36,6 +37,7 @@ python pb-flow.py ${DIR}/polybench \
 # Run polyaie to generate the AIE IR of GEMM.
 PIPELINE_OPTS="top-func-name=kernel_gemm "
 PIPELINE_OPTS+="return-all-arg=${RETURN_ALL_ARG} "
+PIPELINE_OPTS+="vec-size=${VEC_SIZE} "
 PIPELINE_OPTS+="algorithm=${ALGORITHM} "
 PIPELINE_OPTS+="enable-link-extern-kernel=${EXTERN_KERNEL} "
 PIPELINE_OPTS+="object-file=${OBJECT_FILE}"

@@ -7,6 +7,7 @@
 #ifndef POLYAIE_INITALLPASSES_H
 #define POLYAIE_INITALLPASSES_H
 
+#include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "mlir/InitAllPasses.h"
 #include "polyaie/Transforms/Passes.h"
 
@@ -22,18 +23,8 @@ inline void registerAllPasses() {
   polyaie::registerPolyAIEPasses();
 
   // AIE passes.
-  xilinx::AIE::registerAIEAssignBufferAddressesPass();
-  xilinx::AIE::registerAIECoreToStandardPass();
-  xilinx::AIE::registerAIECreateCoresPass();
-  xilinx::AIE::registerAIECreateLocksPass();
-  xilinx::AIE::registerAIEFindFlowsPass();
-  xilinx::AIE::registerAIEHerdRoutingPass();
-  xilinx::AIE::registerAIELowerMemcpyPass();
-  xilinx::AIE::registerAIENormalizeAddressSpacesPass();
-  xilinx::AIE::registerAIERouteFlowsPass();
-  xilinx::AIE::registerAIERoutePathfinderFlowsPass();
-  xilinx::AIE::registerAIERoutePacketFlowsPass();
-  xilinx::AIE::registerAIEVectorOptPass();
+  xilinx::AIE::registerAIEPasses();
+  xilinx::aievec::registerAIEVecPasses();
 }
 
 } // namespace polyaie

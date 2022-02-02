@@ -29,10 +29,10 @@ void InsertGMIOAdapter::runOnOperation() {
 
   SmallVector<Value, 32> ioVals;
   for (auto &op : topFunc.getOps()) {
-    if (auto load = dyn_cast<dataflow::TensorLoadOp>(op))
-      ioVals.push_back(load.tensor());
-    if (auto store = dyn_cast<dataflow::TensorStoreOp>(op))
-      ioVals.push_back(store.tensor());
+    // if (auto load = dyn_cast<dataflow::TensorLoadOp>(op))
+    //   ioVals.push_back(load.tensor());
+    // if (auto store = dyn_cast<dataflow::TensorStoreOp>(op))
+    //   ioVals.push_back(store.tensor());
   }
 
   for (auto tensor : ioVals) {

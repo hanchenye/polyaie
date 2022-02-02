@@ -45,13 +45,12 @@ def ProcessOp : DataflowOp<"process", [IsolatedFromAbove]> {
   let regions = (region AnyRegion:$body);
 
   let skipDefaultBuilders = 1;
-  let builders =[
+  let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
                    CArg<"ProcessKind", "ProcessKind::AIE">:$kind)>
   ];
 
   let verifier = "return ::verify(*this);";
-
   let extraClassDeclaration = [{
     /// Given an internal value, return the corresponding process operand. If
     /// the internal value is not a block argument, return nullptr.
@@ -92,6 +91,7 @@ def TensorLoadOp : DataflowOp<"tensor_load",
                        I64ArrayAttr:$strides, AnyMemRef:$memory);
   let results = (outs AnyTensor:$tensor);
 
+  let builders = [ OpBuilder<(ins "Type":$type, "Value":$memory)> ];
   let verifier = "return ::verify(*this);";
 }
 
@@ -105,6 +105,7 @@ def TensorStoreOp : DataflowOp<"tensor_store", [SameOperandsElementType]> {
                        I64ArrayAttr:$strides, AnyMemRef:$memory,
                        AnyTensor:$tensor);
 
+  let builders = [ OpBuilder<(ins "Value":$memory, "Value":$tensor)> ];
   let verifier = "return ::verify(*this);";
 }
 

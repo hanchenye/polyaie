@@ -10,6 +10,8 @@ target_link_libraries(polyaie-opt
   PRIVATE
   ${all_libs}
   AIE
+  MLIRAIEVec
+  MLIRAIEVecTransforms
   CIRCTHandshake
   CIRCTHandshakeTransforms
   MLIRPolyAIESupport

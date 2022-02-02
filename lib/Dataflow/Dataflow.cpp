@@ -26,15 +26,15 @@ void DataflowDialect::initialize() {
 // ProcessOp
 //===----------------------------------------------------------------------===//
 
-void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+void ProcessOp::build(OpBuilder &builder, OperationState &state,
                       TypeRange resultTypes, ValueRange operands,
                       ProcessKind kind) {
-  odsState.addOperands(operands);
-  odsState.addAttribute(kindAttrName(odsState.name),
-                        ProcessKindAttr::get(odsBuilder.getContext(), kind));
-  odsState.addTypes(resultTypes);
+  state.addOperands(operands);
+  state.addAttribute(kindAttrName(state.name),
+                     ProcessKindAttr::get(builder.getContext(), kind));
+  state.addTypes(resultTypes);
 
-  auto body = odsState.addRegion();
+  auto body = state.addRegion();
   auto &entry = body->emplaceBlock();
   SmallVector<Location, 4> locations;
   for (auto value : operands)
@@ -111,6 +111,26 @@ static LogicalResult verify(dataflow::ReturnOp op) {
 //===----------------------------------------------------------------------===//
 // TensorLoad/StoreOp
 //===----------------------------------------------------------------------===//
+
+void TensorLoadOp::build(OpBuilder &builder, OperationState &state, Type type,
+                         Value memory) {
+  auto tensorType = type.cast<RankedTensorType>();
+  auto offsets = SmallVector<int64_t>(tensorType.getRank(), 0);
+  auto strides = SmallVector<int64_t>(tensorType.getRank(), 1);
+  build(builder, state, type, builder.getI64ArrayAttr(offsets),
+        builder.getI64ArrayAttr(tensorType.getShape()),
+        builder.getI64ArrayAttr(strides), memory);
+}
+
+void TensorStoreOp::build(OpBuilder &builder, OperationState &state,
+                          Value memory, Value tensor) {
+  auto tensorType = tensor.getType().cast<RankedTensorType>();
+  auto offsets = SmallVector<int64_t>(tensorType.getRank(), 0);
+  auto strides = SmallVector<int64_t>(tensorType.getRank(), 1);
+  build(builder, state, builder.getI64ArrayAttr(offsets),
+        builder.getI64ArrayAttr(tensorType.getShape()),
+        builder.getI64ArrayAttr(strides), memory, tensor);
+}
 
 template <class OpType>
 static LogicalResult verifyTensorLoadStoreOp(OpType op) {

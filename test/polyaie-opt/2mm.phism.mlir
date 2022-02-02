@@ -1,4 +1,4 @@
-// RUN: polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm" %s | FileCheck %s
+// RUN: polyaie-opt -polyaie-pipeline="top-func-name=kernel_2mm vec-size=1" %s | FileCheck %s
 
 // CHECK: module @kernel_2mm
 
