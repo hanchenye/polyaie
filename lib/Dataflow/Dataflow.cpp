@@ -36,7 +36,10 @@ void ProcessOp::build(OpBuilder &odsBuilder, OperationState &odsState,
 
   auto body = odsState.addRegion();
   auto &entry = body->emplaceBlock();
-  entry.addArguments(operands.getTypes());
+  SmallVector<Location, 4> locations;
+  for (auto value : operands)
+    locations.push_back(value.getLoc());
+  entry.addArguments(operands.getTypes(), locations);
 }
 
 static LogicalResult verify(ProcessOp op) {

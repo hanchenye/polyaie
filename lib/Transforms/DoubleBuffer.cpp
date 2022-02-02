@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Analysis/Utils.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "polyaie/Transforms/Passes.h"
 

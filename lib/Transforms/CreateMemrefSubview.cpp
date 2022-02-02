@@ -12,7 +12,7 @@ using namespace polyaie;
 namespace {
 struct CreateMemrefSubview
     : public polyaie::CreateMemrefSubviewBase<CreateMemrefSubview> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 } // namespace
 
@@ -20,8 +20,8 @@ struct CreateMemrefSubview
 /// loop analysis to determine which tile of a memref is accessed in a function,
 /// (2) create a corresponding SubViewOp to load the tile out from the original
 /// memref and replace all uses.
-void CreateMemrefSubview::runOnFunction() {
-  auto func = getFunction();
+void CreateMemrefSubview::runOnOperation() {
+  auto func = getOperation();
   if (func->hasAttr("polyaie.top_func"))
     return;
   auto b = OpBuilder(func);
@@ -136,6 +136,6 @@ void CreateMemrefSubview::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPass> polyaie::createCreateMemrefSubviewPass() {
+std::unique_ptr<Pass> polyaie::createCreateMemrefSubviewPass() {
   return std::make_unique<CreateMemrefSubview>();
 }

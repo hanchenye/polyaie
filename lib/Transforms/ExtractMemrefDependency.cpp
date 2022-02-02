@@ -26,7 +26,7 @@ void ExtractMemrefDependency::runOnOperation() {
 
   // Construct explicit dependencies between memrefs.
   for (auto call : llvm::make_early_inc_range(topFunc.getOps<CallOp>())) {
-    auto func = mod.lookupSymbol<FuncOp>(call.callee());
+    auto func = mod.lookupSymbol<FuncOp>(call.getCallee());
     auto returnOp = func.back().getTerminator();
 
     for (auto &operand : call->getOpOperands()) {

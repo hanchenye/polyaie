@@ -18,7 +18,7 @@ using namespace polyaie;
 namespace {
 struct DetectLoopReduction
     : public DetectLoopReductionBase<DetectLoopReduction> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 } // end namespace.
 
@@ -130,9 +130,9 @@ struct AffineForReductionIter : public OpRewritePattern<AffineForOp> {
         // require a single store within the current for. The load must dominate
         // the single store. There must be no other stores in the current for.
         if ((candidateStores.size() == 1) &&
-            checkDominance(load.getOperation(), candidateStores[0].getOperation()) &&
-            otherStores.size() == 0 /*
-            checkDominance(candidateStores[0].getOperation(), otherStores)*/) {
+            checkDominance(load.getOperation(),
+                           candidateStores[0].getOperation()) &&
+            otherStores.size() == 0) {
           candidateOpsInFor.push_back(std::make_pair(
               load.getOperation(), candidateStores[0].getOperation()));
           loadsInFor.push_back(otherLoads);
@@ -144,21 +144,6 @@ struct AffineForReductionIter : public OpRewritePattern<AffineForOp> {
     // no work to do.
     if (!candidateOpsInFor.size())
       return failure();
-
-    // llvm::errs() << "------------\n";
-    // llvm::errs() << "#candidateOpsInFor: " << candidateOpsInFor.size() <<
-    // "\n";
-
-    /*
-     llvm::errs() << "candidateOpsInFor\n";
-     for (auto pair : candidateOpsInFor) {
-       std::get<0>(pair)->dump();
-       std::get<1>(pair)->dump();
-     }
-     llvm::errs() << "-for-\n";
-     */
-    // forOp.dump();
-    // llvm::errs() << "------------\n";
 
     // move the load outside the loop. All the load indexes are
     // not used in the current for (see hasAllDimReduced).
@@ -259,14 +244,14 @@ struct AffineForReductionIter : public OpRewritePattern<AffineForOp> {
 
 } // end namespace.
 
-void DetectLoopReduction::runOnFunction() {
-  mlir::RewritePatternSet rpl(getFunction().getContext());
-  rpl.add<AffineForReductionIter>(getFunction().getContext());
+void DetectLoopReduction::runOnOperation() {
+  mlir::RewritePatternSet rpl(getOperation().getContext());
+  rpl.add<AffineForReductionIter>(getOperation().getContext());
   GreedyRewriteConfig config;
-  (void)applyPatternsAndFoldGreedily(getFunction().getOperation(),
+  (void)applyPatternsAndFoldGreedily(getOperation().getOperation(),
                                      std::move(rpl), config);
 }
 
-std::unique_ptr<FunctionPass> polyaie::createDetectLoopReductionPass() {
+std::unique_ptr<Pass> polyaie::createDetectLoopReductionPass() {
   return std::make_unique<DetectLoopReduction>();
 }

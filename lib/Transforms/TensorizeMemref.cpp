@@ -79,7 +79,8 @@ void TensorizeMemref::runOnOperation() {
   RewritePatternSet patterns(mod.getContext());
   ConversionTarget target(*mod.getContext());
 
-  populateFuncOpTypeConversionPattern(patterns, tensorizeConverter);
+  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
+                                                           tensorizeConverter);
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
     return (tensorizeConverter.isSignatureLegal(op.getType()) &&
             tensorizeConverter.isLegal(&op.getBody())) ||

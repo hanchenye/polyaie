@@ -13,12 +13,12 @@ using namespace polyaie;
 namespace {
 struct BufferMemrefResult
     : public polyaie::BufferMemrefResultBase<BufferMemrefResult> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 } // namespace
 
-void BufferMemrefResult::runOnFunction() {
-  auto func = getFunction();
+void BufferMemrefResult::runOnOperation() {
+  auto func = getOperation();
   if (func->hasAttr("polyaie.top_func"))
     return;
   auto b = OpBuilder(func);
@@ -52,6 +52,6 @@ void BufferMemrefResult::runOnFunction() {
   }
 }
 
-std::unique_ptr<FunctionPass> polyaie::createBufferMemrefResultPass() {
+std::unique_ptr<Pass> polyaie::createBufferMemrefResultPass() {
   return std::make_unique<BufferMemrefResult>();
 }

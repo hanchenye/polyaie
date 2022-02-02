@@ -51,7 +51,7 @@ template <typename OpType> static DMABDPACKETOp getBdPacket(OpType port) {
   // Check the number of description blocks.
   auto headBdBlock = dmaStart.dest();
   auto headBdBranch = cast<mlir::BranchOp>(headBdBlock->getTerminator());
-  if (headBdBranch.dest() != headBdBlock)
+  if (headBdBranch.getDest() != headBdBlock)
     return DMABDPACKETOp();
 
   auto bdPacket = headBdBlock->template getOps<DMABDPACKETOp>().begin();

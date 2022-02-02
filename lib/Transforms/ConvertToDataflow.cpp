@@ -67,7 +67,7 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
   matchAndRewrite(mlir::CallOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto mod = op->getParentOfType<ModuleOp>();
-    auto func = mod.lookupSymbol<FuncOp>(op.callee());
+    auto func = mod.lookupSymbol<FuncOp>(op.getCallee());
 
     // Replace call and function operation.
     auto process = rewriter.replaceOpWithNewOp<dataflow::ProcessOp>(
@@ -125,7 +125,7 @@ void ConvertToDataflow::runOnOperation() {
   SmallVector<NamedAttribute, 4> attrs;
   for (const auto &attr : topFunc->getAttrs()) {
     if (attr.getName() == SymbolTable::getSymbolAttrName() ||
-        attr.getName() == function_like_impl::getTypeAttrName())
+        attr.getName() == function_interface_impl::getTypeAttrName())
       continue;
     attrs.push_back(attr);
   }

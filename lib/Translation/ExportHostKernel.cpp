@@ -61,7 +61,8 @@ void HostKernelExporter::emitHostDMA(dataflow::HostDMAOp hostDMA,
     // Navigate to the external memory address.
     indent() << emitType(bufType.getElementType()) << " *" << bufName
              << "_ptr = (" << emitType(bufType.getElementType())
-             << " *)mmap(NULL, " << bufType.getSizeInBits() / 8
+             << " *)mmap(NULL, "
+             << bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8
              << ", PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x"
              << llvm::utohexstr(cast<ExternalBufferOp>(bufOp).address())
              << ");\n";

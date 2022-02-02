@@ -4,10 +4,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+#include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
@@ -86,7 +86,7 @@ static void duplicateSubFuncs(FuncOp func) {
   unsigned callIdx = 0;
   func.walk([&](CallOp call) {
     auto calleeOp = SymbolTable::lookupSymbolIn(
-        func->getParentOfType<ModuleOp>(), call.callee());
+        func->getParentOfType<ModuleOp>(), call.getCallee());
     auto callee = dyn_cast<FuncOp>(calleeOp);
 
     // Create a new callee function for each call operation.
@@ -95,13 +95,12 @@ static void duplicateSubFuncs(FuncOp func) {
     b.insert(newCallee);
 
     // Set up a new name.
-    auto newName = call.callee().str() + "_AIE" + std::to_string(callIdx);
+    auto newName = call.getCallee().str() + "_AIE" + std::to_string(callIdx);
     newCallee.setName(newName);
     call->setAttr("callee", SymbolRefAttr::get(newCallee));
 
     // Localize the constant into the new callee.
-    SmallVector<unsigned, 8> argsToErase;
-    auto operandsToErase = llvm::BitVector();
+    auto argsToErase = llvm::BitVector();
     for (unsigned i = 0, e = call.getNumOperands(); i < e; ++i) {
       if (auto param = call.getOperand(i).getDefiningOp<arith::ConstantOp>()) {
         // Replace function argument with a constant number if applicable.
@@ -110,17 +109,14 @@ static void duplicateSubFuncs(FuncOp func) {
         b.insert(newParam);
         newCallee.getArgument(i).replaceAllUsesWith(newParam);
 
-        argsToErase.push_back(i);
-        operandsToErase.push_back(true);
-      } else if (newCallee.getArgument(i).use_empty()) {
-        // Remove unused function arguments.
-        argsToErase.push_back(i);
-        operandsToErase.push_back(true);
-      } else
-        operandsToErase.push_back(false);
+        argsToErase.push_back(true);
+      } else if (newCallee.getArgument(i).use_empty())
+        argsToErase.push_back(true);
+      else
+        argsToErase.push_back(false);
     }
     newCallee.eraseArguments(argsToErase);
-    call->eraseOperands(operandsToErase);
+    call->eraseOperands(argsToErase);
 
     // Canonicalize the function for constant propogation.
     PassManager pm(newCallee.getContext(), "builtin.func");

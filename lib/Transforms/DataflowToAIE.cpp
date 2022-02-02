@@ -106,7 +106,8 @@ void DataflowToAIE::runOnOperation() {
         auto bufType =
             MemRefType::get(tensorType.getShape(), tensorType.getElementType());
         auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
-        address += bufType.getSizeInBits() / 8;
+        address +=
+            bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
         bufMap[result] = buf;
         interfaceMap[tile].push_back(buf);
 
@@ -180,7 +181,8 @@ void DataflowToAIE::runOnOperation() {
         auto bufType =
             MemRefType::get(tensorType.getShape(), tensorType.getElementType());
         auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
-        address += bufType.getSizeInBits() / 8;
+        address +=
+            bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
         broadcastMap[srcBuf->getResult(0)].push_back(buf);
         interfaceMap[tile].push_back(buf);
 

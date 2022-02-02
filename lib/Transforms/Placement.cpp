@@ -315,7 +315,7 @@ Placer::Placer(handshake::FuncOp func)
 
   layout.aie = {rowBegin, colBegin, rowNum, colNum};
 
-  std::srand(std::time(0));
+  std::srand(time(0));
   randomInitialize();
 }
 

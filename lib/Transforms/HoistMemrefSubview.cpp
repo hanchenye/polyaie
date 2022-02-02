@@ -26,8 +26,9 @@ void HoistMemrefSubview::runOnOperation() {
   llvm::SmallDenseMap<Value, SmallVector<Value, 16>, 32> subviewsMap;
 
   for (auto call : topFunc.getOps<CallOp>()) {
-    auto func = mod.lookupSymbol<FuncOp>(call.callee());
-    auto inputTypes = SmallVector<Type, 8>(func.getArgumentTypes());
+    auto func = mod.lookupSymbol<FuncOp>(call.getCallee());
+    auto inputTypes = SmallVector<Type, 8>(func.getArgumentTypes().begin(),
+                                           func.getArgumentTypes().end());
 
     for (auto subview :
          llvm::make_early_inc_range(func.getOps<memref::SubViewOp>())) {
