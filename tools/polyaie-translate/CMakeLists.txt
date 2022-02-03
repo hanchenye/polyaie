@@ -19,6 +19,7 @@ target_link_libraries(polyaie-translate
   MLIRAIEVec
   CIRCTHandshake
   MLIRDataflow
+  MLIRTargetAIEVecCpp
   MLIRPolyAIEExporters
   MLIRPolyAIESupport
   )

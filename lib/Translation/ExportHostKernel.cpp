@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/AIEDialect.h"
-#include "mlir/Translation.h"
+
 #include "polyaie/Exporters.h"
 #include "polyaie/InitAllDialects.h"
 #include "polyaie/Utils.h"
@@ -383,11 +383,4 @@ LogicalResult polyaie::exportHostKernel(ModuleOp module, raw_ostream &os) {
   ExporterState state(os);
   HostKernelExporter(state).exportHostKernel(module);
   return failure(state.encounteredError);
-}
-
-void polyaie::registerExportHostKernel() {
-  static TranslateFromMLIRRegistration registration(
-      "export-host-kernel", exportHostKernel, [&](DialectRegistry &registry) {
-        polyaie::registerAllDialects(registry);
-      });
 }

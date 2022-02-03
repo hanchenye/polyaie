@@ -9,7 +9,7 @@
 #include "polyaie/Exporters.h"
 
 int main(int argc, char **argv) {
-  mlir::polyaie::registerExportHostKernel();
+  mlir::polyaie::registerPolyAIEExporters();
 
   return mlir::failed(
       mlir::mlirTranslateMain(argc, argv, "PolyAIE Translation Tool"));

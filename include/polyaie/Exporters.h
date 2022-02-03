@@ -12,9 +12,16 @@
 namespace mlir {
 namespace polyaie {
 
+/// Module level exporting APIs.
 LogicalResult exportHostKernel(ModuleOp module, llvm::raw_ostream &os);
+LogicalResult exportAIEKernel(ModuleOp module, llvm::raw_ostream &os);
 
+/// Registration hooks.
 void registerExportHostKernel();
+void registerExportAIEKernel();
+
+/// Register all exporters.
+void registerPolyAIEExporters();
 
 //===----------------------------------------------------------------------===//
 // Base classes of exporters
