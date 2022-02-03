@@ -193,8 +193,6 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
 )XXX";
 
   // Collect tile operations.
-  // TODO: The lock user collection is highly experimental! We need a more
-  // systematic runtime IR.
   SmallVector<TileOp, 32> tiles;
   SmallVector<UseLockOp, 16> acquires;
   SmallVector<UseLockOp, 16> releases;
@@ -211,6 +209,15 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
           acquires.push_back(useLock);
       }
     }
+
+  // TODO: The lock user collection is highly experimental! We need a more
+  // systematic runtime IR.
+  if (acquires.empty()) {
+    mod.walk([&](UseLockOp useLock) {
+      if (useLock->getAttr("polyaie.runtime"))
+        acquires.push_back(useLock);
+    });
+  }
 
   // Collect memory copy operations.
   SmallVector<dataflow::HostDMAOp, 8> loads;

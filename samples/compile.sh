@@ -10,7 +10,7 @@ DEBUG_TILE="false"
 RETURN_ALL_ARG="true"
 VEC_SIZE="8"
 ALGORITHM="simulated-annealing"
-CREATE_INTERF="true"
+CREATE_INTERF="false"
 
 EXTERN_KERNEL="true"
 OBJECT_FILE="kernel.o"
@@ -84,7 +84,6 @@ if [ ${EXTERN_KERNEL} = true ]; then
   if [ ${GEN_EXTERN_KERNEL} = true ]; then
     ${VITIS_DIR}/cardano/bin/xchesscc -p me \
       -P ${VITIS_DIR}/cardano/data/cervino/lib \
-      -I ${VITIS_DIR}/cardano/include \
       -o ${GEMM_DIR}/kernel.o \
       -c ${GEMM_DIR}/gemm.aie.cpp
   else

@@ -24,7 +24,7 @@ LogicalResult polyaie::exportAIEKernel(ModuleOp module, raw_ostream &os) {
 #define __AIENGINE__ 1
 #define NOCPP
 
-#include <cardano.h>
+// #include <cardano.h>
 #include <stdio.h>
 
 extern "C" {
