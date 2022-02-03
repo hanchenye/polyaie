@@ -199,4 +199,12 @@ def Postprocess : Pass<"polyaie-postprocess", "ModuleOp"> {
   let constructor = "mlir::polyaie::createPostprocessPass()";
 }
 
+def CodeGenCleanup : Pass<"polyaie-codegen-cleanup", "ModuleOp"> {
+  let summary = "Cleanup the IR for aiecc.py code generation";
+  let description = [{
+    Clean up runtime operations and contents of private functions.
+  }];
+  let constructor = "mlir::polyaie::createCodeGenCleanupPass()";
+}
+
 #endif // POLYAIE_TRANSFORMS_PASSES_TD

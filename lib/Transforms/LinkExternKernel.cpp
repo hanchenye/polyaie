@@ -19,6 +19,9 @@ static void getLiveIns(CoreOp core, SmallVectorImpl<Value> &liveIns,
   liveInTypes.clear();
 
   core.walk([&](Operation *op) {
+    if (core == op)
+      return WalkResult::skip();
+
     for (auto operand : op->getOperands()) {
       if (llvm::find(liveIns, operand) != liveIns.end())
         continue;
@@ -29,6 +32,7 @@ static void getLiveIns(CoreOp core, SmallVectorImpl<Value> &liveIns,
       if (!core->isProperAncestor(definingOp))
         liveIns.push_back(operand);
     }
+    return WalkResult::advance();
   });
 
   for (auto liveIn : liveIns)

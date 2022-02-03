@@ -26,9 +26,9 @@
 #endif
 
 #ifdef SMALL_DATASET
-#define NI 64
-#define NJ 64
-#define NK 64
+#define NI 32
+#define NJ 32
+#define NK 32
 #endif
 
 #ifdef MEDIUM_DATASET

@@ -19,6 +19,7 @@ add_mlir_library(MLIRPolyAIEPasses
   FlowPacketToCircuit.cpp
   DoubleBuffer.cpp
   Postprocess.cpp
+  CodeGenCleanup.cpp
   Passes.cpp
 
   DEPENDS

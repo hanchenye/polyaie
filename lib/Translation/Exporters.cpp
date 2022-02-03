@@ -13,9 +13,30 @@ using namespace mlir;
 using namespace polyaie;
 
 LogicalResult polyaie::exportAIEKernel(ModuleOp module, raw_ostream &os) {
-  for (auto func : module.getOps<FuncOp>())
+  for (auto func : module.getOps<FuncOp>()) {
+    os << R"XXX(
+//===------------------------------------------------------------*- C++ -*-===//
+//
+// Automatically generated file for MLIR-AIE AIE kernel.
+//
+//===----------------------------------------------------------------------===//
+
+#define __AIENGINE__ 1
+#define NOCPP
+
+#include <cardano.h>
+#include <stdio.h>
+
+extern "C" {
+
+)XXX";
+
     if (failed(xilinx::aievec::translateAIEVecToCpp(func, os)))
       return failure();
+
+    os << "}\n";
+  }
+
   return success();
 }
 

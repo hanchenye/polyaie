@@ -58,10 +58,6 @@ dot -Tpng ${GEMM_DIR}/gemm.polyaie.dot \
 dot -Tpng -Kfdp ${GEMM_DIR}/gemm.polyaie.dot \
   > ${GEMM_DIR}/gemm.polyaie.layout.png
 
-sed -E '/host_dma/d; /alloc/d' \
-  ${GEMM_DIR}/gemm.polyaie.mlir \
-  > ${GEMM_DIR}/gemm.polyaie.mliraie.mlir
-
 
 # Generate the host kernel related files.
 polyaie-translate ${GEMM_DIR}/gemm.polyaie.mlir \
@@ -77,15 +73,33 @@ sed -E 's/\/\/[[:space:]]//g' \
 cp ${UTIL_DIR}/polybench.c ${UTIL_DIR}/polybench.cpp
 
 
-# Generate the executables on VCK190.
+# Generate the AIE kernel related files.
+polyaie-translate ${GEMM_DIR}/gemm.polyaie.mlir \
+  -export-aie-kernel \
+  > ${GEMM_DIR}/gemm.aie.cpp
+
 source ${VITIS_DIR}/settings64.sh
 cd ${GEMM_DIR}
-if [ ${EXTERN_KERNEL} = true ]
-then
-  ${VITIS_DIR}/cardano/bin/xchesscc -p me \
-    -P ${VITIS_DIR}/cardano/data/cervino/lib \
-    -I${VITIS_DIR}/cardano/include -c ${GEMM_DIR}/kernel.cc
+if [ ${EXTERN_KERNEL} = true ]; then
+  if [ ${GEN_EXTERN_KERNEL} = true ]; then
+    ${VITIS_DIR}/cardano/bin/xchesscc -p me \
+      -P ${VITIS_DIR}/cardano/data/cervino/lib \
+      -I ${VITIS_DIR}/cardano/include \
+      -o ${GEMM_DIR}/kernel.o \
+      -c ${GEMM_DIR}/gemm.aie.cpp
+  else
+    ${VITIS_DIR}/cardano/bin/xchesscc -p me \
+      -P ${VITIS_DIR}/cardano/data/cervino/lib \
+      -I ${VITIS_DIR}/cardano/include \
+      -c ${GEMM_DIR}/kernel.cc
+  fi
 fi
+
+
+# Generate the AIE and host executables on VCK190.
+polyaie-opt -polyaie-codegen-cleanup \
+  ${GEMM_DIR}/gemm.polyaie.mlir \
+  > ${GEMM_DIR}/gemm.polyaie.mliraie.mlir
 
 ${MLIRAIE_DIR}/build/bin/aiecc.py -j10 \
   --sysroot=${MLIRAIE_DIR}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \

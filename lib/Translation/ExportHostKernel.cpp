@@ -290,7 +290,6 @@ void HostKernelExporter::exportHostKernel(ModuleOp mod) {
   }
 
   // Release locks to 1.
-  indent() << "printf(\"Release locks...\\n\\n\");\n";
   for (auto release : releases)
     if (release.value() == 1) {
       auto lock = release.lock().getDefiningOp<LockOp>();
