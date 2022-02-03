@@ -4,10 +4,10 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-DRY_RUN="false"
+DRY_RUN="true"
 DEBUG_TILE="false"
 
-RETURN_ALL_ARG="true"
+RETURN_ALL_ARG="false"
 VEC_SIZE="8"
 ALGORITHM="simulated-annealing"
 CREATE_INTERF="false"
@@ -76,18 +76,18 @@ cp ${UTIL_DIR}/polybench.c ${UTIL_DIR}/polybench.cpp
 # Generate the AIE kernel related files.
 polyaie-translate ${GEMM_DIR}/gemm.polyaie.mlir \
   -export-aie-kernel \
-  > ${GEMM_DIR}/gemm.aie.cpp
+  > ${GEMM_DIR}/gemm.kernel.cc
 
 source ${VITIS_DIR}/settings64.sh
 cd ${GEMM_DIR}
 if [ ${EXTERN_KERNEL} = true ]; then
   if [ ${GEN_EXTERN_KERNEL} = true ]; then
-    ${VITIS_DIR}/cardano/bin/xchesscc -p me \
+    ${VITIS_DIR}/cardano/bin/xchesscc -g -p me \
       -P ${VITIS_DIR}/cardano/data/cervino/lib \
       -o ${GEMM_DIR}/kernel.o \
-      -c ${GEMM_DIR}/gemm.aie.cpp
+      -c ${GEMM_DIR}/gemm.kernel.cc
   else
-    ${VITIS_DIR}/cardano/bin/xchesscc -p me \
+    ${VITIS_DIR}/cardano/bin/xchesscc -g -p me \
       -P ${VITIS_DIR}/cardano/data/cervino/lib \
       -I ${VITIS_DIR}/cardano/include \
       -c ${GEMM_DIR}/kernel.cc

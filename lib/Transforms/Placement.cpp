@@ -253,7 +253,7 @@ static const unsigned shimNoc[16] = {2,  3,  6,  7,  10, 11, 18, 19,
 namespace {
 class Placer {
 public:
-  Placer(handshake::FuncOp func);
+  Placer(handshake::FuncOp func, bool placeInterface);
 
   /// Place all nodes with simulated annealing.
   void runSA(double, double, unsigned, unsigned, unsigned);
@@ -281,6 +281,7 @@ public:
 
 private:
   handshake::FuncOp func;
+  bool placeInterface = true;
 
   /// All types of nodes in the placement problem.
   SmallVector<Operation *, 32> procs;
@@ -300,10 +301,17 @@ private:
 };
 } // namespace
 
-Placer::Placer(handshake::FuncOp func)
-    : func(func), procs(func.getOps<dataflow::ProcessOp>()),
-      loads(func.getOps<dataflow::TensorLoadOp>()),
-      stores(func.getOps<dataflow::TensorStoreOp>()) {
+Placer::Placer(handshake::FuncOp func, bool placeInterface)
+    : func(func), placeInterface(placeInterface) {
+  for (auto proc : func.getOps<dataflow::ProcessOp>())
+    procs.push_back(proc);
+
+  if (placeInterface) {
+    for (auto load : func.getOps<dataflow::TensorLoadOp>())
+      loads.push_back(load);
+    for (auto store : func.getOps<dataflow::TensorStoreOp>())
+      stores.push_back(store);
+  }
 
   // FIXME: rowBegin should be 1 by default.
   unsigned rowBegin = 2, colBegin = 0;
@@ -416,6 +424,9 @@ double Placer::getCost() const {
       SmallVector<unsigned, 4> cols({srcCol});
 
       for (auto user : result.getUsers()) {
+        if (!placeInterface && isa<dataflow::TensorLoadOp, TensorStoreOp>(user))
+          continue;
+
         auto tgtLoc = getPhysicalLoc(user);
         assert(tgtLoc && "node must have been placed");
         auto tgtRow = tgtLoc.getValue().first;
@@ -502,11 +513,14 @@ void Placer::runSA(double startTemp = 10, double finalTemp = 0.01,
 namespace {
 struct Placement : public polyaie::PlacementBase<Placement> {
   Placement() = default;
-  Placement(const PolyAIEOptions &opts) { algorithm = opts.placementAlgorithm; }
+  Placement(const PolyAIEOptions &opts) {
+    algorithm = opts.placementAlgorithm;
+    placeInterface = opts.enableCreateInterface;
+  }
 
   void runOnOperation() override {
     auto topFunc = getTopFunc<handshake::FuncOp>(getOperation());
-    Placer placer(topFunc);
+    Placer placer(topFunc, placeInterface);
 
     if (algorithm == "naive")
       placer.randomInitialize();

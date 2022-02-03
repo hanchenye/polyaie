@@ -21,11 +21,13 @@ LogicalResult polyaie::exportAIEKernel(ModuleOp module, raw_ostream &os) {
 //
 //===----------------------------------------------------------------------===//
 
-#define __AIENGINE__ 1
-#define NOCPP
+// #define __AIENGINE__ 1
+// #define NOCPP
 
 // #include <cardano.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 extern "C" {
 

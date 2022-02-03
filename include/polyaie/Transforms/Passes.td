@@ -127,7 +127,9 @@ def Placement : Pass<"polyaie-placement", "ModuleOp"> {
   let options = [
     Option<"algorithm", "algorithm", "std::string", /*default=*/"\"naive\"",
            "Specify the placement algorithm, possible values are: "
-           "naive(default), simulated-annealing">
+           "naive(default), simulated-annealing">,
+    Option<"placeInterface", "place-interface", "bool", /*default=*/"true",
+            "Whether to place tensor load/store ops">
   ];
 }
 
