@@ -29,7 +29,7 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       *this, "num-aie", llvm::cl::init(256),
       llvm::cl::desc("Specify the available number of AIEs")};
 
-  /// Configure the link-extern-kernel pass.
+  /// Configure the memref-arg-to-result pass.
   Option<bool> memrefArgToResultReturnAllArg{
       *this, "return-all-arg", llvm::cl::init(false),
       llvm::cl::desc("Return all arguments as results")};
@@ -45,6 +45,11 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       llvm::cl::desc("Specify the placement algorithm, possible values are: "
                      "naive(default), simulated-annealing")};
 
+  /// Configure the create-interface pass.
+  Option<bool> enableCreateInterface{
+      *this, "enable-create-interface", llvm::cl::init(true),
+      llvm::cl::desc("Enable to generate interface processes")};
+
   /// Configure the link-extern-kernel pass.
   Option<bool> enableLinkExternKernel{
       *this, "enable-link-extern-kernel", llvm::cl::init(false),
@@ -54,6 +59,11 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       *this, "object-file", llvm::cl::init("kernel.o"),
       llvm::cl::desc("Specify the path of the pre-compiled object file of "
                      "external kernels")};
+
+  Option<bool> linkExternKernelGenExternKernel{
+      *this, "gen-extern-kernel", llvm::cl::init(true),
+      llvm::cl::desc(
+          "Whether to generate external kernels through AIEVec dialect")};
 };
 
 std::unique_ptr<Pass> createPreprocessPass();

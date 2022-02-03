@@ -6,11 +6,15 @@ set -o nounset
 
 DRY_RUN="false"
 DEBUG_TILE="false"
+
 RETURN_ALL_ARG="true"
+VEC_SIZE="8"
 ALGORITHM="simulated-annealing"
-EXTERN_KERNEL="false"
+CREATE_INTERF="true"
+
+EXTERN_KERNEL="true"
 OBJECT_FILE="kernel.o"
-VEC_SIZE=8
+GEN_EXTERN_KERNEL="true"
 VITIS_DIR=/tools/Xilinx/Vitis/2020.1
 
 # Get the absolute path of the current directory.
@@ -39,8 +43,10 @@ PIPELINE_OPTS="top-func-name=kernel_gemm "
 PIPELINE_OPTS+="return-all-arg=${RETURN_ALL_ARG} "
 PIPELINE_OPTS+="vec-size=${VEC_SIZE} "
 PIPELINE_OPTS+="algorithm=${ALGORITHM} "
+PIPELINE_OPTS+="enable-create-interface=${CREATE_INTERF} "
 PIPELINE_OPTS+="enable-link-extern-kernel=${EXTERN_KERNEL} "
-PIPELINE_OPTS+="object-file=${OBJECT_FILE}"
+PIPELINE_OPTS+="object-file=${OBJECT_FILE} "
+PIPELINE_OPTS+="gen-extern-kernel"=${GEN_EXTERN_KERNEL}
 
 polyaie-opt ${GEMM_DIR}/gemm.pre.kern.plmr.ca.lt.mlir \
   -polyaie-pipeline="${PIPELINE_OPTS}" \

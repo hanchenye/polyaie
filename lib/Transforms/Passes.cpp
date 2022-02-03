@@ -52,7 +52,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createCanonicalizerPass());
         pm.addPass(polyaie::createInsertGMIOAdapterPass());
         pm.addPass(polyaie::createPlacementPass(opts));
-        pm.addPass(polyaie::createCreateInterfacePass());
+        if (opts.enableCreateInterface)
+          pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPrintDataflowPass());
 
         // Convert to AIE IR and implement data transfers.

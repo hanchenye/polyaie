@@ -166,7 +166,9 @@ def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
   let options = [
     Option<"objectFile", "object-file", "std::string",
            /*default=*/"\"kernel.o\"", "Specify the path of the pre-compiled "
-           "object file of external kernels">
+           "object file of external kernels">,
+    Option<"genExternKernel", "gen-extern-kernel", "bool", /*default=*/"true",
+            "Whether to generate external kernels through AIEVec dialect">
   ];
 }
 

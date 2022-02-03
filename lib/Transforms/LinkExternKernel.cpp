@@ -19,14 +19,16 @@ static void getLiveIns(CoreOp core, SmallVectorImpl<Value> &liveIns,
   liveInTypes.clear();
 
   core.walk([&](Operation *op) {
-    Value memref;
-    if (auto load = dyn_cast<mlir::AffineLoadOp>(op))
-      memref = load.memref();
-    else if (auto store = dyn_cast<mlir::AffineStoreOp>(op))
-      memref = store.memref();
+    for (auto operand : op->getOperands()) {
+      if (llvm::find(liveIns, operand) != liveIns.end())
+        continue;
 
-    if (memref && llvm::find(liveIns, memref) == liveIns.end())
-      liveIns.push_back(memref);
+      auto definingOp = operand.getDefiningOp();
+      if (!definingOp)
+        definingOp = operand.cast<BlockArgument>().getOwner()->getParentOp();
+      if (!core->isProperAncestor(definingOp))
+        liveIns.push_back(operand);
+    }
   });
 
   for (auto liveIn : liveIns)
@@ -39,6 +41,7 @@ struct LinkExternKernel
   LinkExternKernel() = default;
   LinkExternKernel(const PolyAIEOptions &opts) {
     objectFile = opts.linkExternKernelObjectFile;
+    genExternKernel = opts.linkExternKernelGenExternKernel;
   }
 
   // TODO: Note that this pass is highly experimental and just designed for
@@ -48,8 +51,13 @@ struct LinkExternKernel
     auto b = OpBuilder(mod);
     auto loc = b.getUnknownLoc();
 
+    SmallVector<CoreOp, 32> nonEmptyCores;
+    for (auto core : mod.getOps<CoreOp>())
+      if (!llvm::hasSingleElement(core.body().front()))
+        nonEmptyCores.push_back(core);
+
     // We simply assume all CoreOp has the same content.
-    auto firstCore = *mod.getOps<CoreOp>().begin();
+    auto firstCore = nonEmptyCores.front();
     SmallVector<Value, 8> firstLiveIns;
     SmallVector<Type, 8> firstLiveInTypes;
     getLiveIns(firstCore, firstLiveIns, firstLiveInTypes);
@@ -60,7 +68,8 @@ struct LinkExternKernel
     auto kernel = b.create<FuncOp>(loc, "extern_kernel", kernelType);
     kernel.setPrivate();
 
-    for (auto core : mod.getOps<CoreOp>()) {
+    // Replace the body of each CoreOp with a function call to the kernel.
+    for (auto core : nonEmptyCores) {
       SmallVector<Value, 8> liveIns;
       SmallVector<Type, 8> liveInTypes;
       getLiveIns(core, liveIns, liveInTypes);
@@ -70,14 +79,40 @@ struct LinkExternKernel
         return signalPassFailure();
       }
 
-      // Remove all operations contained by the function and replace them with a
-      // function call.
-      for (auto &op : llvm::make_early_inc_range(core.body().front()))
-        if (!isa<xilinx::AIE::EndOp>(op)) {
-          op.dropAllUses();
-          op.erase();
-        }
+      if ((core == firstCore) && genExternKernel) {
+        // If we are going to generate external kernel through the AIEVec
+        // dialect, move all operations of the first CoreOp into the new kernel
+        // function.
+        auto entryBlock = &kernel.body().emplaceBlock();
+        auto &kernelOps = entryBlock->getOperations();
+        auto &coreOps = core.body().front().getOperations();
+        kernelOps.splice(kernelOps.begin(), coreOps, coreOps.begin(),
+                         std::prev(coreOps.end()));
 
+        b.setInsertionPointToEnd(entryBlock);
+        b.create<mlir::ReturnOp>(loc);
+
+        // Replace liveins with the entry block arguments.
+        SmallVector<Location, 8> liveInLocs;
+        for (auto value : liveIns)
+          liveInLocs.push_back(value.getLoc());
+
+        auto args = entryBlock->addArguments(liveInTypes, liveInLocs);
+        for (auto zip : llvm::zip(liveIns, args))
+          std::get<0>(zip).replaceUsesWithIf(
+              std::get<1>(zip), [&](OpOperand &use) {
+                return kernel->isProperAncestor(use.getOwner());
+              });
+      } else {
+        // Otherwise, remove all operations contained by the function.
+        for (auto &op : llvm::make_early_inc_range(core.body().front()))
+          if (!isa<xilinx::AIE::EndOp>(op)) {
+            op.dropAllUses();
+            op.erase();
+          }
+      }
+
+      // Create a function call to replace the original CoreOp body.
       b.setInsertionPointToStart(&core.body().front());
       b.create<CallOp>(loc, kernel, liveIns);
       core->setAttr("link_with", b.getStringAttr(objectFile));
