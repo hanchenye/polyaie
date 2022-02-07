@@ -4,7 +4,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-DRY_RUN="true"
+DRY_RUN="false"
 DEBUG_TILE="false"
 
 RETURN_ALL_ARG="false"

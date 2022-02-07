@@ -38,8 +38,8 @@ void polyaie::registerPolyAIEPassPipeline() {
 
         // Tensorization the program and conduct intra-kernel optimizations.
         pm.addPass(polyaie::createTensorizeMemrefPass());
-        pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(mlir::createLoopFusionPass());
+        // pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(mlir::createAffineScalarReplacementPass());
         if (opts.superVectorizeSize != 1) {
           pm.addPass(mlir::createSuperVectorizePass({opts.superVectorizeSize}));
