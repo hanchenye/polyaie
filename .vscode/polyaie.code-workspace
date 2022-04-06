@@ -9,12 +9,8 @@
       "path": "../mlir-aie"
     },
     {
-      "name": "CIRCT",
-      "path": "../circt"
-    },
-    {
       "name": "MLIR",
-      "path": "../circt/llvm/mlir"
+      "path": "../llvm/mlir"
     }
   ],
   "settings": {
@@ -39,12 +35,10 @@
       "${workspaceFolder:MLIRAIE}/build/include",
       "${workspaceFolder:MLIRAIE}/build/runtime_lib",
       "${workspaceFolder:MLIRAIE}/platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux/usr/include",
-      "${workspaceFolder:CIRCT}/include",
-      "${workspaceFolder:CIRCT}/build/include",
-      "${workspaceFolder:CIRCT}/llvm/mlir/include",
-      "${workspaceFolder:CIRCT}/llvm/llvm/include",
-      "${workspaceFolder:CIRCT}/llvm/build/include",
-      "${workspaceFolder:CIRCT}/llvm/build/tools/mlir/include",
+      "${workspaceFolder:MLIR}/../mlir/include",
+      "${workspaceFolder:MLIR}/../llvm/include",
+      "${workspaceFolder:MLIR}/../build/include",
+      "${workspaceFolder:MLIR}/../build/tools/mlir/include",
       "${workspaceFolder:POLYAIE}/samples/tmp/gemm/acdc_project",
       "${workspaceFolder:POLYAIE}/samples/tmp/utilities"
     ],
