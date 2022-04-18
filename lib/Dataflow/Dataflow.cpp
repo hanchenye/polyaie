@@ -6,8 +6,8 @@
 
 #include "polyaie/Dataflow/Dataflow.h"
 #include "aie/AIEDialect.h"
-#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/FunctionImplementation.h"
 
 using namespace mlir;
 using namespace polyaie;
@@ -21,6 +21,205 @@ void DataflowDialect::initialize() {
 }
 
 #include "polyaie/Dataflow/DataflowEnums.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// FuncOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult verifyFuncOp(dataflow::FuncOp op) {
+  // If this function is external there is nothing to do.
+  if (op.isExternal())
+    return success();
+
+  // Verify that the argument list of the function and the arg list of the
+  // entry block line up.  The trait already verified that the number of
+  // arguments is the same between the signature and the block.
+  auto fnInputTypes = op.getType().getInputs();
+  Block &entryBlock = op.front();
+
+  for (unsigned i = 0, e = entryBlock.getNumArguments(); i != e; ++i)
+    if (fnInputTypes[i] != entryBlock.getArgument(i).getType())
+      return op.emitOpError("type of entry block argument #")
+             << i << '(' << entryBlock.getArgument(i).getType()
+             << ") must match the type of the corresponding argument in "
+             << "function signature(" << fnInputTypes[i] << ')';
+
+  // Verify that we have a name for each argument and result of this function.
+  auto verifyPortNameAttr = [&](StringRef attrName,
+                                unsigned numIOs) -> LogicalResult {
+    auto portNamesAttr = op->getAttrOfType<ArrayAttr>(attrName);
+
+    if (!portNamesAttr)
+      return op.emitOpError() << "expected attribute '" << attrName << "'.";
+
+    auto portNames = portNamesAttr.getValue();
+    if (portNames.size() != numIOs)
+      return op.emitOpError()
+             << "attribute '" << attrName << "' has " << portNames.size()
+             << " entries but is expected to have " << numIOs << ".";
+
+    if (llvm::any_of(portNames,
+                     [&](Attribute attr) { return !attr.isa<StringAttr>(); }))
+      return op.emitOpError() << "expected all entries in attribute '"
+                              << attrName << "' to be strings.";
+
+    return success();
+  };
+  if (failed(verifyPortNameAttr("argNames", op.getNumArguments())))
+    return failure();
+  if (failed(verifyPortNameAttr("resNames", op.getNumResults())))
+    return failure();
+
+  return success();
+}
+
+/// Parses a FuncOp signature using
+/// mlir::function_interface_impl::parseFunctionSignature while getting access
+/// to the parsed SSA names to store as attributes.
+static ParseResult parseFuncOpArgs(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::OperandType> &entryArgs,
+    SmallVectorImpl<Type> &argTypes, SmallVectorImpl<Attribute> &argNames,
+    SmallVectorImpl<NamedAttrList> &argAttrs, SmallVectorImpl<Type> &resTypes,
+    SmallVectorImpl<NamedAttrList> &resAttrs) {
+  auto *context = parser.getContext();
+
+  SmallVector<Location, 4> argLocs(
+      entryArgs.size(),
+      parser.getEncodedSourceLoc(parser.getCurrentLocation()));
+
+  bool isVariadic;
+  if (mlir::function_interface_impl::parseFunctionSignature(
+          parser, /*allowVariadic=*/true, entryArgs, argTypes, argAttrs,
+          argLocs, isVariadic, resTypes, resAttrs)
+          .failed())
+    return failure();
+
+  llvm::transform(entryArgs, std::back_inserter(argNames), [&](auto arg) {
+    return StringAttr::get(context, arg.name.drop_front());
+  });
+
+  return success();
+}
+
+/// Generates names for a dataflow.func input and output arguments, based on
+/// the number of args as well as a prefix.
+static SmallVector<Attribute> getFuncOpNames(Builder &builder, TypeRange types,
+                                             StringRef prefix) {
+  SmallVector<Attribute> resNames;
+  llvm::transform(
+      llvm::enumerate(types), std::back_inserter(resNames), [&](auto it) {
+        bool lastOperand = it.index() == types.size() - 1;
+        std::string suffix = lastOperand && it.value().template isa<NoneType>()
+                                 ? "Ctrl"
+                                 : std::to_string(it.index());
+        return builder.getStringAttr(prefix + suffix);
+      });
+  return resNames;
+}
+
+void dataflow::FuncOp::build(OpBuilder &builder, OperationState &state,
+                             StringRef name, FunctionType type,
+                             ArrayRef<NamedAttribute> attrs) {
+  state.addAttribute(SymbolTable::getSymbolAttrName(),
+                     builder.getStringAttr(name));
+  state.addAttribute(getTypeAttrName(), TypeAttr::get(type));
+  state.attributes.append(attrs.begin(), attrs.end());
+
+  if (const auto *argNamesAttrIt = llvm::find_if(
+          attrs, [&](auto attr) { return attr.getName() == "argNames"; });
+      argNamesAttrIt == attrs.end())
+    state.addAttribute("argNames", builder.getArrayAttr({}));
+
+  if (llvm::find_if(attrs, [&](auto attr) {
+        return attr.getName() == "resNames";
+      }) == attrs.end())
+    state.addAttribute("resNames", builder.getArrayAttr({}));
+
+  state.addRegion();
+}
+
+/// Helper function for appending a string to an array attribute, and
+/// rewriting the attribute back to the operation.
+static void addStringToStringArrayAttr(Builder &builder, Operation *op,
+                                       StringRef attrName, StringAttr str) {
+  llvm::SmallVector<Attribute> attrs;
+  llvm::copy(op->getAttrOfType<ArrayAttr>(attrName).getValue(),
+             std::back_inserter(attrs));
+  attrs.push_back(str);
+  op->setAttr(attrName, builder.getArrayAttr(attrs));
+}
+
+void dataflow::FuncOp::resolveArgAndResNames() {
+  auto type = getType();
+  Builder builder(getContext());
+
+  /// Generate a set of fallback names. These are used in case names are
+  /// missing from the currently set arg- and res name attributes.
+  auto fallbackArgNames = getFuncOpNames(builder, type.getInputs(), "in");
+  auto fallbackResNames = getFuncOpNames(builder, type.getResults(), "out");
+  auto argNames = getArgNames().getValue();
+  auto resNames = getResNames().getValue();
+
+  /// Use fallback names where actual names are missing.
+  auto resolveNames = [&](auto &fallbackNames, auto &actualNames,
+                          StringRef attrName) {
+    for (auto fallbackName : llvm::enumerate(fallbackNames)) {
+      if (actualNames.size() <= fallbackName.index())
+        addStringToStringArrayAttr(
+            builder, this->getOperation(), attrName,
+            fallbackName.value().template cast<StringAttr>());
+    }
+  };
+  resolveNames(fallbackArgNames, argNames, "argNames");
+  resolveNames(fallbackResNames, resNames, "resNames");
+}
+
+static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
+  auto &builder = parser.getBuilder();
+  StringAttr nameAttr;
+  SmallVector<OpAsmParser::OperandType, 4> args;
+  SmallVector<Type, 4> argTypes, resTypes;
+  SmallVector<NamedAttrList, 4> argAttributes, resAttributes;
+  SmallVector<Attribute> argNames;
+
+  // Parse signature
+  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes) ||
+      parseFuncOpArgs(parser, args, argTypes, argNames, argAttributes, resTypes,
+                      resAttributes))
+    return failure();
+  mlir::function_interface_impl::addArgAndResultAttrs(
+      builder, result, argAttributes, resAttributes);
+
+  // Set function type
+  result.addAttribute(
+      dataflow::FuncOp::getTypeAttrName(),
+      TypeAttr::get(builder.getFunctionType(argTypes, resTypes)));
+
+  // Parse attributes
+  if (failed(parser.parseOptionalAttrDictWithKeyword(result.attributes)))
+    return failure();
+
+  // If argNames and resNames wasn't provided manually, infer argNames attribute
+  // from the parsed SSA names and resNames from our naming convention.
+  if (!result.attributes.get("argNames"))
+    result.addAttribute("argNames", builder.getArrayAttr(argNames));
+  if (!result.attributes.get("resNames")) {
+    auto resNames = getFuncOpNames(builder, resTypes, "out");
+    result.addAttribute("resNames", builder.getArrayAttr(resNames));
+  }
+
+  // Parse region
+  auto *body = result.addRegion();
+  return parser.parseRegion(*body, args, argTypes);
+}
+
+static void printFuncOp(OpAsmPrinter &p, dataflow::FuncOp op) {
+  FunctionType fnType = op.getType();
+  mlir::function_interface_impl::printFunctionOp(p, op, fnType.getInputs(),
+                                                 /*isVariadic=*/true,
+                                                 fnType.getResults());
+}
 
 //===----------------------------------------------------------------------===//
 // ProcessOp
@@ -100,12 +299,16 @@ static LogicalResult verify(dataflow::ReturnOp op) {
     if (op.getOperandTypes() == process.getResultTypes())
       return success();
 
-  if (auto func = op->getParentOfType<circt::handshake::FuncOp>())
+  if (auto func = op->getParentOfType<dataflow::FuncOp>())
+    if (op.getOperandTypes() == func.getType().getResults())
+      return success();
+
+  if (auto func = op->getParentOfType<mlir::FuncOp>())
     if (op.getOperandTypes() == func.getType().getResults())
       return success();
 
   return op.emitOpError("operands types must align with result types of "
-                        "the parent process or handshake function op");
+                        "the parent process or function op");
 }
 
 //===----------------------------------------------------------------------===//

@@ -91,7 +91,7 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
   matchAndRewrite(mlir::CallOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto mod = op->getParentOfType<ModuleOp>();
-    auto func = mod.lookupSymbol<FuncOp>(op.getCallee());
+    auto func = mod.lookupSymbol<mlir::FuncOp>(op.getCallee());
 
     // Replace call and function operation.
     auto process = rewriter.replaceOpWithNewOp<dataflow::ProcessOp>(
@@ -116,7 +116,7 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
 
 void ConvertToDataflow::runOnOperation() {
   auto mod = getOperation();
-  auto topFunc = getTopFunc<FuncOp>(mod);
+  auto topFunc = getTopFunc<mlir::FuncOp>(mod);
   auto b = OpBuilder(mod);
 
   RewritePatternSet patterns(mod.getContext());
@@ -144,7 +144,7 @@ void ConvertToDataflow::runOnOperation() {
     leafProcess->setAttr("polyaie.leaf", b.getUnitAttr());
   }
 
-  // Create a new handshake function.
+  // Create a new dataflow function.
   b.setInsertionPoint(topFunc);
   SmallVector<NamedAttribute, 4> attrs;
   for (const auto &attr : topFunc->getAttrs()) {
@@ -153,8 +153,8 @@ void ConvertToDataflow::runOnOperation() {
       continue;
     attrs.push_back(attr);
   }
-  auto dfFunc = b.create<circt::handshake::FuncOp>(
-      topFunc.getLoc(), topFunc.getName(), topFunc.getType(), attrs);
+  auto dfFunc = b.create<dataflow::FuncOp>(topFunc.getLoc(), topFunc.getName(),
+                                           topFunc.getType(), attrs);
   dfFunc.resolveArgAndResNames();
 
   // Inline the contents of the top function.

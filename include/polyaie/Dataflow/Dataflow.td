@@ -8,6 +8,14 @@
 #define POLYAIE_DATAFLOW_DATAFLOW_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/RegionKindInterface.td"
+include "mlir/IR/FunctionInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
+
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def DataflowDialect : Dialect {
   let name = "dataflow";
@@ -26,6 +34,93 @@ class DataflowOp<string mnemonic, list<OpTrait> traits = []> :
 // Dataflow Operations
 //===----------------------------------------------------------------------===//
 
+def FuncOp : DataflowOp<"func", [IsolatedFromAbove, FunctionOpInterface, Symbol,
+    RegionKindInterface, OpAsmOpInterface]> {
+  let summary = "Dataflow dialect function.";
+  let description = [{
+    The func operation represents a handshaked function. This is almost exactly
+    like a standard FuncOp, except that it has some extra verification
+    conditions. In particular, each Value must only have a single use.
+  }];
+
+  let regions = (region AnyRegion : $body);
+
+  let skipDefaultBuilders = 1;
+
+  let builders =
+       [OpBuilder<(ins "StringRef":$name, "FunctionType":$type,
+                      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>];
+
+  let extraClassDeclaration = [{
+    // Add an entry block to an empty function, and set up the block arguments
+    // to match the signature of the function.
+    Block *addEntryBlock();
+
+    FunctionType getType() {
+      return (*this)->getAttrOfType<TypeAttr>(getTypeAttrName())
+          .getValue()
+          .cast<FunctionType>();
+    }
+
+    /// Implement RegionKindInterface.
+    static RegionKind getRegionKind(unsigned index) { return RegionKind::Graph; }
+
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+
+    /// Returns the names of the arguments to this function.
+    ArrayAttr getArgNames() {
+      return (*this)->getAttrOfType<ArrayAttr>("argNames");
+    }
+
+    /// Returns the names of the results from this function.
+    ArrayAttr getResNames() {
+      return (*this)->getAttrOfType<ArrayAttr>("resNames");
+    }
+
+    /// Returns the argument name at the given index.
+    StringAttr getArgName(unsigned idx) {
+      return getArgNames()[idx].cast<StringAttr>();
+    }
+
+    /// Returns the result name at the given index.
+    StringAttr getResName(unsigned idx) {
+      return getResNames()[idx].cast<StringAttr>();
+    }
+
+    /// Resolve argument and result names. This can be used during building of
+    /// a handshake.func operation to ensure that names provided by an incoming
+    /// operation fulfills the name requirements of the handshake function.
+    void resolveArgAndResNames();
+
+    /// Hook for FunctionOpInterface, called after verifying that the 'type'
+    /// attribute is present and checks if it holds a function type.  Ensures
+    /// getType, getNumFuncArguments, and getNumFuncResults can be called
+    /// safely.
+    LogicalResult verifyType() {
+      auto type = getTypeAttr().getValue();
+      if (!type.isa<FunctionType>())
+        return emitOpError("requires '" + getTypeAttrName() +
+                           "' attribute of function type");
+      return success();
+    }
+
+    //===------------------------------------------------------------------===//
+    // OpAsmOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    static ::llvm::StringRef getDefaultDialect() {
+      return "handshake";
+    }
+  }];
+
+  let verifier = [{ return ::verify$cppClass(*this); }];
+  let printer = [{ return ::print$cppClass(p, *this); }];
+  let parser = [{ return ::parse$cppClass(parser, result); }];
+}
 def AIE:  I64EnumAttrCase<"AIE", 0>;
 def GMIO:  I64EnumAttrCase<"GMIO", 1>;
 def PLIO:  I64EnumAttrCase<"PLIO", 2>;

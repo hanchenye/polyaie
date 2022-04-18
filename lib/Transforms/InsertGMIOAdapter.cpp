@@ -10,7 +10,6 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
-using namespace circt;
 
 namespace {
 struct InsertGMIOAdapter
@@ -25,7 +24,7 @@ void InsertGMIOAdapter::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc<handshake::FuncOp>(mod);
+  auto topFunc = getTopFunc<dataflow::FuncOp>(mod);
 
   SmallVector<Value, 32> ioVals;
   for (auto &op : topFunc.getOps()) {

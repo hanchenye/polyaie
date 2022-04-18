@@ -14,10 +14,10 @@ using namespace polyaie;
 namespace llvm {
 // Specialize DOTGraphTraits to produce more readable output.
 template <>
-struct DOTGraphTraits<circt::handshake::FuncOp> : public DefaultDOTGraphTraits {
+struct DOTGraphTraits<dataflow::FuncOp> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
-  static std::string getNodeLabel(Operation *op, circt::handshake::FuncOp) {
+  static std::string getNodeLabel(Operation *op, dataflow::FuncOp) {
     // Reuse the print output for the node labels.
     std::string ostr;
     raw_string_ostream os(ostr);
@@ -26,8 +26,7 @@ struct DOTGraphTraits<circt::handshake::FuncOp> : public DefaultDOTGraphTraits {
     return os.str();
   }
 
-  static std::string getNodeAttributes(Operation *op,
-                                       circt::handshake::FuncOp) {
+  static std::string getNodeAttributes(Operation *op, dataflow::FuncOp) {
     // Reuse the print output for the node labels.
     std::string ostr;
     raw_string_ostream os(ostr);
@@ -50,7 +49,7 @@ class PrintDataflow : public polyaie::PrintDataflowBase<PrintDataflow> {
 public:
   PrintDataflow(raw_ostream &os) : os(os) {}
   void runOnOperation() override {
-    auto topFunc = getTopFunc<circt::handshake::FuncOp>(getOperation());
+    auto topFunc = getTopFunc<dataflow::FuncOp>(getOperation());
     llvm::WriteGraph(os, topFunc, false, "");
   }
 

@@ -23,8 +23,7 @@ struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
 } // namespace
 
 /// Inline `func` into its parent module.
-/// TODO: Use handshake function instead.
-static void inlineFuncIntoModule(circt::handshake::FuncOp func) {
+static void inlineFuncIntoModule(dataflow::FuncOp func) {
   // Create alloc for all arguments of the top function.
   auto mod = func->getParentOfType<ModuleOp>();
   auto b = OpBuilder(mod);
@@ -50,7 +49,7 @@ void DataflowToAIE::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc<circt::handshake::FuncOp>(mod);
+  auto topFunc = getTopFunc<dataflow::FuncOp>(mod);
 
   // using BufferOpUnion = PointerUnion<BufferOp, ExternalBufferOp>;
 

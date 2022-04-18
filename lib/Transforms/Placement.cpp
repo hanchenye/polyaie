@@ -10,7 +10,6 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
-using namespace circt;
 
 namespace {
 using PhysicalLocation = std::pair<unsigned, unsigned>;
@@ -253,7 +252,7 @@ static const unsigned shimNoc[16] = {2,  3,  6,  7,  10, 11, 18, 19,
 namespace {
 class Placer {
 public:
-  Placer(handshake::FuncOp func, bool placeInterface);
+  Placer(dataflow::FuncOp func, bool placeInterface);
 
   /// Place all nodes with simulated annealing.
   void runSA(double, double, unsigned, unsigned, unsigned);
@@ -280,7 +279,7 @@ public:
   void materializeLayout() const;
 
 private:
-  handshake::FuncOp func;
+  dataflow::FuncOp func;
   bool placeInterface = true;
 
   /// All types of nodes in the placement problem.
@@ -301,7 +300,7 @@ private:
 };
 } // namespace
 
-Placer::Placer(handshake::FuncOp func, bool placeInterface)
+Placer::Placer(dataflow::FuncOp func, bool placeInterface)
     : func(func), placeInterface(placeInterface) {
   for (auto proc : func.getOps<dataflow::ProcessOp>())
     procs.push_back(proc);
@@ -519,7 +518,7 @@ struct Placement : public polyaie::PlacementBase<Placement> {
   }
 
   void runOnOperation() override {
-    auto topFunc = getTopFunc<handshake::FuncOp>(getOperation());
+    auto topFunc = getTopFunc<dataflow::FuncOp>(getOperation());
     Placer placer(topFunc, placeInterface);
 
     if (algorithm == "naive")

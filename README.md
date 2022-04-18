@@ -9,10 +9,10 @@ $ cd polyaie
 
 ### 1. Install MLIR
 ```sh
-$ cd circt/llvm
+$ cd llvm
 $ mkdir build && cd build
 $ cmake -G Ninja ../llvm \
-    -DLLVM_ENABLE_PROJECTS="mlir" \
+    -DLLVM_ENABLE_PROJECTS=mlir \
     -DLLVM_TARGETS_TO_BUILD=host \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
@@ -23,23 +23,7 @@ $ cmake -G Ninja ../llvm \
 $ ninja && ninja check-mlir
 ```
 
-### 2. Install CIRCT
-```sh
-$ cd circt
-$ mkdir build && cd build
-$ cmake -G Ninja .. \
-    -DLLVM_DIR=$PWD/../llvm/build/lib/cmake/llvm \
-    -DMLIR_DIR=$PWD/../llvm/build/lib/cmake/mlir \
-    -DLLVM_ENABLE_ASSERTIONS=ON \
-    -DCMAKE_BUILD_TYPE=DEBUG \
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-    -DLLVM_USE_LINKER=lld \
-    -DCMAKE_C_COMPILER=clang \
-    -DCMAKE_CXX_COMPILER=clang++
-$ ninja && ninja check-circt
-```
-
-### 3. Install MLIR-AIE
+### 2. Install MLIR-AIE
 Follow the instructions from https://xilinx.github.io/mlir-aie/.
 ```sh
 $ cd mlir-aie
@@ -52,8 +36,8 @@ $ cd platforms/vck190_bare && make all && cd ../..
 $ # Build MLIR-AIE compilation flow.
 $ mkdir build && cd build
 $ /usr/bin/cmake -G Ninja .. \
-    -DLLVM_DIR=$PWD/../../circt/llvm/build/lib/cmake/llvm \
-    -DMLIR_DIR=$PWD/../../circt/llvm/build/lib/cmake/mlir \
+    -DLLVM_DIR=$PWD/../../llvm/build/lib/cmake/llvm \
+    -DMLIR_DIR=$PWD/../../llvm/build/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=$PWD/../../cmakeModules \
     -DVitisSysroot=$PWD/../platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
     -DLLVM_ENABLE_ASSERTIONS=ON \
@@ -65,13 +49,12 @@ $ /usr/bin/cmake -G Ninja .. \
 $ ninja && ninja check-aie
 ```
 
-### 4. Install PolyAIE
+### 3. Install PolyAIE
 ```sh
 $ mkdir build && cd build
 $ /usr/bin/cmake -G Ninja .. \
-    -DLLVM_DIR=$PWD/../circt/llvm/build/lib/cmake/llvm \
-    -DMLIR_DIR=$PWD/../circt/llvm/build/lib/cmake/mlir \
-    -DCIRCT_DIR=$PWD/../circt/build/lib/cmake/circt \
+    -DLLVM_DIR=$PWD/../llvm/build/lib/cmake/llvm \
+    -DMLIR_DIR=$PWD/../llvm/build/lib/cmake/mlir \
     -DAIE_DIR=$PWD/../mlir-aie/build/lib/cmake/aie \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
@@ -83,7 +66,7 @@ $ ninja check-polyaie
 $ export PATH=$PATH:$PWD/bin
 ```
 
-### 5. Clone and install Phism
+### 4. Clone and install Phism
 Follow the instructions from https://github.com/kumasento/phism.
 ```sh
 $ cd ${PHISM_INSTALL_DIR}

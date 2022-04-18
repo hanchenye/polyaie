@@ -9,7 +9,6 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
-#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -35,7 +34,6 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
     mlir::vector::VectorDialect,
     mlir::bufferization::BufferizationDialect,
     mlir::LLVM::LLVMDialect,
-    circt::handshake::HandshakeDialect,
     polyaie::dataflow::DataflowDialect,
     xilinx::AIE::AIEDialect,
     xilinx::aievec::AIEVecDialect

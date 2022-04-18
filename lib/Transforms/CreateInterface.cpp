@@ -10,7 +10,6 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
-using namespace circt;
 
 namespace {
 struct CreateInterface : public polyaie::CreateInterfaceBase<CreateInterface> {
@@ -22,10 +21,10 @@ void CreateInterface::runOnOperation() {
   auto mod = getOperation();
   auto b = OpBuilder(mod);
   auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc<handshake::FuncOp>(mod);
+  auto topFunc = getTopFunc<dataflow::FuncOp>(mod);
 
   /// A map from column to all associated IOs.
-  SmallDenseMap<unsigned, SmallVector<Operation *, 4>> ioMap;
+  llvm::SmallDenseMap<unsigned, SmallVector<Operation *, 4>> ioMap;
 
   for (auto &op : topFunc.getOps()) {
     if (!isa<dataflow::TensorLoadOp, dataflow::TensorStoreOp>(op))

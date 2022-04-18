@@ -70,7 +70,7 @@ void Postprocess::runOnOperation() {
           user->erase();
         lock->erase();
       }
-    } else if (auto func = dyn_cast<FuncOp>(op)) {
+    } else if (auto func = dyn_cast<mlir::FuncOp>(op)) {
       if (!func.isPrivate() && llvm::hasSingleElement(func.front()))
         func.erase();
 

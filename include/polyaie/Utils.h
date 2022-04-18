@@ -8,7 +8,6 @@
 #define POLYAIE_UTILS_H
 
 #include "aie/AIEDialect.h"
-#include "circt/Dialect/Handshake/HandshakeOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/IR/BlockSupport.h"
 #include "mlir/IR/BuiltinTypes.h"
