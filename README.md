@@ -16,7 +16,6 @@ $ cmake -G Ninja ../llvm \
     -DLLVM_TARGETS_TO_BUILD=host \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DLLVM_USE_LINKER=lld \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
@@ -24,7 +23,6 @@ $ ninja && ninja check-mlir
 ```
 
 ### 2. Install MLIR-AIE
-Follow the instructions from https://xilinx.github.io/mlir-aie/.
 ```sh
 $ cd mlir-aie
 
@@ -42,7 +40,6 @@ $ /usr/bin/cmake -G Ninja .. \
     -DVitisSysroot=$PWD/../platforms/vck190_bare/petalinux/sysroot/sysroots/aarch64-xilinx-linux \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DLLVM_USE_LINKER=lld \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
@@ -58,7 +55,6 @@ $ /usr/bin/cmake -G Ninja .. \
     -DAIE_DIR=$PWD/../mlir-aie/build/lib/cmake/aie \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DCMAKE_BUILD_TYPE=DEBUG \
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DLLVM_USE_LINKER=lld \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
