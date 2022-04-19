@@ -9,7 +9,7 @@
  */
 /* gemm.c: this file is part of PolyBench/C */
 
-// #include "gemm.host.cpp"
+#include "gemm.host.cpp"
 
 #include <math.h>
 #include <stdio.h>
@@ -101,18 +101,17 @@ int main(int argc, char **argv) {
   polybench_start_instruments;
 
   /* Run kernel. */
-  // bool run_aie = atoi(argv[1]) == 1;
-  // unsigned iter_num = atoi(argv[2]);
-  // if (run_aie) {
-  //   printf("Running on AIE for %d times...\n", iter_num);
-  //   kernel_gemm(POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B),
-  //               iter_num);
-  // } else {
-  //   printf("Running on ARM CPU for %d times...\n", iter_num);
-  //   for (unsigned i = 0; i < iter_num; ++i)
-  kernel_gemm(ni, nj, nk, POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A),
-              POLYBENCH_ARRAY(B));
-  // }
+  bool run_aie = atoi(argv[1]) == 1;
+  unsigned iter_num = atoi(argv[2]);
+  if (run_aie) {
+    printf("Running on AIE for %d times...\n", iter_num);
+    gemm(POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B), iter_num);
+  } else {
+    printf("Running on ARM CPU for %d times...\n", iter_num);
+    for (unsigned i = 0; i < iter_num; ++i)
+      kernel_gemm(ni, nj, nk, POLYBENCH_ARRAY(C), POLYBENCH_ARRAY(A),
+                  POLYBENCH_ARRAY(B));
+  }
 
   /* Stop and print timer. */
   polybench_stop_instruments;

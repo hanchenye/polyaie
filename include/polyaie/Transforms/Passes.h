@@ -24,6 +24,11 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
       *this, "top-func-name", llvm::cl::init("main"),
       llvm::cl::desc("Specify the top function of the program")};
 
+  /// Configure the preprocess pass.
+  Option<int64_t> loopTileSize{
+      *this, "tile-size", llvm::cl::init(32),
+      llvm::cl::desc("Specify the size of loop tiling")};
+
   /// Configure the split-top-func pass.
   Option<int64_t> splitTopFuncNumAIE{
       *this, "num-aie", llvm::cl::init(256),

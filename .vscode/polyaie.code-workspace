@@ -39,8 +39,8 @@
       "${workspaceFolder:MLIR}/../llvm/include",
       "${workspaceFolder:MLIR}/../build/include",
       "${workspaceFolder:MLIR}/../build/tools/mlir/include",
-      "${workspaceFolder:POLYAIE}/samples/tmp/gemm/acdc_project",
-      "${workspaceFolder:POLYAIE}/samples/tmp/utilities"
+      "${workspaceFolder:POLYAIE}/samples/gemm/tmp/acdc_project",
+      "${workspaceFolder:POLYAIE}/samples/gemm"
     ],
     "cmake.configureOnOpen": false,
     "files.watcherExclude": {

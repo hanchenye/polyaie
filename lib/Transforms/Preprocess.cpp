@@ -4,6 +4,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/Liveness.h"
+#include "mlir/Dialect/Affine/LoopUtils.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
@@ -14,19 +16,14 @@ struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
   Preprocess() = default;
   Preprocess(const PolyAIEOptions &opts) {
     topFuncName = opts.preprocessTopFuncName;
+    tileSize = opts.loopTileSize;
   }
 
   void runOnOperation() override {
     auto mod = getOperation();
     auto b = OpBuilder(mod);
-
     mod->removeAttr("llvm.data_layout");
     mod->removeAttr("llvm.target_triple");
-    mod.walk([&](Operation *op) {
-      op->removeAttr("phism.top");
-      op->removeAttr("phism.pe");
-      op->removeAttr("phism.point_loop");
-    });
 
     // Find the top function.
     auto topFunc = FuncOp();
@@ -60,6 +57,47 @@ struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
 
     topFunc->removeAttr("llvm.linkage");
     topFunc->setAttr("polyaie.top_func", b.getUnitAttr());
+
+    // TODO: This is very experimental and cannot handle complicated cases.
+    std::vector<SmallVector<mlir::AffineForOp, 6>> bands;
+    getTileableBands(topFunc, &bands);
+    unsigned bandIdx = 0;
+    for (auto band : bands) {
+      SmallVector<unsigned, 6> tileSizes(band.size(), tileSize);
+      SmallVector<mlir::AffineForOp, 6> tileBand;
+      if (failed(tilePerfectlyNested(band, tileSizes, &tileBand)))
+        return signalPassFailure();
+      auto outerPointLoop = tileBand[band.size()];
+
+      // Figure out the input variables of the point loop band.
+      if (outerPointLoop.getNumResults()) {
+        outerPointLoop.emitOpError("loop with results is not supported");
+        return signalPassFailure();
+      }
+      auto liveness = Liveness(tileBand.front());
+      SmallVector<Value, 8> inputs(outerPointLoop.getOperands());
+      for (auto livein : liveness.getLiveIn(outerPointLoop.getBody()))
+        if (!outerPointLoop->isAncestor(livein.getParentBlock()->getParentOp()))
+          inputs.push_back(livein);
+
+      // Outline the point loop band.
+      b.setInsertionPoint(topFunc);
+      auto funcName = "PE" + std::to_string(bandIdx++);
+      auto funcType = b.getFunctionType(ValueRange(inputs), TypeRange({}));
+      auto func = b.create<mlir::FuncOp>(b.getUnknownLoc(), funcName, funcType);
+      auto entry = func.addEntryBlock();
+
+      b.setInsertionPoint(outerPointLoop);
+      b.create<mlir::CallOp>(outerPointLoop.getLoc(), func, inputs);
+      b.setInsertionPointToEnd(entry);
+      auto returnOp = b.create<mlir::ReturnOp>(b.getUnknownLoc());
+      outerPointLoop->moveBefore(returnOp);
+
+      for (auto t : llvm::zip(inputs, entry->getArguments()))
+        std::get<0>(t).replaceUsesWithIf(std::get<1>(t), [&](OpOperand &use) {
+          return func->isProperAncestor(use.getOwner());
+        });
+    }
   }
 };
 } // namespace
