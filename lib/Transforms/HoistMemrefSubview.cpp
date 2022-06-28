@@ -9,6 +9,7 @@
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 namespace {
 struct HoistMemrefSubview
@@ -75,7 +76,8 @@ void HoistMemrefSubview::runOnOperation() {
     }
 
     // Update the function type.
-    func.setType(b.getFunctionType(inputTypes, func.getType().getResults()));
+    func.setType(
+        b.getFunctionType(inputTypes, func.getFunctionType().getResults()));
   }
 }
 

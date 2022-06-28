@@ -15,11 +15,12 @@
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 /// Helper to get the total number of calls in the block.
 static unsigned getNumCall(FuncOp func) {
   unsigned numCall = 0;
-  func.walk([&](mlir::CallOp call) { ++numCall; });
+  func.walk([&](CallOp call) { ++numCall; });
   return numCall;
 }
 
@@ -67,7 +68,7 @@ static void unrollFuncByFactorGreedily(FuncOp func, unsigned factor,
     }
 
     // Simplify the loop structure after the unrolling.
-    PassManager pm(func.getContext(), "builtin.func");
+    PassManager pm(func.getContext(), "func.func");
     pm.addPass(createSimplifyAffineStructuresPass());
     pm.addPass(createCanonicalizerPass());
     (void)pm.run(func);
@@ -119,7 +120,7 @@ static void duplicateSubFuncs(FuncOp func) {
     call->eraseOperands(argsToErase);
 
     // Canonicalize the function for constant propogation.
-    PassManager pm(newCallee.getContext(), "builtin.func");
+    PassManager pm(newCallee.getContext(), "func.func");
     pm.addPass(createCanonicalizerPass());
     (void)pm.run(newCallee);
 
@@ -149,7 +150,7 @@ static void removeRedundantFuncs(ModuleOp mod) {
 
     // Canonicalize the function to remove other redundant operations after
     // loops removal.
-    PassManager pm(func.getContext(), "builtin.func");
+    PassManager pm(func.getContext(), "func.func");
     pm.addPass(createCanonicalizerPass());
     (void)pm.run(func);
 

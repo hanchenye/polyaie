@@ -6,11 +6,12 @@
 
 #include "polyaie/Exporters.h"
 #include "../lib/Targets/AIEVecToCpp/TranslateAIEVecToCpp.h"
-#include "mlir/Translation.h"
+#include "mlir/Tools/mlir-translate/Translation.h"
 #include "polyaie/InitAllDialects.h"
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 LogicalResult polyaie::exportAIEKernel(ModuleOp module, raw_ostream &os) {
   for (auto func : module.getOps<FuncOp>()) {

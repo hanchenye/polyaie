@@ -9,6 +9,7 @@
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 namespace {
 struct ExtractMemrefDependency

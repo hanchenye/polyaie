@@ -9,6 +9,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/GraphTraits.h"
 
@@ -41,10 +42,10 @@ template <> struct GraphTraits<dataflow::FuncOp> {
   using nodes_iterator =
       mlir::detail::op_iterator<dataflow::ProcessOp, Region::OpIterator>;
   static nodes_iterator nodes_begin(dataflow::FuncOp f) {
-    return f.getOps<dataflow::ProcessOp>().begin();
+    return f.body().getOps<dataflow::ProcessOp>().begin();
   }
   static nodes_iterator nodes_end(dataflow::FuncOp f) {
-    return f.getOps<dataflow::ProcessOp>().end();
+    return f.body().getOps<dataflow::ProcessOp>().end();
   }
 };
 } // namespace llvm

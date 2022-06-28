@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Vector/VectorOps.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "polyaie/Transforms/Passes.h"
 
@@ -66,11 +66,11 @@ void Postprocess::runOnOperation() {
       if (llvm::all_of(lock->getUsers(), [&](Operation *user) {
             return user->getParentOp() == parent;
           })) {
-        for (auto user : lock->getUsers())
+        for (auto user : llvm::make_early_inc_range(lock->getUsers()))
           user->erase();
         lock->erase();
       }
-    } else if (auto func = dyn_cast<mlir::FuncOp>(op)) {
+    } else if (auto func = dyn_cast<func::FuncOp>(op)) {
       if (!func.isPrivate() && llvm::hasSingleElement(func.front()))
         func.erase();
 

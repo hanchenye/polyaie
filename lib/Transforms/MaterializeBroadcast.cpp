@@ -235,7 +235,7 @@ void MaterializeBroadcast::runOnOperation() {
     b.create<xilinx::AIE::EndOp>(loc);
 
     DMAStartOp currentDMAStart;
-    mlir::BranchOp currentBDBranch;
+    cf::BranchOp currentBDBranch;
     Block *currentHeadBDBlock;
 
     // A helper for constructing desciption blocks of MemOp and inserting token
@@ -274,7 +274,7 @@ void MaterializeBroadcast::runOnOperation() {
         auto bufType = buf.getType().cast<MemRefType>();
         b.create<DMABDOp>(loc, buf, /*offset=*/0, bufType.getNumElements(), 0);
         b.create<UseTokenOp>(loc, tokName, dma.relTokVal, LockAction::Release);
-        currentBDBranch = b.create<BranchOp>(loc, currentHeadBDBlock);
+        currentBDBranch = b.create<cf::BranchOp>(loc, currentHeadBDBlock);
 
         // Create PacketSourceOp or PacketDestOp in the PackeFlowOp.
         b.setInsertionPoint(dma.flow.ports().front().getTerminator());

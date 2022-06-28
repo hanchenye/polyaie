@@ -22,11 +22,11 @@ void CodeGenCleanup::runOnOperation() {
       op.dropAllUses();
       op.erase();
 
-    } else if (auto func = dyn_cast<mlir::FuncOp>(op)) {
+    } else if (auto func = dyn_cast<func::FuncOp>(op)) {
       if (!func.isPrivate())
         continue;
 
-      for (auto &block : llvm::make_early_inc_range(func.body())) {
+      for (auto &block : llvm::make_early_inc_range(func.getBody())) {
         block.dropAllUses();
         block.erase();
       }

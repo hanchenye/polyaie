@@ -26,7 +26,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createPreprocessPass(opts));
         pm.addPass(polyaie::createSplitTopFuncPass(opts));
         pm.addPass(mlir::createAffineLoopNormalizePass());
-        pm.addPass(mlir::createSimplifyAffineStructuresPass());
+        pm.addNestedPass<func::FuncOp>(
+            mlir::createSimplifyAffineStructuresPass());
         pm.addPass(mlir::createCanonicalizerPass());
 
         // Generate the dependency between each tile.

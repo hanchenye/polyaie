@@ -4,7 +4,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/SCF/SCF.h"
 #include "polyaie/Transforms/Passes.h"
 
 using namespace mlir;
@@ -103,8 +102,8 @@ void DoubleBuffer::runOnOperation() {
     auto one = b.create<arith::ConstantIndexOp>(loc, 1);
     auto zero = b.create<arith::ConstantIndexOp>(loc, 0);
     auto iterNum = b.create<arith::IndexCastOp>(
-        loc, b.create<memref::LoadOp>(loc, iterNumBuf, zero.getResult()),
-        b.getIndexType());
+        loc, b.getIndexType(),
+        b.create<memref::LoadOp>(loc, iterNumBuf, zero.getResult()));
     auto loop = b.create<scf::ForOp>(loc, zero, iterNum, one);
 
     // Inline all operations except the terminator in the original block into
@@ -166,7 +165,8 @@ void DoubleBuffer::runOnOperation() {
 
         // Set the current pong block as the successor the last one.
         if (lastPongBdBlock)
-          cast<BranchOp>(lastPongBdBlock->getTerminator()).setDest(pongBdBlock);
+          cast<cf::BranchOp>(lastPongBdBlock->getTerminator())
+              .setDest(pongBdBlock);
 
         lastPongBdBlock = pongBdBlock;
 
@@ -177,10 +177,12 @@ void DoubleBuffer::runOnOperation() {
       }
 
       // Set the first pong block as the successor of the last ping block.
-      cast<BranchOp>(pingBdBlock->getTerminator()).setDest(firstPongBdBlock);
+      cast<cf::BranchOp>(pingBdBlock->getTerminator())
+          .setDest(firstPongBdBlock);
 
       // Set the first ping block as the successor of the last pong block.
-      cast<BranchOp>(lastPongBdBlock->getTerminator()).setDest(start.dest());
+      cast<cf::BranchOp>(lastPongBdBlock->getTerminator())
+          .setDest(start.dest());
     }
   }
 

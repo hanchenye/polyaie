@@ -8,12 +8,12 @@
 #define POLYAIE_DATAFLOW_DATAFLOW_TD
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/FunctionInterfaces.td"
-include "mlir/IR/OpAsmInterface.td"
-
-include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -27,7 +27,7 @@ def DataflowDialect : Dialect {
   let cppNamespace = "::mlir::polyaie::dataflow";
 }
 
-class DataflowOp<string mnemonic, list<OpTrait> traits = []> :
+class DataflowOp<string mnemonic, list<Trait> traits = []> :
     Op<DataflowDialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
@@ -56,20 +56,19 @@ def FuncOp : DataflowOp<"func", [IsolatedFromAbove, FunctionOpInterface, Symbol,
     // to match the signature of the function.
     Block *addEntryBlock();
 
-    FunctionType getType() {
-      return (*this)->getAttrOfType<TypeAttr>(getTypeAttrName())
-          .getValue()
-          .cast<FunctionType>();
+    /// Returns the type of this function.
+    FunctionType getFunctionType() {
+      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
 
     /// Implement RegionKindInterface.
     static RegionKind getRegionKind(unsigned index) { return RegionKind::Graph; }
 
     /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     /// Returns the names of the arguments to this function.
     ArrayAttr getArgNames() {
@@ -101,10 +100,11 @@ def FuncOp : DataflowOp<"func", [IsolatedFromAbove, FunctionOpInterface, Symbol,
     /// getType, getNumFuncArguments, and getNumFuncResults can be called
     /// safely.
     LogicalResult verifyType() {
-      auto type = getTypeAttr().getValue();
+      auto type = getFunctionTypeAttr().getValue();
       if (!type.isa<FunctionType>())
-        return emitOpError("requires '" + getTypeAttrName() +
-                           "' attribute of function type");
+        return emitOpError(
+            "requires '" + mlir::function_interface_impl::getTypeAttrName() +
+            "' attribute of function type");
       return success();
     }
 
@@ -117,14 +117,16 @@ def FuncOp : DataflowOp<"func", [IsolatedFromAbove, FunctionOpInterface, Symbol,
     }
   }];
 
-  let verifier = [{ return ::verify$cppClass(*this); }];
-  let printer = [{ return ::print$cppClass(p, *this); }];
-  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
+  // let verifier = [{ return ::verify$cppClass(*this); }];
+  // let printer = [{ return ::print$cppClass(p, *this); }];
+  // let parser = [{ return ::parse$cppClass(parser, result); }];
 }
-def AIE:  I64EnumAttrCase<"AIE", 0>;
-def GMIO:  I64EnumAttrCase<"GMIO", 1>;
-def PLIO:  I64EnumAttrCase<"PLIO", 2>;
-def ProcessKind: I64EnumAttr<"ProcessKind", "Kind of Process",
+def AIE:  I32EnumAttrCase<"AIE", 0>;
+def GMIO:  I32EnumAttrCase<"GMIO", 1>;
+def PLIO:  I32EnumAttrCase<"PLIO", 2>;
+def ProcessKind: I32EnumAttr<"ProcessKind", "Kind of Process",
     [AIE, GMIO, PLIO]> {
   let cppNamespace = "mlir::polyaie";
 }
@@ -145,7 +147,8 @@ def ProcessOp : DataflowOp<"process", [IsolatedFromAbove]> {
                    CArg<"ProcessKind", "ProcessKind::AIE">:$kind)>
   ];
 
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
   let extraClassDeclaration = [{
     /// Given an internal value, return the corresponding process operand. If
     /// the internal value is not a block argument, return nullptr.
@@ -172,7 +175,8 @@ def ReturnOp : DataflowOp<"return", [Terminator]> {
 
   let arguments = (ins Variadic<AnyType>:$operands);
 
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
 }
 
 def TensorLoadOp : DataflowOp<"tensor_load",
@@ -187,7 +191,8 @@ def TensorLoadOp : DataflowOp<"tensor_load",
   let results = (outs AnyTensor:$tensor);
 
   let builders = [ OpBuilder<(ins "Type":$type, "Value":$memory)> ];
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
 }
 
 def TensorStoreOp : DataflowOp<"tensor_store", [SameOperandsElementType]> {
@@ -201,18 +206,19 @@ def TensorStoreOp : DataflowOp<"tensor_store", [SameOperandsElementType]> {
                        AnyTensor:$tensor);
 
   let builders = [ OpBuilder<(ins "Value":$memory, "Value":$tensor)> ];
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
 }
 
 //===----------------------------------------------------------------------===//
 // Runtime Operations - should be factored out to a new dialect
 //===----------------------------------------------------------------------===//
 
-def HostToDDR:  I64EnumAttrCase<"HostToDDR", 0>;
-def HostToAIE:  I64EnumAttrCase<"HostToAIE", 1>;
-def DDRToHost:  I64EnumAttrCase<"DDRToHost", 2>;
-def AIEToHost:  I64EnumAttrCase<"AIEToHost", 3>;
-def HostDMAKind: I64EnumAttr<"HostDMAKind", "Kind of Host DMA",
+def HostToDDR:  I32EnumAttrCase<"HostToDDR", 0>;
+def HostToAIE:  I32EnumAttrCase<"HostToAIE", 1>;
+def DDRToHost:  I32EnumAttrCase<"DDRToHost", 2>;
+def AIEToHost:  I32EnumAttrCase<"AIEToHost", 3>;
+def HostDMAKind: I32EnumAttr<"HostDMAKind", "Kind of Host DMA",
     [HostToDDR, HostToAIE, DDRToHost, AIEToHost]> {
   let cppNamespace = "mlir::polyaie";
 }
@@ -227,7 +233,8 @@ def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
                        I64ArrayAttr:$strides, HostDMAKind:$kind,
                        AnyMemRef:$target, AnyMemRef:$source);
 
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
 }
 
 //===----------------------------------------------------------------------===//
@@ -244,7 +251,8 @@ def InterfaceOp : DataflowOp<"aie.interface", []> {
 
   let arguments = (ins Index:$tile, Variadic<AnyMemRef>:$externalBuffers);
 
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
 }
 
 def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {
@@ -255,7 +263,8 @@ def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {
 
   let arguments = (ins AnyMemRef:$source, Variadic<AnyMemRef>:$targets);
 
-  let verifier = "return ::verify(*this);";
+  let hasVerifier = 1;
+  // let verifier = "return ::verify(*this);";
 }
 
 #endif // POLYAIE_DATAFLOW_DATAFLOW_TD

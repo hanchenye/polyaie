@@ -10,6 +10,7 @@
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 namespace {
 struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
@@ -33,7 +34,7 @@ struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
         op.erase();
       else if (auto func = dyn_cast<FuncOp>(op)) {
         // Currently we can only handle single-block functions.
-        if (!llvm::hasSingleElement(func.body())) {
+        if (!llvm::hasSingleElement(func.getBody())) {
           emitError(func.getLoc(), "has more than one blocks");
           return signalPassFailure();
         }
@@ -84,13 +85,13 @@ struct Preprocess : public polyaie::PreprocessBase<Preprocess> {
       b.setInsertionPoint(topFunc);
       auto funcName = "PE" + std::to_string(bandIdx++);
       auto funcType = b.getFunctionType(ValueRange(inputs), TypeRange({}));
-      auto func = b.create<mlir::FuncOp>(b.getUnknownLoc(), funcName, funcType);
+      auto func = b.create<FuncOp>(b.getUnknownLoc(), funcName, funcType);
       auto entry = func.addEntryBlock();
 
       b.setInsertionPoint(outerPointLoop);
-      b.create<mlir::CallOp>(outerPointLoop.getLoc(), func, inputs);
+      b.create<CallOp>(outerPointLoop.getLoc(), func, inputs);
       b.setInsertionPointToEnd(entry);
-      auto returnOp = b.create<mlir::ReturnOp>(b.getUnknownLoc());
+      auto returnOp = b.create<ReturnOp>(b.getUnknownLoc());
       outerPointLoop->moveBefore(returnOp);
 
       for (auto t : llvm::zip(inputs, entry->getArguments()))

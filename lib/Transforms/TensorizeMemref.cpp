@@ -4,13 +4,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "polyaie/Transforms/Passes.h"
 #include "polyaie/Utils.h"
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 namespace {
 struct TensorizeMemref : public polyaie::TensorizeMemrefBase<TensorizeMemref> {
@@ -82,7 +83,7 @@ void TensorizeMemref::runOnOperation() {
   populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
                                                            tensorizeConverter);
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    return (tensorizeConverter.isSignatureLegal(op.getType()) &&
+    return (tensorizeConverter.isSignatureLegal(op.getFunctionType()) &&
             tensorizeConverter.isLegal(&op.getBody())) ||
            op == topFunc;
   });
@@ -107,7 +108,7 @@ void TensorizeMemref::runOnOperation() {
       removeLayoutMap(b, alloc);
   });
 
-  mod.walk([&](mlir::ReturnOp returnOp) {
+  mod.walk([&](ReturnOp returnOp) {
     for (auto operand : returnOp.getOperands())
       if (auto toTensorOp = operand.getDefiningOp<bufferization::ToTensorOp>())
         toTensorOp->moveBefore(returnOp);

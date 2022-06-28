@@ -20,10 +20,10 @@ module @kernel_2mm  {
   }
   %9 = AIE.lock(%7, 0)
   %10 = AIE.buffer(%7) {sym_name = "buf0"} : memref<16x24xf32>
-  "dataflow.runtime.host_dma"(%10, %6) {kind = 1 : i64, offsets = [0, 0], sizes = [16, 24], strides = [1, 1]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
+  "dataflow.runtime.host_dma"(%10, %6) {kind = 1 : i32, offsets = [0, 0], sizes = [16, 24], strides = [1, 1]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
   %11 = AIE.buffer(%7) {sym_name = "buf1"} : memref<16x24xf32>
   %12 = AIE.buffer(%7) {sym_name = "buf2"} : memref<1xf32>
-  "dataflow.runtime.host_dma"(%12, %1) {kind = 1 : i64, offsets = [0], sizes = [1], strides = [1]} : (memref<1xf32>, memref<1xf32>) -> ()
+  "dataflow.runtime.host_dma"(%12, %1) {kind = 1 : i32, offsets = [0], sizes = [1], strides = [1]} : (memref<1xf32>, memref<1xf32>) -> ()
   %13 = AIE.core(%7)  {
     AIE.useLock(%9, Acquire, 0)
     %39 = affine.load %12[0] : memref<1xf32>
@@ -44,7 +44,7 @@ module @kernel_2mm  {
     AIE.dmaBdPacket(0, 0)
     AIE.dmaBd(<%11 : memref<16x24xf32>, 0, 384>, 0)
     AIE.useLock(%9, Release, 0)
-    br ^bb1
+    cf.br ^bb1
   ^bb2:  // pred: ^bb0
     AIE.end
   }
@@ -58,7 +58,7 @@ module @kernel_2mm  {
   }
   %17 = AIE.lock(%15, 0)
   %18 = AIE.buffer(%15) {sym_name = "buf3"} : memref<16x18xf32>
-  "dataflow.runtime.host_dma"(%18, %2) {kind = 1 : i64, offsets = [0, 0], sizes = [16, 18], strides = [1, 1]} : (memref<16x18xf32>, memref<16x18xf32>) -> ()
+  "dataflow.runtime.host_dma"(%18, %2) {kind = 1 : i32, offsets = [0, 0], sizes = [16, 18], strides = [1, 1]} : (memref<16x18xf32>, memref<16x18xf32>) -> ()
   %19 = AIE.buffer(%15) {sym_name = "buf4"} : memref<16x18xf32>
   %20 = AIE.core(%15)  {
     AIE.useLock(%17, Acquire, 0)
@@ -87,13 +87,13 @@ module @kernel_2mm  {
     }
   }
   %24 = AIE.buffer(%21) {sym_name = "buf5"} : memref<16x22xf32>
-  "dataflow.runtime.host_dma"(%24, %3) {kind = 1 : i64, offsets = [0, 0], sizes = [16, 22], strides = [1, 1]} : (memref<16x22xf32>, memref<16x22xf32>) -> ()
+  "dataflow.runtime.host_dma"(%24, %3) {kind = 1 : i32, offsets = [0, 0], sizes = [16, 22], strides = [1, 1]} : (memref<16x22xf32>, memref<16x22xf32>) -> ()
   %25 = AIE.buffer(%21) {sym_name = "buf6"} : memref<22x18xf32>
-  "dataflow.runtime.host_dma"(%25, %4) {kind = 1 : i64, offsets = [0, 0], sizes = [22, 18], strides = [1, 1]} : (memref<22x18xf32>, memref<22x18xf32>) -> ()
+  "dataflow.runtime.host_dma"(%25, %4) {kind = 1 : i32, offsets = [0, 0], sizes = [22, 18], strides = [1, 1]} : (memref<22x18xf32>, memref<22x18xf32>) -> ()
   %26 = AIE.buffer(%21) {sym_name = "buf7"} : memref<16x18xf32>
-  "dataflow.runtime.host_dma"(%2, %26) {kind = 3 : i64, offsets = [0, 0], sizes = [16, 18], strides = [1, 1]} : (memref<16x18xf32>, memref<16x18xf32>) -> ()
+  "dataflow.runtime.host_dma"(%2, %26) {kind = 3 : i32, offsets = [0, 0], sizes = [16, 18], strides = [1, 1]} : (memref<16x18xf32>, memref<16x18xf32>) -> ()
   %27 = AIE.buffer(%21) {sym_name = "buf8"} : memref<1xf32>
-  "dataflow.runtime.host_dma"(%27, %0) {kind = 1 : i64, offsets = [0], sizes = [1], strides = [1]} : (memref<1xf32>, memref<1xf32>) -> ()
+  "dataflow.runtime.host_dma"(%27, %0) {kind = 1 : i32, offsets = [0], sizes = [1], strides = [1]} : (memref<1xf32>, memref<1xf32>) -> ()
   %28 = AIE.core(%21)  {
     AIE.useLock(%33, Acquire, 0)
     AIE.useLock(%17, Acquire, 1)
@@ -130,10 +130,10 @@ module @kernel_2mm  {
   %32 = AIE.lock(%29, 1)
   %33 = AIE.lock(%29, 0)
   %34 = AIE.buffer(%29) {sym_name = "buf9"} : memref<18x24xf32>
-  "dataflow.runtime.host_dma"(%34, %5) {kind = 1 : i64, offsets = [0, 0], sizes = [18, 24], strides = [1, 1]} : (memref<18x24xf32>, memref<18x24xf32>) -> ()
+  "dataflow.runtime.host_dma"(%34, %5) {kind = 1 : i32, offsets = [0, 0], sizes = [18, 24], strides = [1, 1]} : (memref<18x24xf32>, memref<18x24xf32>) -> ()
   %35 = AIE.buffer(%29) {sym_name = "buf10"} : memref<16x24xf32>
   %36 = AIE.buffer(%29) {sym_name = "buf11"} : memref<16x24xf32>
-  "dataflow.runtime.host_dma"(%6, %36) {kind = 3 : i64, offsets = [0, 0], sizes = [16, 24], strides = [1, 1]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
+  "dataflow.runtime.host_dma"(%6, %36) {kind = 3 : i32, offsets = [0, 0], sizes = [16, 24], strides = [1, 1]} : (memref<16x24xf32>, memref<16x24xf32>) -> ()
   %37 = AIE.core(%29)  {
     AIE.useLock(%33, Acquire, 1)
     AIE.useLock(%32, Acquire, 1)
@@ -163,7 +163,7 @@ module @kernel_2mm  {
     AIE.dmaBdPacket(0, 0)
     AIE.dmaBd(<%35 : memref<16x24xf32>, 0, 384>, 0)
     AIE.useLock(%32, Release, 1)
-    br ^bb1
+    cf.br ^bb1
   ^bb2:  // pred: ^bb0
     AIE.end
   }

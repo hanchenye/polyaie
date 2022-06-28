@@ -9,6 +9,7 @@
 
 using namespace mlir;
 using namespace polyaie;
+using namespace func;
 
 namespace {
 struct MemrefArgToResult
@@ -60,7 +61,7 @@ void MemrefArgToResult::runOnOperation() {
 
     // Update return operation and function signature.
     b.setInsertionPoint(returnOp);
-    auto newReturn = b.create<mlir::ReturnOp>(returnOp->getLoc(), returnVals);
+    auto newReturn = b.create<ReturnOp>(returnOp->getLoc(), returnVals);
     returnOp->erase();
     func.setType(b.getFunctionType(func.getArgumentTypes(),
                                    newReturn.getOperandTypes()));

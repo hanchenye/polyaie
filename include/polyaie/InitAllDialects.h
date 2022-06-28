@@ -12,9 +12,11 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/Vector/VectorOps.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Dialect.h"
 #include "polyaie/Dataflow/Dataflow.h"
 
@@ -25,7 +27,8 @@ namespace polyaie {
 inline void registerAllDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<
-    mlir::StandardOpsDialect,
+    mlir::func::FuncDialect,
+    mlir::cf::ControlFlowDialect,
     mlir::AffineDialect,
     mlir::scf::SCFDialect,
     mlir::memref::MemRefDialect,

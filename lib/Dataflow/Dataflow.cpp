@@ -26,20 +26,20 @@ void DataflowDialect::initialize() {
 // FuncOp
 //===----------------------------------------------------------------------===//
 
-static ParseResult verifyFuncOp(dataflow::FuncOp op) {
+LogicalResult dataflow::FuncOp::verify() {
   // If this function is external there is nothing to do.
-  if (op.isExternal())
+  if (isExternal())
     return success();
 
   // Verify that the argument list of the function and the arg list of the
   // entry block line up.  The trait already verified that the number of
   // arguments is the same between the signature and the block.
-  auto fnInputTypes = op.getType().getInputs();
-  Block &entryBlock = op.front();
+  auto fnInputTypes = getFunctionType().getInputs();
+  Block &entryBlock = front();
 
   for (unsigned i = 0, e = entryBlock.getNumArguments(); i != e; ++i)
     if (fnInputTypes[i] != entryBlock.getArgument(i).getType())
-      return op.emitOpError("type of entry block argument #")
+      return emitOpError("type of entry block argument #")
              << i << '(' << entryBlock.getArgument(i).getType()
              << ") must match the type of the corresponding argument in "
              << "function signature(" << fnInputTypes[i] << ')';
@@ -47,27 +47,28 @@ static ParseResult verifyFuncOp(dataflow::FuncOp op) {
   // Verify that we have a name for each argument and result of this function.
   auto verifyPortNameAttr = [&](StringRef attrName,
                                 unsigned numIOs) -> LogicalResult {
-    auto portNamesAttr = op->getAttrOfType<ArrayAttr>(attrName);
+    auto portNamesAttr = (*this)->getAttrOfType<ArrayAttr>(attrName);
 
     if (!portNamesAttr)
-      return op.emitOpError() << "expected attribute '" << attrName << "'.";
+      return emitOpError() << "expected attribute '" << attrName << "'.";
 
     auto portNames = portNamesAttr.getValue();
     if (portNames.size() != numIOs)
-      return op.emitOpError()
-             << "attribute '" << attrName << "' has " << portNames.size()
-             << " entries but is expected to have " << numIOs << ".";
+      return emitOpError() << "attribute '" << attrName << "' has "
+                           << portNames.size()
+                           << " entries but is expected to have " << numIOs
+                           << ".";
 
     if (llvm::any_of(portNames,
                      [&](Attribute attr) { return !attr.isa<StringAttr>(); }))
-      return op.emitOpError() << "expected all entries in attribute '"
-                              << attrName << "' to be strings.";
+      return emitOpError() << "expected all entries in attribute '" << attrName
+                           << "' to be strings.";
 
     return success();
   };
-  if (failed(verifyPortNameAttr("argNames", op.getNumArguments())))
+  if (failed(verifyPortNameAttr("argNames", getNumArguments())))
     return failure();
-  if (failed(verifyPortNameAttr("resNames", op.getNumResults())))
+  if (failed(verifyPortNameAttr("resNames", getNumResults())))
     return failure();
 
   return success();
@@ -77,7 +78,8 @@ static ParseResult verifyFuncOp(dataflow::FuncOp op) {
 /// mlir::function_interface_impl::parseFunctionSignature while getting access
 /// to the parsed SSA names to store as attributes.
 static ParseResult parseFuncOpArgs(
-    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::OperandType> &entryArgs,
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &entryArgs,
     SmallVectorImpl<Type> &argTypes, SmallVectorImpl<Attribute> &argNames,
     SmallVectorImpl<NamedAttrList> &argAttrs, SmallVectorImpl<Type> &resTypes,
     SmallVectorImpl<NamedAttrList> &resAttrs) {
@@ -90,7 +92,7 @@ static ParseResult parseFuncOpArgs(
   bool isVariadic;
   if (mlir::function_interface_impl::parseFunctionSignature(
           parser, /*allowVariadic=*/true, entryArgs, argTypes, argAttrs,
-          argLocs, isVariadic, resTypes, resAttrs)
+          isVariadic, resTypes, resAttrs)
           .failed())
     return failure();
 
@@ -150,7 +152,7 @@ static void addStringToStringArrayAttr(Builder &builder, Operation *op,
 }
 
 void dataflow::FuncOp::resolveArgAndResNames() {
-  auto type = getType();
+  auto type = getFunctionType();
   Builder builder(getContext());
 
   /// Generate a set of fallback names. These are used in case names are
@@ -174,10 +176,11 @@ void dataflow::FuncOp::resolveArgAndResNames() {
   resolveNames(fallbackResNames, resNames, "resNames");
 }
 
-static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
+ParseResult dataflow::FuncOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
   auto &builder = parser.getBuilder();
   StringAttr nameAttr;
-  SmallVector<OpAsmParser::OperandType, 4> args;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> args;
   SmallVector<Type, 4> argTypes, resTypes;
   SmallVector<NamedAttrList, 4> argAttributes, resAttributes;
   SmallVector<Attribute> argNames;
@@ -214,11 +217,9 @@ static ParseResult parseFuncOp(OpAsmParser &parser, OperationState &result) {
   return parser.parseRegion(*body, args, argTypes);
 }
 
-static void printFuncOp(OpAsmPrinter &p, dataflow::FuncOp op) {
-  FunctionType fnType = op.getType();
-  mlir::function_interface_impl::printFunctionOp(p, op, fnType.getInputs(),
-                                                 /*isVariadic=*/true,
-                                                 fnType.getResults());
+void dataflow::FuncOp::print(OpAsmPrinter &p) {
+  mlir::function_interface_impl::printFunctionOp(p, *this,
+                                                 /*isVariadic=*/true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -241,23 +242,23 @@ void ProcessOp::build(OpBuilder &builder, OperationState &state,
   entry.addArguments(operands.getTypes(), locations);
 }
 
-static LogicalResult verify(ProcessOp op) {
-  if (op.body().empty())
-    return op.emitOpError("must have at least one block");
+LogicalResult ProcessOp::verify() {
+  if (body().empty())
+    return emitOpError("must have at least one block");
 
-  if (op.getOperandTypes() != op.body().front().getArgumentTypes())
-    return op.emitOpError(
+  if (getOperandTypes() != body().front().getArgumentTypes())
+    return emitOpError(
         "operands types must align with arguments types of the entry block");
 
-  for (auto result : op.getResultTypes())
+  for (auto result : getResultTypes())
     if (!result.isa<TensorType>())
-      return op.emitOpError("process can only produce tensor type results");
+      return emitOpError("process can only produce tensor type results");
 
-  if (op.kind() != ProcessKind::AIE)
-    for (auto &op : op.getOps())
+  if (kind() != ProcessKind::AIE)
+    for (auto &op : getOps())
       if (!isa<dataflow::TensorLoadOp, dataflow::TensorStoreOp,
                dataflow::ReturnOp>(op))
-        return op.emitOpError(
+        return emitOpError(
             "GMIO or PLIO process must only contain tensor load/store op");
 
   return success();
@@ -294,21 +295,21 @@ Value ProcessOp::getReturnValFromResult(OpResult result) {
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verify(dataflow::ReturnOp op) {
-  if (auto process = op->getParentOfType<ProcessOp>())
-    if (op.getOperandTypes() == process.getResultTypes())
+LogicalResult dataflow::ReturnOp::verify() {
+  if (auto process = (*this)->getParentOfType<ProcessOp>())
+    if (getOperandTypes() == process.getResultTypes())
       return success();
 
-  if (auto func = op->getParentOfType<dataflow::FuncOp>())
-    if (op.getOperandTypes() == func.getType().getResults())
+  if (auto func = (*this)->getParentOfType<dataflow::FuncOp>())
+    if (getOperandTypes() == func.getFunctionType().getResults())
       return success();
 
-  if (auto func = op->getParentOfType<mlir::FuncOp>())
-    if (op.getOperandTypes() == func.getType().getResults())
+  if (auto func = (*this)->getParentOfType<func::FuncOp>())
+    if (getOperandTypes() == func.getFunctionType().getResults())
       return success();
 
-  return op.emitOpError("operands types must align with result types of "
-                        "the parent process or function op");
+  return emitOpError("operands types must align with result types of "
+                     "the parent process or function op");
 }
 
 //===----------------------------------------------------------------------===//
@@ -358,40 +359,36 @@ static LogicalResult verifyTensorLoadStoreOp(OpType op) {
   return success();
 }
 
-static LogicalResult verify(TensorLoadOp op) {
-  return verifyTensorLoadStoreOp(op);
-}
+LogicalResult TensorLoadOp::verify() { return verifyTensorLoadStoreOp(*this); }
 
-static LogicalResult verify(TensorStoreOp op) {
-  return verifyTensorLoadStoreOp(op);
-}
+LogicalResult TensorStoreOp::verify() { return verifyTensorLoadStoreOp(*this); }
 
 //===----------------------------------------------------------------------===//
 // Runtime Operations - should be factored out to a new dialect
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verify(HostDMAOp op) { return success(); }
+LogicalResult HostDMAOp::verify() { return success(); }
 
 //===----------------------------------------------------------------------===//
 // AIE Operations - should be factored out to AIE dialect
 //===----------------------------------------------------------------------===//
 
-static LogicalResult verify(InterfaceOp op) {
-  if (!op.tile().getDefiningOp<xilinx::AIE::TileOp>())
-    return op.emitOpError("operand tile must be defined by TileOp");
+LogicalResult InterfaceOp::verify() {
+  if (!tile().getDefiningOp<xilinx::AIE::TileOp>())
+    return emitOpError("operand tile must be defined by TileOp");
 
-  for (auto buf : op.externalBuffers())
+  for (auto buf : externalBuffers())
     if (!buf.getDefiningOp<xilinx::AIE::ExternalBufferOp>())
-      return op.emitOpError("buffers must be defined by ExternalBufferOp");
+      return emitOpError("buffers must be defined by ExternalBufferOp");
 
   return success();
 }
 
-static LogicalResult verify(BroadcastOp op) {
-  for (auto operand : op.getOperands())
+LogicalResult BroadcastOp::verify() {
+  for (auto operand : getOperands())
     if (!operand.getDefiningOp<xilinx::AIE::BufferOp>() &&
         !operand.getDefiningOp<xilinx::AIE::ExternalBufferOp>())
-      return op.emitOpError(
+      return emitOpError(
           "operand must be defined by BufferOp or ExternalBufferOp");
 
   return success();

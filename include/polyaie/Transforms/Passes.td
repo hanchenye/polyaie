@@ -36,7 +36,7 @@ def SplitTopFunc : Pass<"polyaie-split-top-func", "ModuleOp"> {
   ];
 }
 
-def CreateMemrefSubview : Pass<"polyaie-create-memref-subview", "FuncOp"> {
+def CreateMemrefSubview : Pass<"polyaie-create-memref-subview", "func::FuncOp"> {
   let summary = "Create subviews based on loop analysis";
   let description = [{
     Through loop analysis, this pass can identify the memory partition that each
@@ -80,7 +80,7 @@ def ExtractMemrefDependency :
   let constructor = "mlir::polyaie::createExtractMemrefDependencyPass()";
 }
 
-def BufferMemrefResult : Pass<"polyaie-buffer-memref-result", "FuncOp"> {
+def BufferMemrefResult : Pass<"polyaie-buffer-memref-result", "func::FuncOp"> {
   let summary = "Buffer memref results";
   let description = [{
     Promote each memref result to a local buffer.
@@ -93,7 +93,7 @@ def TensorizeMemref : Pass<"polyaie-tensorize-memref", "ModuleOp"> {
   let constructor = "mlir::polyaie::createTensorizeMemrefPass()";
 }
 
-def DetectLoopReduction : Pass<"polyaie-detect-loop-reduction", "FuncOp"> {
+def DetectLoopReduction : Pass<"polyaie-detect-loop-reduction", "func::FuncOp"> {
   let summary = "Detect reductions in affine loops";
   let constructor = "mlir::polyaie::createDetectLoopReductionPass()";
 }

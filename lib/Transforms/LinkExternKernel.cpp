@@ -10,6 +10,7 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace xilinx::AIE;
+using namespace func;
 
 // Because we need to maintain a deterministic order of arguments to accommodate
 // the external kernel design, we cannot use liveness analysis here.
@@ -87,14 +88,14 @@ struct LinkExternKernel
         // If we are going to generate external kernel through the AIEVec
         // dialect, move all operations of the first CoreOp into the new kernel
         // function.
-        auto entryBlock = &kernel.body().emplaceBlock();
+        auto entryBlock = &kernel.getBody().emplaceBlock();
         auto &kernelOps = entryBlock->getOperations();
         auto &coreOps = core.body().front().getOperations();
         kernelOps.splice(kernelOps.begin(), coreOps, coreOps.begin(),
                          std::prev(coreOps.end()));
 
         b.setInsertionPointToEnd(entryBlock);
-        b.create<mlir::ReturnOp>(loc);
+        b.create<ReturnOp>(loc);
 
         // Replace liveins with the entry block arguments.
         SmallVector<Location, 8> liveInLocs;

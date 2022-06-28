@@ -36,7 +36,7 @@ void BufferMemrefResult::runOnOperation() {
     operand.replaceAllUsesWith(buf);
 
     auto firstUser = *buf->user_begin();
-    b.setInsertionPoint(func.body().findAncestorOpInRegion(*firstUser));
+    b.setInsertionPoint(func.getBody().findAncestorOpInRegion(*firstUser));
 
     // Create explicit memory copy using an affine loop nest.
     SmallVector<Value, 4> ivs;

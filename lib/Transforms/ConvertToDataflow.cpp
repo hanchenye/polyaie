@@ -84,14 +84,14 @@ struct TensorStoreConversion : public OpConversionPattern<memref::CopyOp> {
 } // namespace
 
 namespace {
-struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
-  using OpConversionPattern<mlir::CallOp>::OpConversionPattern;
+struct ProcessConversion : public OpConversionPattern<func::CallOp> {
+  using OpConversionPattern<func::CallOp>::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(mlir::CallOp op, OpAdaptor adaptor,
+  matchAndRewrite(func::CallOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto mod = op->getParentOfType<ModuleOp>();
-    auto func = mod.lookupSymbol<mlir::FuncOp>(op.getCallee());
+    auto func = mod.lookupSymbol<func::FuncOp>(op.getCallee());
 
     // Replace call and function operation.
     auto process = rewriter.replaceOpWithNewOp<dataflow::ProcessOp>(
@@ -116,13 +116,13 @@ struct ProcessConversion : public OpConversionPattern<mlir::CallOp> {
 
 void ConvertToDataflow::runOnOperation() {
   auto mod = getOperation();
-  auto topFunc = getTopFunc<mlir::FuncOp>(mod);
+  auto topFunc = getTopFunc<func::FuncOp>(mod);
   auto b = OpBuilder(mod);
 
   RewritePatternSet patterns(mod.getContext());
   ConversionTarget target(*mod.getContext());
 
-  target.addIllegalOp<mlir::CallOp>();
+  target.addIllegalOp<func::CallOp>();
   target.addIllegalOp<bufferization::ToTensorOp>();
   target.addIllegalOp<memref::CopyOp>();
 
@@ -154,11 +154,11 @@ void ConvertToDataflow::runOnOperation() {
     attrs.push_back(attr);
   }
   auto dfFunc = b.create<dataflow::FuncOp>(topFunc.getLoc(), topFunc.getName(),
-                                           topFunc.getType(), attrs);
+                                           topFunc.getFunctionType(), attrs);
   dfFunc.resolveArgAndResNames();
 
   // Inline the contents of the top function.
-  auto &topFuncBlocks = topFunc.body().getBlocks();
+  auto &topFuncBlocks = topFunc.getBody().getBlocks();
   auto &dfFuncBlocks = dfFunc.body().getBlocks();
   dfFuncBlocks.splice(dfFuncBlocks.begin(), topFuncBlocks);
 
