@@ -43,7 +43,17 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
   Option<int64_t> superVectorizeSize{
       *this, "vec-size", llvm::cl::init(1),
       llvm::cl::desc("Specify the size of super vectorization")};
+  
+  /// Configure the placementsimple pass.
+  Option<int64_t> placementcol{
+      *this, "col-pos", llvm::cl::init(24),
+      llvm::cl::desc("Specify the placement column position: ")};
 
+  /// Configure the placementsimple pass.
+  Option<int64_t> placementrow{
+      *this, "row-pos", llvm::cl::init(2),
+      llvm::cl::desc("Specify the placement row position: ")};
+  
   /// Configure the placement pass.
   Option<std::string> placementAlgorithm{
       *this, "algorithm", llvm::cl::init("naive"),
@@ -54,6 +64,11 @@ struct PolyAIEOptions : public PassPipelineOptions<PolyAIEOptions> {
   Option<bool> enableCreateInterface{
       *this, "enable-create-interface", llvm::cl::init(true),
       llvm::cl::desc("Enable to generate interface processes")};
+  
+  /// Configure the DataflowToAIE pass.
+  Option<bool> GMIOreuse{
+      *this, "gmio-reuse", llvm::cl::init(true),
+      llvm::cl::desc("Enable packet switch combining with broadcast")};
 
   /// Configure the link-extern-kernel pass.
   Option<bool> enableLinkExternKernel{
@@ -92,7 +107,13 @@ std::unique_ptr<Pass> createPlacementPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createCreateInterfacePass();
 std::unique_ptr<Pass> createPrintDataflowPass();
 
+
+std::unique_ptr<Pass> createTestpass();
+std::unique_ptr<Pass> createPlacementSimplePass();
+std::unique_ptr<Pass> createPlacementSimplePass(const PolyAIEOptions &opts);
+
 std::unique_ptr<Pass> createDataflowToAIEPass();
+std::unique_ptr<Pass> createDataflowToAIEPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createLinkExternKernelPass();
 std::unique_ptr<Pass> createLinkExternKernelPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createMaterializeBroadcastPass();

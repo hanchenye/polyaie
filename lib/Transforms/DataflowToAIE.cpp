@@ -14,8 +14,14 @@ using namespace bufferization;
 using namespace dataflow;
 using namespace xilinx::AIE;
 
+
+
 namespace {
 struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
+  DataflowToAIE() = default;
+  DataflowToAIE(const PolyAIEOptions &opts) {
+    gmio_reuse = opts.GMIOreuse;
+  }
   void runOnOperation() override;
 
   const uint64_t baseAddress = 0x000000004000;
@@ -46,219 +52,500 @@ static void inlineFuncIntoModule(dataflow::FuncOp func) {
 }
 
 void DataflowToAIE::runOnOperation() {
-  auto mod = getOperation();
-  auto b = OpBuilder(mod);
-  auto loc = b.getUnknownLoc();
-  auto topFunc = getTopFunc<dataflow::FuncOp>(mod);
+  if(!gmio_reuse){
 
-  // using BufferOpUnion = PointerUnion<BufferOp, ExternalBufferOp>;
+  
+    auto mod = getOperation();
+    auto b = OpBuilder(mod);
+    auto loc = b.getUnknownLoc();
+    auto topFunc = getTopFunc<dataflow::FuncOp>(mod);
 
-  // Map from process to its corresponding tile.
-  llvm::SmallDenseMap<Operation *, TileOp, 32> tileMap;
-  // Map from process result to its corresponding buffer or external buffer.
-  llvm::SmallDenseMap<Value, Operation *, 64> bufMap;
+    // using BufferOpUnion = PointerUnion<BufferOp, ExternalBufferOp>;
 
-  // Map from a tile to the external buffers interfaced through it.
-  llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 16> interfaceMap;
+    // Map from process to its corresponding tile.
+    llvm::SmallDenseMap<Operation *, TileOp, 32> tileMap;
+    // Map from process result to its corresponding buffer or external buffer.
+    llvm::SmallDenseMap<Value, Operation *, 64> bufMap;
 
-  // Hold the address allocated for external buffers.
-  uint64_t address = baseAddress;
+    // Map from a tile to the external buffers interfaced through it.
+    llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 16> interfaceMap;
 
-  // In the first iteration of traversing processes, we create a TileOp for each
-  // process and convert all results returned by the process to a BufferOp and
-  // record the mapping in "tileMap" and "BufMap", respectively.
-  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
-    // Generate TileOp based on the placement results.
-    b.setInsertionPoint(process);
-    auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
-    if (auto leaf = process->getAttr("polyaie.leaf"))
-      tile->setAttr("polyaie.leaf", leaf);
-    tileMap[process] = tile;
+    // Hold the address allocated for external buffers.
+    uint64_t address = baseAddress;
 
-    auto returnOp = process.body().back().getTerminator();
-    for (auto result : process.getResults()) {
-      auto retVal = returnOp->getOperand(result.getResultNumber());
-      assert(retVal.hasOneUse() && "return operand must only be used once");
-      // For now, all results should be tensor-typed.
-      auto tensorType = result.getType().cast<TensorType>();
+    // In the first iteration of traversing processes, we create a TileOp for each
+    // process and convert all results returned by the process to a BufferOp and
+    // record the mapping in "tileMap" and "BufMap", respectively.
+    for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+      // Generate TileOp based on the placement results.
+      b.setInsertionPoint(process);
+      auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
+      if (auto leaf = process->getAttr("polyaie.leaf"))
+        tile->setAttr("polyaie.leaf", leaf);
+      tileMap[process] = tile;
 
-      if (process.kind() == ProcessKind::AIE) {
-        // Handle the case when the process is AIE, which indicates the memref
-        // is an local buffer.
-        auto toTensorOp = retVal.getDefiningOp<ToTensorOp>();
-        assert(toTensorOp && "tensor must be casted from a memref");
-        auto alloc = toTensorOp.memref().getDefiningOp<memref::AllocOp>();
-        assert(alloc && "memref must be defined by an alloc operation");
+      auto returnOp = process.body().back().getTerminator();
+      for (auto result : process.getResults()) {
+        auto retVal = returnOp->getOperand(result.getResultNumber());
+        assert(retVal.hasOneUse() && "return operand must only be used once");
+        // For now, all results should be tensor-typed.
+        auto tensorType = result.getType().cast<TensorType>();
 
-        auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
-        bufMap[result] = buf;
+        if (process.kind() == ProcessKind::AIE) {
+          // Handle the case when the process is AIE, which indicates the memref
+          // is an local buffer.
+          auto toTensorOp = retVal.getDefiningOp<ToTensorOp>();
+          assert(toTensorOp && "tensor must be casted from a memref");
+          auto alloc = toTensorOp.memref().getDefiningOp<memref::AllocOp>();
+          assert(alloc && "memref must be defined by an alloc operation");
 
-        // If the result is **directly** used by a TensorStoreOp, this result
-        // should be DMA to host from AIE.
-        if (auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(result))
-          b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
-                              store.strides(), HostDMAKind::AIEToHost,
-                              store.memory(), buf);
+          auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
+          bufMap[result] = buf;
 
-        alloc.replaceAllUsesWith(buf.getResult());
-        alloc.erase();
-        toTensorOp->dropAllUses();
-        toTensorOp.erase();
+          // If the result is **directly** used by a TensorStoreOp, this result
+          // should be DMA to host from AIE.
+          if (auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(result))
+            b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                                store.strides(), HostDMAKind::AIEToHost,
+                                store.memory(), buf);
 
-      } else if (process.kind() == ProcessKind::GMIO) {
-        // Handle the case when the process is GMIO, which indicates the memref
-        // is a external buffer.
-        auto load = retVal.getDefiningOp<dataflow::TensorLoadOp>();
-        assert(load && "tensor must be loaded from a memref");
-        auto arg = load.memory().dyn_cast<BlockArgument>();
-        assert(arg && "memref must be a block argument");
+          alloc.replaceAllUsesWith(buf.getResult());
+          alloc.erase();
+          toTensorOp->dropAllUses();
+          toTensorOp.erase();
 
-        auto bufType =
-            MemRefType::get(tensorType.getShape(), tensorType.getElementType());
-        auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
-        address +=
-            bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
-        interfaceMap[tile].push_back(buf);
-        bufMap[result] = buf;
+        } else if (process.kind() == ProcessKind::GMIO) {
+          // Handle the case when the process is GMIO, which indicates the memref
+          // is a external buffer.
+          auto load = retVal.getDefiningOp<dataflow::TensorLoadOp>();
+          assert(load && "tensor must be loaded from a memref");
+          auto arg = load.memory().dyn_cast<BlockArgument>();
+          assert(arg && "memref must be a block argument");
 
-        // Create a host DMA op to load data from host to external buffer.
-        auto mem = process.getOperandFromInternalVal(arg);
-        b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
-                            HostDMAKind::HostToDDR, buf, mem);
-        load->dropAllUses();
-        load.erase();
-      } else
-        llvm_unreachable("PLIO is not supported for now.");
-    }
-  }
+          auto bufType =
+              MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+          auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
+          address +=
+              bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
+          interfaceMap[tile].push_back(buf);
+          bufMap[result] = buf;
 
-  // Map from a buffer to its target buffers.
-  llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 64> broadcastMap;
-
-  // In the second iteration of traversing processes, we convert all arguments
-  // of the process to local buffers and create CoreOps for each AIE tile.
-  for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
-    b.setInsertionPoint(process);
-    assert(tileMap.count(process) && "cannot find tile op");
-    auto tile = tileMap.lookup(process);
-
-    // Create BufferOp for each process argument.
-    for (auto arg : process.body().getArguments()) {
-      auto operand = process.getOperandFromInternalVal(arg);
-
-      // Handle scalar argument. Basically we need to create a local buffer for
-      // each scalar.
-      if (!arg.getType().isa<ShapedType>()) {
-        auto type = MemRefType::get({1}, arg.getType());
-        auto buf = b.create<BufferOp>(loc, type, tile);
-        b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
-                            b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
-                            operand);
-        auto insertPoint = b.saveInsertionPoint();
-
-        b.setInsertionPointToStart(&process.body().front());
-        auto value = b.create<mlir::AffineLoadOp>(
-            loc, b.getConstantAffineMap(0), ValueRange(buf.getResult()));
-        arg.replaceAllUsesWith(value);
-        b.restoreInsertionPoint(insertPoint);
-      }
-
-      // Handle tensor argument.
-      auto tensorType = arg.getType().dyn_cast<TensorType>();
-      if (!tensorType)
-        continue;
-      assert(arg.hasOneUse() && "tensor argument must only be used once");
-
-      if (process.kind() == ProcessKind::AIE) {
-        // If the tensor argument is converted to a memref, then create a local
-        // buffer for it and record in the broadcast map.
-        auto toMemrefOp = getOnlyUserOfType<ToMemrefOp>(arg);
-        assert(toMemrefOp && "tensor must be casted to a memref");
-        auto buf = b.create<BufferOp>(loc, toMemrefOp.getType(), tile);
-
-        // If the argument is **directly** generated by a TensorLoadOp, this
-        // argument should be DMA from Host to AIE.
-        if (auto load = operand.getDefiningOp<dataflow::TensorLoadOp>())
+          // Create a host DMA op to load data from host to external buffer.
+          auto mem = process.getOperandFromInternalVal(arg);
           b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
-                              HostDMAKind::HostToAIE, buf, load.memory());
-        else {
+                              HostDMAKind::HostToDDR, buf, mem);
+          load->dropAllUses();
+          load.erase();
+        } else
+          llvm_unreachable("PLIO is not supported for now.");
+      }
+    }
+
+    // Map from a buffer to its target buffers.
+    llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 64> broadcastMap;
+
+    // In the second iteration of traversing processes, we convert all arguments
+    // of the process to local buffers and create CoreOps for each AIE tile.
+    for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+      b.setInsertionPoint(process);
+      assert(tileMap.count(process) && "cannot find tile op");
+      auto tile = tileMap.lookup(process);
+
+      // Create BufferOp for each process argument.
+      for (auto arg : process.body().getArguments()) {
+        auto operand = process.getOperandFromInternalVal(arg);
+
+        // Handle scalar argument. Basically we need to create a local buffer for
+        // each scalar.
+        if (!arg.getType().isa<ShapedType>()) {
+          auto type = MemRefType::get({1}, arg.getType());
+          auto buf = b.create<BufferOp>(loc, type, tile);
+          b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
+                              b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
+                              operand);
+          auto insertPoint = b.saveInsertionPoint();
+
+          b.setInsertionPointToStart(&process.body().front());
+          auto value = b.create<mlir::AffineLoadOp>(
+              loc, b.getConstantAffineMap(0), ValueRange(buf.getResult()));
+          arg.replaceAllUsesWith(value);
+          b.restoreInsertionPoint(insertPoint);
+        }
+
+        // Handle tensor argument.
+        auto tensorType = arg.getType().dyn_cast<TensorType>();
+        if (!tensorType)
+          continue;
+        assert(arg.hasOneUse() && "tensor argument must only be used once");
+
+        if (process.kind() == ProcessKind::AIE) {
+          // If the tensor argument is converted to a memref, then create a local
+          // buffer for it and record in the broadcast map.
+          auto toMemrefOp = getOnlyUserOfType<ToMemrefOp>(arg);
+          assert(toMemrefOp && "tensor must be casted to a memref");
+          auto buf = b.create<BufferOp>(loc, toMemrefOp.getType(), tile);
+
+          // If the argument is **directly** generated by a TensorLoadOp, this
+          // argument should be DMA from Host to AIE.
+          if (auto load = operand.getDefiningOp<dataflow::TensorLoadOp>())
+            b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
+                                HostDMAKind::HostToAIE, buf, load.memory());
+          else {
+            auto srcBuf = bufMap.lookup(operand);
+            assert(srcBuf && "cannot find source buffer");
+            broadcastMap[srcBuf->getResult(0)].push_back(buf);
+          }
+
+          toMemrefOp.replaceAllUsesWith(buf.getResult());
+          toMemrefOp.erase();
+
+        } else if (process.kind() == ProcessKind::GMIO) {
+          // If the tensor argument is stored to a memory, then create an external
+          // buffer for it and record in the broadcast map.
+          auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(arg);
+          assert(store && "tensor must be stored into a memref");
+          auto arg = store.memory().dyn_cast<BlockArgument>();
+          assert(arg && "memref must be a block argument");
+
+          auto bufType =
+              MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+          auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
+          address +=
+              bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
+          interfaceMap[tile].push_back(buf);
+
           auto srcBuf = bufMap.lookup(operand);
           assert(srcBuf && "cannot find source buffer");
           broadcastMap[srcBuf->getResult(0)].push_back(buf);
+
+          // Create a host DMA to store from external memory to host.
+          auto mem = process.getOperandFromInternalVal(arg);
+          b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                              store.strides(), HostDMAKind::DDRToHost, mem, buf);
+          store.erase();
+        } else
+          llvm_unreachable("PLIO is not supported for now.");
+      }
+      // Erase all process arguments as all of them have been converted.
+      process.body().front().eraseArguments([](auto) { return true; });
+
+      // FIXME: Here, shim tiles should not have CoreOp. We temporally use CoreOp
+      // to contain the runtime information. Generate a CoreOp and inline the
+      // contents of the process.
+      auto core = b.create<CoreOp>(loc, tile);
+      auto &procBlocks = process.body().getBlocks();
+      auto &coreBlocks = core.body().getBlocks();
+      coreBlocks.splice(coreBlocks.begin(), procBlocks);
+
+      // Set the ternimator as an EndOp.
+      auto returnOp = coreBlocks.back().getTerminator();
+      b.setInsertionPoint(returnOp);
+      b.create<xilinx::AIE::EndOp>(loc);
+      returnOp->erase();
+    }
+
+    // For the third iteration, now we can safely erase all the ProcessOps and
+    // standalone TensorLoad/StoreOp.
+    for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
+      if (isa<ProcessOp, dataflow::TensorLoadOp, dataflow::TensorStoreOp>(op)) {
+        op.dropAllUses();
+        op.erase();
+      }  
+
+    // Create BroadcastOps from the "broadcastMap", also create InterfaceOps from
+    // the "interfaceMap".
+    b.setInsertionPoint(topFunc.back().getTerminator());
+    for (auto pair : broadcastMap)
+      b.create<BroadcastOp>(loc, pair.first, pair.second);
+
+    for (auto pair : interfaceMap) {
+      b.setInsertionPointAfterValue(pair.first);
+      b.create<InterfaceOp>(loc, pair.first, pair.second);
+    }
+
+    // Finally, inline the top function into the module.
+    // TODO: Introduce AIE runtime-related operations.
+    inlineFuncIntoModule(topFunc);
+  }
+  else{
+    auto mod = getOperation();
+    auto b = OpBuilder(mod);
+    auto loc = b.getUnknownLoc();
+    auto topFunc = getTopFunc<dataflow::FuncOp>(mod);
+
+    // using BufferOpUnion = PointerUnion<BufferOp, ExternalBufferOp>;
+
+    // Map from process to its corresponding tile.
+    llvm::SmallDenseMap<Operation *, TileOp, 32> tileMap;
+    // Map from process result to its corresponding buffer or external buffer.
+    llvm::SmallDenseMap<Value, Operation *, 64> bufMap;
+    
+    // Map record the dma channel and PackID for transfering Data between
+    //externel memory and AIE local buffer
+    
+    llvm::SmallDenseMap<Operation *, std::pair<int,std::pair<int, int>>,64> dmaMap;
+    llvm::SmallVector<Operation *,64> first_acc;
+
+    // Map from a tile to the external buffers interfaced through it.
+    llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 16> interfaceMap;
+
+    // Hold the address allocated for external buffers.
+    uint64_t address = baseAddress;
+
+    // In the first iteration of traversing processes, we create a TileOp for each
+    // process and convert all results returned by the process to a BufferOp and
+    // record the mapping in "tileMap" and "BufMap", respectively.
+    for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+      // Generate TileOp based on the placement results.
+      b.setInsertionPoint(process);
+      auto tile = b.create<TileOp>(loc, getCol(process), getRow(process));
+      if (auto leaf = process->getAttr("polyaie.leaf"))
+        tile->setAttr("polyaie.leaf", leaf);
+      tileMap[process] = tile;
+
+      auto returnOp = process.body().back().getTerminator();
+      for (auto result : process.getResults()) {
+        auto retVal = returnOp->getOperand(result.getResultNumber());
+        assert(retVal.hasOneUse() && "return operand must only be used once");
+        // For now, all results should be tensor-typed.
+        auto tensorType = result.getType().cast<TensorType>();
+
+        if (process.kind() == ProcessKind::AIE) {
+          // Handle the case when the process is AIE, which indicates the memref
+          // is an local buffer.
+          auto toTensorOp = retVal.getDefiningOp<ToTensorOp>();
+          assert(toTensorOp && "tensor must be casted from a memref");
+          auto alloc = toTensorOp.memref().getDefiningOp<memref::AllocOp>();
+          assert(alloc && "memref must be defined by an alloc operation");
+
+          auto buf = b.create<BufferOp>(loc, alloc.getType(), tile);
+          bufMap[result] = buf;
+
+          // If the result is **directly** used by a TensorStoreOp, this result
+          // should be DMA to host from AIE.
+          if (auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(result))
+            b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                                store.strides(), HostDMAKind::AIEToHost,
+                                store.memory(), buf);
+
+          alloc.replaceAllUsesWith(buf.getResult());
+          alloc.erase();
+          toTensorOp->dropAllUses();
+          toTensorOp.erase();
+
+        } else if (process.kind() == ProcessKind::GMIO) {
+          // Handle the case when the process is GMIO, which indicates the memref
+          // is a external buffer.
+          auto load = retVal.getDefiningOp<dataflow::TensorLoadOp>();
+          assert(load && "tensor must be loaded from a memref");
+          auto arg = load.memory().dyn_cast<BlockArgument>();
+          assert(arg && "memref must be a block argument");
+
+          auto bufType =
+              MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+          auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
+          
+          
+          bufMap[result] = buf;
+
+          //Record the Channel and PackID of a externel buffer
+          int channel = load->getAttrOfType<IntegerAttr>("polyaie.channel").getInt();
+          if(channel!=2){
+            interfaceMap[tile].push_back(buf);
+            address +=
+                  bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
+            int packid = load->getAttrOfType<IntegerAttr>("polyaie.PackID").getInt();
+            int col = process->getAttrOfType<IntegerAttr>("polyaie.col").getInt();
+            std::pair <int, int> chnl_id;
+            chnl_id=std::make_pair(channel, packid);
+            dmaMap[buf] = std::make_pair(col,chnl_id);
+          }
+          else{
+            first_acc.push_back(buf);
+          }
+          
+
+          // Create a host DMA op to load data from host to external buffer.
+          auto mem = process.getOperandFromInternalVal(arg);
+          b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
+                              HostDMAKind::HostToDDR, buf, mem);
+          load->dropAllUses();
+          load.erase();
+        } else
+          llvm_unreachable("PLIO is not supported for now.");
+      }
+    }
+
+    // Map from a buffer to its target buffers.
+    llvm::SmallDenseMap<Value, SmallVector<Value, 4>, 64> broadcastMap;
+
+    // In the second iteration of traversing processes, we convert all arguments
+    // of the process to local buffers and create CoreOps for each AIE tile.
+    for (auto process : llvm::make_early_inc_range(topFunc.getOps<ProcessOp>())) {
+      b.setInsertionPoint(process);
+      assert(tileMap.count(process) && "cannot find tile op");
+      auto tile = tileMap.lookup(process);
+
+      // Create BufferOp for each process argument.
+      for (auto arg : process.body().getArguments()) {
+        auto operand = process.getOperandFromInternalVal(arg);
+
+        // Handle scalar argument. Basically we need to create a local buffer for
+        // each scalar.
+        if (!arg.getType().isa<ShapedType>()) {
+          auto type = MemRefType::get({1}, arg.getType());
+          auto buf = b.create<BufferOp>(loc, type, tile);
+          b.create<HostDMAOp>(loc, b.getI64ArrayAttr(0), b.getI64ArrayAttr(1),
+                              b.getI64ArrayAttr(1), HostDMAKind::HostToAIE, buf,
+                              operand);
+          auto insertPoint = b.saveInsertionPoint();
+
+          b.setInsertionPointToStart(&process.body().front());
+          auto value = b.create<mlir::AffineLoadOp>(
+              loc, b.getConstantAffineMap(0), ValueRange(buf.getResult()));
+          arg.replaceAllUsesWith(value);
+          b.restoreInsertionPoint(insertPoint);
         }
 
-        toMemrefOp.replaceAllUsesWith(buf.getResult());
-        toMemrefOp.erase();
+        // Handle tensor argument.
+        auto tensorType = arg.getType().dyn_cast<TensorType>();
+        if (!tensorType)
+          continue;
+        assert(arg.hasOneUse() && "tensor argument must only be used once");
 
-      } else if (process.kind() == ProcessKind::GMIO) {
-        // If the tensor argument is stored to a memory, then create an external
-        // buffer for it and record in the broadcast map.
-        auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(arg);
-        assert(store && "tensor must be stored into a memref");
-        auto arg = store.memory().dyn_cast<BlockArgument>();
-        assert(arg && "memref must be a block argument");
+        if (process.kind() == ProcessKind::AIE) {
+          // If the tensor argument is converted to a memref, then create a local
+          // buffer for it and record in the broadcast map.
+          auto toMemrefOp = getOnlyUserOfType<ToMemrefOp>(arg);
+          assert(toMemrefOp && "tensor must be casted to a memref");
+          auto buf = b.create<BufferOp>(loc, toMemrefOp.getType(), tile);
 
-        auto bufType =
-            MemRefType::get(tensorType.getShape(), tensorType.getElementType());
-        auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
-        address +=
-            bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
-        interfaceMap[tile].push_back(buf);
+          // If the argument is **directly** generated by a TensorLoadOp, this
+          // argument should be DMA from Host to AIE.
+          if (auto load = operand.getDefiningOp<dataflow::TensorLoadOp>())
+            b.create<HostDMAOp>(loc, load.offsets(), load.sizes(), load.strides(),
+                                HostDMAKind::HostToAIE, buf, load.memory());
+          else {
+            auto srcBuf = bufMap.lookup(operand);
+            assert(srcBuf && "cannot find source buffer");
+            broadcastMap[srcBuf->getResult(0)].push_back(buf);
+          }
 
-        auto srcBuf = bufMap.lookup(operand);
-        assert(srcBuf && "cannot find source buffer");
-        broadcastMap[srcBuf->getResult(0)].push_back(buf);
+          toMemrefOp.replaceAllUsesWith(buf.getResult());
+          toMemrefOp.erase();
 
-        // Create a host DMA to store from external memory to host.
-        auto mem = process.getOperandFromInternalVal(arg);
-        b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
-                            store.strides(), HostDMAKind::DDRToHost, mem, buf);
-        store.erase();
-      } else
-        llvm_unreachable("PLIO is not supported for now.");
+        } else if (process.kind() == ProcessKind::GMIO) {
+          // If the tensor argument is stored to a memory, then create an external
+          // buffer for it and record in the broadcast map.
+          auto store = getOnlyUserOfType<dataflow::TensorStoreOp>(arg);
+          assert(store && "tensor must be stored into a memref");
+          auto arg = store.memory().dyn_cast<BlockArgument>();
+          assert(arg && "memref must be a block argument");
+
+          auto bufType =
+              MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+          auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
+          address +=
+              bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
+          interfaceMap[tile].push_back(buf);
+
+          auto srcBuf = bufMap.lookup(operand);
+          assert(srcBuf && "cannot find source buffer");
+          broadcastMap[srcBuf->getResult(0)].push_back(buf);
+
+          int channel = store->getAttrOfType<IntegerAttr>("polyaie.channel").getInt();
+          int packid = store->getAttrOfType<IntegerAttr>("polyaie.PackID").getInt();
+          std::pair <int, int> chnl_id(channel, packid);
+          int col = process->getAttrOfType<IntegerAttr>("polyaie.col").getInt();
+          dmaMap[buf] = std::make_pair(col,chnl_id);
+
+
+          // Create a host DMA to store from external memory to host.
+          auto mem = process.getOperandFromInternalVal(arg);
+          b.create<HostDMAOp>(loc, store.offsets(), store.sizes(),
+                              store.strides(), HostDMAKind::DDRToHost, mem, buf);
+          store.erase();
+        } else
+          llvm_unreachable("PLIO is not supported for now.");
+      }
+      // Erase all process arguments as all of them have been converted.
+      process.body().front().eraseArguments([](auto) { return true; });
+
+      // FIXME: Here, shim tiles should not have CoreOp. We temporally use CoreOp
+      // to contain the runtime information. Generate a CoreOp and inline the
+      // contents of the process.
+      auto core = b.create<CoreOp>(loc, tile);
+      auto &procBlocks = process.body().getBlocks();
+      auto &coreBlocks = core.body().getBlocks();
+      coreBlocks.splice(coreBlocks.begin(), procBlocks);
+
+      // Set the ternimator as an EndOp.
+      auto returnOp = coreBlocks.back().getTerminator();
+      b.setInsertionPoint(returnOp);
+      b.create<xilinx::AIE::EndOp>(loc);
+      returnOp->erase();
     }
-    // Erase all process arguments as all of them have been converted.
-    process.body().front().eraseArguments([](auto) { return true; });
 
-    // FIXME: Here, shim tiles should not have CoreOp. We temporally use CoreOp
-    // to contain the runtime information. Generate a CoreOp and inline the
-    // contents of the process.
-    auto core = b.create<CoreOp>(loc, tile);
-    auto &procBlocks = process.body().getBlocks();
-    auto &coreBlocks = core.body().getBlocks();
-    coreBlocks.splice(coreBlocks.begin(), procBlocks);
+    // For the third iteration, now we can safely erase all the ProcessOps and
+    // standalone TensorLoad/StoreOp.
+    for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
+      if (isa<ProcessOp, dataflow::TensorLoadOp, dataflow::TensorStoreOp>(op)) {
+        op.dropAllUses();
+        op.erase();
+      }  
 
-    // Set the ternimator as an EndOp.
-    auto returnOp = coreBlocks.back().getTerminator();
-    b.setInsertionPoint(returnOp);
-    b.create<xilinx::AIE::EndOp>(loc);
-    returnOp->erase();
-  }
+    // Create BroadcastOps from the "broadcastMap", also create InterfaceOps from
+    // the "interfaceMap".
+    b.setInsertionPoint(topFunc.back().getTerminator());
+    for (auto pair : broadcastMap){
+      auto source_buf=pair.first.getDefiningOp<ExternalBufferOp>();
+      auto targets=pair.second[0];
+      bool exists_sr = std::find(std::begin(first_acc), std::end(first_acc), source_buf) != std::end(first_acc);
+  
+      if(exists_sr){
+        for (auto op : getUsersOfType<HostDMAOp>(pair.first))
+          op.erase();
+        source_buf.erase();
+      }
+      else if(auto target_buf=targets.getDefiningOp<ExternalBufferOp>()){
+        auto col = dmaMap[target_buf].first;
+        auto channal_id = dmaMap[target_buf].second;
+        auto brcastOp = b.create<BroadcastOp>(loc, pair.first, pair.second);
+        brcastOp->setAttr("polyaie.col",b.getI64IntegerAttr(col));
+        brcastOp->setAttr("polyaie.channel",b.getI64IntegerAttr(channal_id.first));
+        brcastOp->setAttr("polyaie.PackID",b.getI64IntegerAttr(channal_id.second));
+      }
+      else{
+        auto col = dmaMap[source_buf].first;
+        auto channal_id = dmaMap[source_buf].second;
+        auto brcastOp = b.create<BroadcastOp>(loc, pair.first, pair.second);
+        brcastOp->setAttr("polyaie.col",b.getI64IntegerAttr(col));
+        brcastOp->setAttr("polyaie.channel",b.getI64IntegerAttr(channal_id.first));
+        brcastOp->setAttr("polyaie.PackID",b.getI64IntegerAttr(channal_id.second));
+      }
+      
 
-  // For the third iteration, now we can safely erase all the ProcessOps and
-  // standalone TensorLoad/StoreOp.
-  for (auto &op : llvm::make_early_inc_range(topFunc.getOps()))
-    if (isa<ProcessOp, dataflow::TensorLoadOp, dataflow::TensorStoreOp>(op)) {
-      op.dropAllUses();
-      op.erase();
+    }
+      
+
+    for (auto pair : interfaceMap) {
+  
+      b.setInsertionPointAfterValue(pair.first);
+      b.create<InterfaceOp>(loc, pair.first, pair.second);
+      
     }
 
-  // Create BroadcastOps from the "broadcastMap", also create InterfaceOps from
-  // the "interfaceMap".
-  b.setInsertionPoint(topFunc.back().getTerminator());
-  for (auto pair : broadcastMap)
-    b.create<BroadcastOp>(loc, pair.first, pair.second);
+    // Finally, inline the top function into the module.
+    // TODO: Introduce AIE runtime-related operations.
+    inlineFuncIntoModule(topFunc);
 
-  for (auto pair : interfaceMap) {
-    b.setInsertionPointAfterValue(pair.first);
-    b.create<InterfaceOp>(loc, pair.first, pair.second);
   }
-
-  // Finally, inline the top function into the module.
-  // TODO: Introduce AIE runtime-related operations.
-  inlineFuncIntoModule(topFunc);
 }
 
 std::unique_ptr<Pass> polyaie::createDataflowToAIEPass() {
   return std::make_unique<DataflowToAIE>();
+}
+
+std::unique_ptr<Pass> polyaie::createDataflowToAIEPass(const PolyAIEOptions &opts) {
+  return std::make_unique<DataflowToAIE>(opts);
 }

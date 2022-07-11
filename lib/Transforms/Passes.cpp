@@ -24,43 +24,61 @@ void polyaie::registerPolyAIEPassPipeline() {
       [](OpPassManager &pm, const PolyAIEOptions &opts) {
         // Partition the input kernel into multiple tiles.
         pm.addPass(polyaie::createPreprocessPass(opts));
+        
         pm.addPass(polyaie::createSplitTopFuncPass(opts));
+        
         pm.addPass(mlir::createAffineLoopNormalizePass());
+        
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
+        
         pm.addPass(mlir::createCanonicalizerPass());
 
         // Generate the dependency between each tile.
         pm.addPass(polyaie::createCreateMemrefSubviewPass());
+        
         pm.addPass(polyaie::createHoistMemrefSubviewPass());
+        
         pm.addPass(polyaie::createMemrefArgToResultPass(opts));
+        
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
+        
         pm.addPass(polyaie::createBufferMemrefResultPass());
 
+        
         // Tensorization the program and conduct intra-kernel optimizations.
         pm.addPass(polyaie::createTensorizeMemrefPass());
+        
         pm.addPass(mlir::createLoopFusionPass());
+        
         // pm.addPass(polyaie::createDetectLoopReductionPass());
         pm.addPass(mlir::createAffineScalarReplacementPass());
+        
         if (opts.superVectorizeSize != 1) {
           pm.addPass(mlir::createSuperVectorizePass({opts.superVectorizeSize}));
           pm.addPass(xilinx::AIE::createAIEVectorOptPass());
           pm.addPass(xilinx::aievec::createAIEVectorizePass());
         }
-
+        
         // Convert to dataflow IR and conduct placement.
         pm.addPass(polyaie::createConvertToDataflowPass());
         pm.addPass(mlir::createCanonicalizerPass());
+        //pm.addPass(polyaie::createTestpass());
+        return;
         pm.addPass(polyaie::createInsertGMIOAdapterPass());
         pm.addPass(polyaie::createPlacementPass(opts));
+        
         if (opts.enableCreateInterface)
           pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPrintDataflowPass());
-
+        
         // Convert to AIE IR and implement data transfers.
         pm.addPass(polyaie::createDataflowToAIEPass());
         pm.addPass(mlir::createCanonicalizerPass());
+        
+        
         if (opts.enableLinkExternKernel)
           pm.addPass(polyaie::createLinkExternKernelPass(opts));
+        
         pm.addPass(polyaie::createMaterializeBroadcastPass());
         pm.addPass(polyaie::createFlowPacketToCircuitPass());
 
@@ -69,8 +87,10 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(xilinx::AIE::createAIERoutePacketFlowsPass());
         pm.addPass(xilinx::AIE::createAIERouteFlowsPass());
         // pm.addPass(xilinx::AIE::createAIEPathfinderPass());
-        pm.addPass(polyaie::createDoubleBufferPass());
+        //pm.addPass(polyaie::createDoubleBufferPass());
         pm.addPass(polyaie::createPostprocessPass());
+        
+        
       });
 }
 

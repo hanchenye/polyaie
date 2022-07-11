@@ -9,6 +9,29 @@
 
 include "mlir/Pass/PassBase.td"
 
+def Test : Pass<"polyaie-test", "ModuleOp"> {
+  let summary = "Preprocess the IR from phism";
+  let constructor = "mlir::polyaie::createTestpass()";
+}
+
+def PlacementSimple : Pass<"polyaie-placement-simple", "ModuleOp"> {
+  let summary = "Input start tile position and create a regulart tile layout";
+  let description = [{
+    This placement is only for Matrix Multiple design, since the tile placement 
+    can be simplified to a rectangular shape. By setting the start point of the 
+    design, the tile layout can be determined.
+  }];
+  let constructor = "mlir::polyaie::createPlacementSimplePass()";
+  let options = [
+    Option<"col_pos", "col-pos", "int64_t", /*default=*/"24",
+           "Specify the placement start column position">,
+    Option<"row_pos", "row-pos", "int64_t", /*default=*/"2",
+           "Specify the placement start row position">,
+
+  ];
+}
+
+
 def Preprocess : Pass<"polyaie-preprocess", "ModuleOp"> {
   let summary = "Preprocess the IR from phism";
   let constructor = "mlir::polyaie::createPreprocessPass()";
@@ -157,6 +180,10 @@ def DataflowToAIE : Pass<"polyaie-dataflow-to-aie", "ModuleOp"> {
     lower buffer load and store operations.
   }];
   let constructor = "mlir::polyaie::createDataflowToAIEPass()";
+  let options = [
+    Option<"gmio_reuse", "gmio-reuse", "bool", /*default=*/"true",
+           "Specify if use packet switch combine with broadcast or not">
+  ];
 }
 
 def LinkExternKernel : Pass<"polyaie-link-extern-kernel", "ModuleOp"> {
