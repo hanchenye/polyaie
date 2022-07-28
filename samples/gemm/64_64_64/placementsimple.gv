@@ -1,0 +1,37 @@
+digraph unnamed {
+
+	Node0x3d37020 [shape=record,pos="10,0!",style=filled,fillcolor="/ylgnbu5/3",label="{10, 0}"];
+	Node0x3d37020 -> Node0x3d70ed0;
+	Node0x3d37020 -> Node0x3d6e160;
+	Node0x3d37020 -> Node0x3d6ff90;
+	Node0x3d37020 -> Node0x3d6e160;
+	Node0x3d37020 -> Node0x3d59240;
+	Node0x3d37020 -> Node0x3d58ff0;
+	Node0x3d37020 -> Node0x3d6feb0;
+	Node0x3d37020 -> Node0x3d58ff0;
+	Node0x3d54230 [shape=record,pos="11,0!",style=filled,fillcolor="/ylgnbu5/3",label="{11, 0}"];
+	Node0x3d54230 -> Node0x3d36860;
+	Node0x3d54230 -> Node0x3d6ff90;
+	Node0x3d54230 -> Node0x3d76070;
+	Node0x3d54230 -> Node0x3d6feb0;
+	Node0x3d54230 -> Node0x3d36860;
+	Node0x3d54230 -> Node0x3d70ed0;
+	Node0x3d54230 -> Node0x3d76070;
+	Node0x3d54230 -> Node0x3d59240;
+	Node0x3d58ff0 [shape=record,pos="10,2!",style=filled,fillcolor="/ylgnbu5/1",label="{10, 2}"];
+	Node0x3d58ff0 -> Node0x3d6e160;
+	Node0x3d6e160 [shape=record,pos="10,3!",style=filled,fillcolor="/ylgnbu5/1",label="{10, 3}"];
+	Node0x3d6e160 -> Node0x3d54230;
+	Node0x3d59240 [shape=record,pos="11,2!",style=filled,fillcolor="/ylgnbu5/1",label="{11, 2}"];
+	Node0x3d59240 -> Node0x3d70ed0;
+	Node0x3d70ed0 [shape=record,pos="11,3!",style=filled,fillcolor="/ylgnbu5/1",label="{11, 3}"];
+	Node0x3d70ed0 -> Node0x3d54230;
+	Node0x3d6feb0 [shape=record,pos="12,2!",style=filled,fillcolor="/ylgnbu5/1",label="{12, 2}"];
+	Node0x3d6feb0 -> Node0x3d6ff90;
+	Node0x3d6ff90 [shape=record,pos="12,3!",style=filled,fillcolor="/ylgnbu5/1",label="{12, 3}"];
+	Node0x3d6ff90 -> Node0x3d54230;
+	Node0x3d76070 [shape=record,pos="13,2!",style=filled,fillcolor="/ylgnbu5/1",label="{13, 2}"];
+	Node0x3d76070 -> Node0x3d36860;
+	Node0x3d36860 [shape=record,pos="13,3!",style=filled,fillcolor="/ylgnbu5/1",label="{13, 3}"];
+	Node0x3d36860 -> Node0x3d54230;
+}

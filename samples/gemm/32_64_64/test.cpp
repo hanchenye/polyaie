@@ -1,0 +1,228 @@
+#include "test_library.h"
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <thread>
+#include <unistd.h>
+#include <xaiengine.h>
+
+#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
+#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
+#define MLIR_STACK_OFFSET 4096
+#include "aie_inc.cpp"
+#define MAP_SIZE 16UL
+#define MAP_MASK (MAP_SIZE - 1)
+
+void devmemRW32(uint32_t address, uint32_t value, bool write) {
+  int fd;
+  uint32_t *map_base;
+  uint32_t read_result;
+  uint32_t offset = address - 0xF70A0000;
+
+  if ((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1)
+    printf("ERROR!!!! open(devmem)\n");
+  printf("\n/dev/mem opened.\n");
+  fflush(stdout);
+
+  map_base = (uint32_t *)mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0xF70A0000);
+  if (map_base == (void *)-1)
+    printf("ERROR!!!! map_base\n");
+  printf("Memory mapped at address %p.\n", map_base);
+  fflush(stdout);
+
+  read_result = map_base[uint32_t(offset / 4)];
+  printf("Value at address 0x%X: 0x%X\n", address, read_result);
+  fflush(stdout);
+
+  if (write) {
+    map_base[uint32_t(offset / 4)] = value;
+    // msync(map_base, MAP_SIZE, MS_SYNC);
+    read_result = map_base[uint32_t(offset / 4)];
+    printf("Written 0x%X; readback 0x%X\n", value, read_result);
+    fflush(stdout);
+  }
+
+  // msync(map_base, MAP_SIZE, MS_SYNC);
+  if (munmap(map_base, MAP_SIZE) == -1)
+    printf("ERROR!!!! unmap_base\n");
+  printf("/dev/mem closed.\n");
+  fflush(stdout);
+  close(fd);
+}
+
+int main(int argc, char *argv[]) {
+  devmemRW32(0xF70A000C, 0xF9E8D7C6, true);
+  devmemRW32(0xF70A0000, 0x04000000, true);
+  devmemRW32(0xF70A0004, 0x040381B1, true);
+  devmemRW32(0xF70A0000, 0x04000000, true);
+  devmemRW32(0xF70A0004, 0x000381B1, true);
+  devmemRW32(0xF70A000C, 0x12341234, true);
+  printf("test start.\n");
+
+  aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+  mlir_aie_init_device(_xaie);
+
+  u32 sleep_u = 100000;
+  usleep(sleep_u);
+  printf("before configure cores.\n");
+
+  mlir_aie_configure_cores(_xaie);
+
+  usleep(sleep_u);
+  printf("before configure sw.\n");
+
+  mlir_aie_configure_switchboxes(_xaie);
+
+  mlir_aie_configure_dmas(_xaie);
+
+  usleep(sleep_u);
+  mlir_aie_initialize_locks(_xaie);
+  int errors = 0;
+
+  printf("Initialize buffers...\n");
+
+  int fd = open("/dev/mem", O_RDWR | O_SYNC);
+  assert(fd != -1 && "memory is not available");
+
+  mlir_aie_clear_tile_memory(_xaie, 26, 2);
+  mlir_aie_clear_tile_memory(_xaie, 26, 3);
+  mlir_aie_clear_tile_memory(_xaie, 27, 2);
+  mlir_aie_clear_tile_memory(_xaie, 27, 3);
+
+#define DMA_COUNT 1024
+  // static XAieGbl_MemInst *IO_Mem;
+  // u32 *mem_ptr0;
+
+  // IO_Mem = XAieGbl_MemInit(0);
+  // mem_ptr0 = (u32 *)XAieGbl_MemGetPaddr(IO_Mem);
+  // u32 *mem_ptr1 = mem_ptr0 + DMA_COUNT;
+  // u32 *mem_ptr2 = mem_ptr1 + DMA_COUNT;
+  // u32 *mem_ptr3 = mem_ptr2 + DMA_COUNT;
+  // u32 *mem_ptr4 = mem_ptr3 + DMA_COUNT;
+  // u32 *mem_ptr5 = mem_ptr4 + DMA_COUNT;
+  // u32 *mem_ptr6 = mem_ptr5 + DMA_COUNT;
+  // u32 *mem_ptr7 = mem_ptr6 + DMA_COUNT + 1;
+
+  // for(int i=0; i<DMA_COUNT+1; i++) {
+  //   if (i==0){
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr6 + i), 3);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr7 + i), 3);
+  //   }
+  //   else{
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr0 + i -1), 1);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr1 + i -1), 1);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr2 + i -1), 1);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr3 + i -1), 1);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr4 + i -1), 1);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr5 + i -1), 1);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr6 + i), 3);
+  //     XAieGbl_MemWrite32(IO_Mem, (u64)(mem_ptr7 + i), 3);
+  //   }
+
+  // }
+
+  int *mem_ptr0 = (int *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100000000);
+  int *mem_ptr1 = (int *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100001000);
+  int *mem_ptr2 = (int *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100002000);
+  int *mem_ptr3 = (int *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100003000);
+  int *mem_ptr4 = (int *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100004000);
+  int *mem_ptr5 = (int *)mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100005000);
+  int *mem_ptr6 = (int *)mmap(NULL, 4100, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100006000);
+  int *mem_ptr7 = (int *)mmap(NULL, 4100, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0x020100008000);
+
+  for (int i = 0; i < DMA_COUNT + 1; i++) {
+    if (i == 0) {
+      *(mem_ptr6 + i) = 3;
+      *(mem_ptr7 + i) = 3;
+    } else {
+      *(mem_ptr0 + i - 1) = 1;
+      *(mem_ptr1 + i - 1) = 1;
+      *(mem_ptr2 + i - 1) = 1;
+      *(mem_ptr3 + i - 1) = 1;
+      *(mem_ptr4 + i - 1) = 1;
+      *(mem_ptr5 + i - 1) = 1;
+      *(mem_ptr6 + i) = 3;
+      *(mem_ptr7 + i) = 3;
+    }
+  }
+
+  usleep(sleep_u);
+  printf("Start cores...\n");
+  mlir_aie_start_cores(_xaie);
+
+  mlir_aie_release_lock(_xaie, 27, 0, 1, 1, 0);
+  mlir_aie_release_lock(_xaie, 27, 0, 0, 1, 0);
+  mlir_aie_release_lock(_xaie, 26, 0, 2, 1, 0);
+  mlir_aie_release_lock(_xaie, 26, 0, 0, 1, 0);
+  mlir_aie_release_lock(_xaie, 26, 0, 3, 1, 0);
+  mlir_aie_release_lock(_xaie, 26, 0, 1, 1, 0);
+
+  usleep(sleep_u);
+
+  // mlir_aie_print_tile_status(_xaie, 26, 2);
+  // mlir_aie_print_tile_status(_xaie, 26, 3);
+  // mlir_aie_print_tile_status(_xaie, 27, 2);
+  // mlir_aie_print_tile_status(_xaie, 27, 3);
+
+  int tries1 = 1;
+  while ((tries1 < 1000) && (!mlir_aie_acquire_lock(_xaie, 27, 3, 15, 1, 0))) {
+    tries1++;
+  }
+  printf("It took %d tries1.\n", tries1);
+
+  for (int idx0 = 0; idx0 < 1025; ++idx0) {
+    if (idx0 == 0) {
+      printf("External memory1[0]=%x\n", mem_ptr6[0]);
+    } else if (mem_ptr6[idx0] != 64) {
+      printf("External memory1[%d]=%d\n", idx0, mem_ptr6[idx0]);
+      errors++;
+    }
+  }
+
+  for (int idx0 = 0; idx0 < 1025; ++idx0) {
+    if (idx0 == 0) {
+      printf("External memory2[0]=%x\n", mem_ptr7[0]);
+    } else if (mem_ptr7[idx0] != 64) {
+      printf("External memory2[%d]=%d\n", idx0, mem_ptr7[idx0]);
+      errors++;
+    }
+  }
+
+  mlir_aie_check("Before release lock:", mlir_aie_read_buffer_buf8(_xaie, 0),
+                 32, errors);
+  mlir_aie_check("Before release lock:", mlir_aie_read_buffer_buf9(_xaie, 0), 1,
+                 errors);
+  mlir_aie_check("Before release lock:", mlir_aie_read_buffer_buf10(_xaie, 0),
+                 1, errors);
+  mlir_aie_check("Before release lock:", mlir_aie_read_buffer_buf13(_xaie, 0),
+                 1, errors);
+  mlir_aie_check("Before release lock:", mlir_aie_read_buffer_buf14(_xaie, 0),
+                 1, errors);
+
+  int res = 0;
+  if (!errors) {
+    printf("PASS!\n");
+    res = 0;
+  } else {
+    printf("Fail!\n");
+    res = -1;
+  }
+  mlir_aie_deinit_libxaie(_xaie);
+
+  printf("test done.\n");
+
+  return res;
+}

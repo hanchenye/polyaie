@@ -1,0 +1,10 @@
+digraph unnamed {
+
+	Node0x4581270 [shape=record,pos="27,0!",style=filled,fillcolor="/ylgnbu5/3",label="{27, 0}"];
+	Node0x4581270 -> Node0x45b71c0;
+	Node0x4581170 [shape=record,pos="26,0!",style=filled,fillcolor="/ylgnbu5/3",label="{26, 0}"];
+	Node0x4581170 -> Node0x45b71c0;
+	Node0x4581170 -> Node0x45b71c0;
+	Node0x45b71c0 [shape=record,pos="25,2!",style=filled,fillcolor="/ylgnbu5/1",label="{25, 2}"];
+	Node0x45b71c0 -> Node0x4581170;
+}

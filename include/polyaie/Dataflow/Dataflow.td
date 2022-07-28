@@ -217,7 +217,7 @@ def HostDMAKind: I64EnumAttr<"HostDMAKind", "Kind of Host DMA",
   let cppNamespace = "mlir::polyaie";
 }
 
-def HostDMAOp : DataflowOp<"runtime.host_dma", [SameOperandsElementType]> {
+def HostDMAOp : DataflowOp<"runtime.host_dma", []> {
   let summary = "Host DMA operation";
   let description = [{
     This operation represents a host DMA to/from external memory, such as DDRs.
@@ -247,7 +247,7 @@ def InterfaceOp : DataflowOp<"aie.interface", []> {
   let verifier = "return ::verify(*this);";
 }
 
-def BroadcastOp : DataflowOp<"aie.broadcast", [SameTypeOperands]> {
+def BroadcastOp : DataflowOp<"aie.broadcast", []> {
   let summary = "Memory broadcast operation";
   let description = [{
     Broadcast the source buffer to each target buffer.

@@ -9,6 +9,7 @@
 using namespace mlir;
 using namespace polyaie;
 using namespace dataflow;
+using namespace xilinx::AIE;
 
 namespace {
 struct CodeGenCleanup : public polyaie::CodeGenCleanupBase<CodeGenCleanup> {
@@ -17,7 +18,10 @@ struct CodeGenCleanup : public polyaie::CodeGenCleanupBase<CodeGenCleanup> {
 } // namespace
 
 void CodeGenCleanup::runOnOperation() {
-  for (auto &op : llvm::make_early_inc_range(getOperation().getOps()))
+  auto mod = getOperation();
+  auto b = OpBuilder(mod);
+  auto loc = b.getUnknownLoc();
+  for (auto &op : llvm::make_early_inc_range(getOperation().getOps())) {
     if (isa<memref::AllocOp, dataflow::HostDMAOp>(op)) {
       op.dropAllUses();
       op.erase();
@@ -31,6 +35,14 @@ void CodeGenCleanup::runOnOperation() {
         block.erase();
       }
     }
+  }
+
+  for (auto core : llvm::make_early_inc_range(mod.getOps<CoreOp>())) {
+    if (core.rowIndex() == 0) {
+      core->dropAllUses();
+      core.erase();
+    }
+  }
 }
 
 std::unique_ptr<Pass> polyaie::createCodeGenCleanupPass() {

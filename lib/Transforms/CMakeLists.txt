@@ -21,6 +21,8 @@ add_mlir_library(MLIRPolyAIEPasses
   Postprocess.cpp
   CodeGenCleanup.cpp
   Passes.cpp
+  PlacementSimple.cpp
+  test.cpp
 
   DEPENDS
   MLIRPolyAIEPassesIncGen

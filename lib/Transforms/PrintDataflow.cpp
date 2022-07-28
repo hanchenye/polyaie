@@ -22,8 +22,22 @@ struct DOTGraphTraits<dataflow::FuncOp> : public DefaultDOTGraphTraits {
     std::string ostr;
     raw_string_ostream os(ostr);
     auto process = cast<dataflow::ProcessOp>(op);
+    // Region &r = process.body();
+    // Block &b = r.front();
+    // int flag=0;
+    // for (Operation &Opera : b.getOperations()) {
+    //   if (mlir::polyaie::dataflow::TensorLoadOp tensorload =
+    //   dyn_cast<mlir::polyaie::dataflow::TensorLoadOp>(Opera)){
+    //     if(tensorload->getAttrOfType<IntegerAttr>("polyaie.channel").getInt()!=2){
+    //       flag=1;
+    //     }
+    //   }
+    // }
+
+    // if(flag){
     os << getCol(process) << ", " << getRow(process);
     return os.str();
+    //}
   }
 
   static std::string getNodeAttributes(Operation *op, dataflow::FuncOp) {

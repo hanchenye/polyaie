@@ -1,0 +1,564 @@
+{
+"switchbox100": {
+"col": 10,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox110": {
+"col": 11,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox102": {
+"col": 10,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox103": {
+"col": 10,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox112": {
+"col": 11,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox113": {
+"col": 11,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox122": {
+"col": 12,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox123": {
+"col": 12,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox132": {
+"col": 13,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox133": {
+"col": 13,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox120": {
+"col": 12,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox130": {
+"col": 13,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox121": {
+"col": 12,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox111": {
+"col": 11,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox131": {
+"col": 13,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox101": {
+"col": 10,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox00": {
+"col": 0,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox01": {
+"col": 0,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox02": {
+"col": 0,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox03": {
+"col": 0,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox10": {
+"col": 1,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox11": {
+"col": 1,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox12": {
+"col": 1,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox13": {
+"col": 1,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox20": {
+"col": 2,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox21": {
+"col": 2,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox22": {
+"col": 2,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox23": {
+"col": 2,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox30": {
+"col": 3,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox31": {
+"col": 3,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox32": {
+"col": 3,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 2,
+"southbound": 1,
+"westbound": 0
+},
+"switchbox33": {
+"col": 3,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox40": {
+"col": 4,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox41": {
+"col": 4,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox42": {
+"col": 4,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox43": {
+"col": 4,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox50": {
+"col": 5,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox51": {
+"col": 5,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox52": {
+"col": 5,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox53": {
+"col": 5,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox60": {
+"col": 6,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox61": {
+"col": 6,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox62": {
+"col": 6,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox63": {
+"col": 6,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox70": {
+"col": 7,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox71": {
+"col": 7,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox72": {
+"col": 7,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox73": {
+"col": 7,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox80": {
+"col": 8,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox81": {
+"col": 8,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox82": {
+"col": 8,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox83": {
+"col": 8,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox90": {
+"col": 9,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox91": {
+"col": 9,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox92": {
+"col": 9,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox93": {
+"col": 9,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+
+"end json": 0
+}

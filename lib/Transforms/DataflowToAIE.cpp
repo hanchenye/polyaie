@@ -15,7 +15,6 @@ using namespace dataflow;
 using namespace xilinx::AIE;
 
 
-
 namespace {
 struct DataflowToAIE : public polyaie::DataflowToAIEBase<DataflowToAIE> {
   DataflowToAIE() = default;
@@ -282,8 +281,15 @@ void DataflowToAIE::runOnOperation() {
     
     // Map record the dma channel and PackID for transfering Data between
     //externel memory and AIE local buffer
-    
-    llvm::SmallDenseMap<Operation *, std::pair<int,std::pair<int, int>>,64> dmaMap;
+
+    llvm::SmallDenseMap<
+        Operation *,
+        llvm::SmallVector<std::pair<std::pair<int, int>, std::pair<int, int>>,
+                          16>,
+        64>
+        dmaMap;
+    llvm::SmallVector<std::pair<std::pair<int, int>, std::pair<int, int>>, 16>
+        port_channels;
     llvm::SmallVector<Operation *,64> first_acc;
 
     // Map from a tile to the external buffers interfaced through it.
@@ -356,9 +362,42 @@ void DataflowToAIE::runOnOperation() {
                   bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
             int packid = load->getAttrOfType<IntegerAttr>("polyaie.PackID").getInt();
             int col = process->getAttrOfType<IntegerAttr>("polyaie.col").getInt();
-            std::pair <int, int> chnl_id;
-            chnl_id=std::make_pair(channel, packid);
-            dmaMap[buf] = std::make_pair(col,chnl_id);
+            int reuse =
+                load->getAttrOfType<IntegerAttr>("polyaie.reuse").getInt();
+            std::pair<std::pair<int, int>, std::pair<int, int>> chnl_id;
+            chnl_id = std::make_pair(std::make_pair(reuse, col),
+                                     std::make_pair(channel, packid));
+            port_channels.push_back(chnl_id);
+
+            // Count the number of channels
+            int channel_num = 1;
+            int flag_end = 0;
+            while (!flag_end) {
+              flag_end = 1;
+              if (load->getAttr("polyaie.channel" +
+                                std::to_string(channel_num))) {
+                int channel0 =
+                    load->getAttrOfType<IntegerAttr>(
+                            "polyaie.channel" + std::to_string(channel_num))
+                        .getInt();
+                int packid0 =
+                    load->getAttrOfType<IntegerAttr>(
+                            "polyaie.PackID" + std::to_string(channel_num))
+                        .getInt();
+                int col0 = load->getAttrOfType<IntegerAttr>(
+                                   "polyaie.col" + std::to_string(channel_num))
+                               .getInt();
+                std::pair<std::pair<int, int>, std::pair<int, int>> chnl_id0;
+                chnl_id0 = std::make_pair(std::make_pair(0, col0),
+                                          std::make_pair(channel0, packid0));
+                port_channels.push_back(chnl_id0);
+                channel_num++;
+                flag_end = 0;
+              }
+            }
+
+            dmaMap[buf] = port_channels;
+            port_channels.clear();
           }
           else{
             first_acc.push_back(buf);
@@ -442,23 +481,55 @@ void DataflowToAIE::runOnOperation() {
           auto arg = store.memory().dyn_cast<BlockArgument>();
           assert(arg && "memref must be a block argument");
 
-          auto bufType =
-              MemRefType::get(tensorType.getShape(), tensorType.getElementType());
+          auto bufType = MemRefType::get(tensorType.getNumElements() + 1,
+                                         tensorType.getElementType());
           auto buf = b.create<ExternalBufferOp>(loc, bufType, address);
           address +=
-              bufType.getNumElements() * bufType.getElementTypeBitWidth() / 8;
+              std::ceil(std::ceil((float)(bufType.getNumElements()) / 1024.0) *
+                        1024 * bufType.getElementTypeBitWidth() / 8);
           interfaceMap[tile].push_back(buf);
 
           auto srcBuf = bufMap.lookup(operand);
           assert(srcBuf && "cannot find source buffer");
           broadcastMap[srcBuf->getResult(0)].push_back(buf);
-
           int channel = store->getAttrOfType<IntegerAttr>("polyaie.channel").getInt();
           int packid = store->getAttrOfType<IntegerAttr>("polyaie.PackID").getInt();
-          std::pair <int, int> chnl_id(channel, packid);
           int col = process->getAttrOfType<IntegerAttr>("polyaie.col").getInt();
-          dmaMap[buf] = std::make_pair(col,chnl_id);
+          std::pair<std::pair<int, int>, std::pair<int, int>> chnl_id;
+          chnl_id = std::make_pair(std::make_pair(0, col),
+                                   std::make_pair(channel, packid));
+          port_channels.push_back(chnl_id);
+          int channel_num = 1;
+          int flag_end = 0;
+          while (!flag_end) {
+            flag_end = 1;
+            if (store->getAttr("polyaie.channel" +
+                               std::to_string(channel_num))) {
+              int channel0 =
+                  store
+                      ->getAttrOfType<IntegerAttr>("polyaie.channel" +
+                                                   std::to_string(channel_num))
+                      .getInt();
+              int packid0 =
+                  store
+                      ->getAttrOfType<IntegerAttr>("polyaie.PackID" +
+                                                   std::to_string(channel_num))
+                      .getInt();
+              int col0 = store
+                             ->getAttrOfType<IntegerAttr>(
+                                 "polyaie.col" + std::to_string(channel_num))
+                             .getInt();
+              std::pair<std::pair<int, int>, std::pair<int, int>> chnl_id0;
+              chnl_id0 = std::make_pair(std::make_pair(0, col0),
+                                        std::make_pair(channel0, packid0));
+              port_channels.push_back(chnl_id0);
+              channel_num++;
+              flag_end = 0;
+            }
+          }
 
+          dmaMap[buf] = port_channels;
+          port_channels.clear();
 
           // Create a host DMA to store from external memory to host.
           auto mem = process.getOperandFromInternalVal(arg);
@@ -499,32 +570,57 @@ void DataflowToAIE::runOnOperation() {
     b.setInsertionPoint(topFunc.back().getTerminator());
     for (auto pair : broadcastMap){
       auto source_buf=pair.first.getDefiningOp<ExternalBufferOp>();
-      auto targets=pair.second[0];
       bool exists_sr = std::find(std::begin(first_acc), std::end(first_acc), source_buf) != std::end(first_acc);
-  
+      int cnt = 0;
       if(exists_sr){
         for (auto op : getUsersOfType<HostDMAOp>(pair.first))
           op.erase();
         source_buf.erase();
-      }
-      else if(auto target_buf=targets.getDefiningOp<ExternalBufferOp>()){
-        auto col = dmaMap[target_buf].first;
-        auto channal_id = dmaMap[target_buf].second;
-        auto brcastOp = b.create<BroadcastOp>(loc, pair.first, pair.second);
-        brcastOp->setAttr("polyaie.col",b.getI64IntegerAttr(col));
-        brcastOp->setAttr("polyaie.channel",b.getI64IntegerAttr(channal_id.first));
-        brcastOp->setAttr("polyaie.PackID",b.getI64IntegerAttr(channal_id.second));
-      }
-      else{
-        auto col = dmaMap[source_buf].first;
-        auto channal_id = dmaMap[source_buf].second;
-        auto brcastOp = b.create<BroadcastOp>(loc, pair.first, pair.second);
-        brcastOp->setAttr("polyaie.col",b.getI64IntegerAttr(col));
-        brcastOp->setAttr("polyaie.channel",b.getI64IntegerAttr(channal_id.first));
-        brcastOp->setAttr("polyaie.PackID",b.getI64IntegerAttr(channal_id.second));
-      }
-      
+      } else if (auto target_buf =
+                     pair.second[0].getDefiningOp<ExternalBufferOp>()) {
+        BroadcastOp brcastOp;
+        for (auto vector_port : dmaMap[target_buf]) {
+          auto reuse = vector_port.first.first;
+          auto col = vector_port.first.second;
+          auto channal_id = vector_port.second;
+          if (cnt == 0) {
+            brcastOp = b.create<BroadcastOp>(loc, pair.first, pair.second);
+            if (reuse != 0)
+              brcastOp->setAttr("polyaie.reuse", b.getI64IntegerAttr(reuse));
+          }
 
+          brcastOp->setAttr("polyaie.col" + std::to_string(cnt),
+                            b.getI64IntegerAttr(col));
+          brcastOp->setAttr("polyaie.channel" + std::to_string(cnt),
+                            b.getI64IntegerAttr(channal_id.first));
+          brcastOp->setAttr("polyaie.PackID" + std::to_string(cnt),
+                            b.getI64IntegerAttr(channal_id.second));
+          cnt++;
+        }
+        cnt = 0;
+      } else if (pair.first.getDefiningOp<ExternalBufferOp>()) {
+        BroadcastOp brcastOp;
+        for (auto vector_port : dmaMap[source_buf]) {
+          auto reuse = vector_port.first.first;
+          auto col = vector_port.first.second;
+          auto channal_id = vector_port.second;
+          if (cnt == 0) {
+            brcastOp = b.create<BroadcastOp>(loc, pair.first, pair.second);
+            if (reuse != 0)
+              brcastOp->setAttr("polyaie.reuse", b.getI64IntegerAttr(reuse));
+          }
+          brcastOp->setAttr("polyaie.col" + std::to_string(cnt),
+                            b.getI64IntegerAttr(col));
+          brcastOp->setAttr("polyaie.channel" + std::to_string(cnt),
+                            b.getI64IntegerAttr(channal_id.first));
+          brcastOp->setAttr("polyaie.PackID" + std::to_string(cnt),
+                            b.getI64IntegerAttr(channal_id.second));
+          cnt++;
+        }
+        cnt = 0;
+      } else {
+        b.create<BroadcastOp>(loc, pair.first, pair.second);
+      }
     }
       
 

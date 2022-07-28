@@ -1,0 +1,21 @@
+digraph unnamed {
+
+	Node0x5aeeb00 [shape=record,pos="27,0!",style=filled,fillcolor="/ylgnbu5/3",label="{27, 0}"];
+	Node0x5aeeb00 -> Node0x5b277c0 [color="green"];
+	Node0x5aeeb00 -> Node0x5b26370 [color="green"];
+	Node0x5b013b0 [shape=record,pos="26,0!",style=filled,fillcolor="/ylgnbu5/3",label="{26, 0}"];
+	Node0x5b013b0 -> Node0x5b277c0 [color="red"] ; 
+	Node0x5b013b0 -> Node0x5b0c9a0 [color="red"] ;
+	Node0x5b013b0 -> Node0x5b0c9a0 [color="blue"] ;
+	Node0x5b013b0 -> Node0x5b26370 [color="red"] ;
+	Node0x5b013b0 -> Node0x5b03060 [color="red"] ;
+	Node0x5b013b0 -> Node0x5b03060 [color="blue"];
+	Node0x5b03060 [shape=record,pos="26,2!",style=filled,fillcolor="/ylgnbu5/1",label="{26, 2}"];
+	Node0x5b03060 -> Node0x5b0c9a0;
+	Node0x5b0c9a0 [shape=record,pos="26,3!",style=filled,fillcolor="/ylgnbu5/1",label="{26, 3}"];
+	Node0x5b0c9a0 -> Node0x5b013b0 [color="orange"];
+	Node0x5b26370 [shape=record,pos="27,2!",style=filled,fillcolor="/ylgnbu5/1",label="{27, 2}"];
+	Node0x5b26370 -> Node0x5b277c0;
+	Node0x5b277c0 [shape=record,pos="27,3!",style=filled,fillcolor="/ylgnbu5/1",label="{27, 3}"];
+	Node0x5b277c0 -> Node0x5b013b0 [color="orange"];
+}

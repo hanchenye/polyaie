@@ -32,7 +32,8 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(mlir::createSimplifyAffineStructuresPass());
         
         pm.addPass(mlir::createCanonicalizerPass());
-
+        
+        
         // Generate the dependency between each tile.
         pm.addPass(polyaie::createCreateMemrefSubviewPass());
         
@@ -43,7 +44,6 @@ void polyaie::registerPolyAIEPassPipeline() {
         pm.addPass(polyaie::createExtractMemrefDependencyPass());
         
         pm.addPass(polyaie::createBufferMemrefResultPass());
-
         
         // Tensorization the program and conduct intra-kernel optimizations.
         pm.addPass(polyaie::createTensorizeMemrefPass());
@@ -71,6 +71,7 @@ void polyaie::registerPolyAIEPassPipeline() {
           pm.addPass(polyaie::createCreateInterfacePass());
         pm.addPass(polyaie::createPrintDataflowPass());
         
+
         // Convert to AIE IR and implement data transfers.
         pm.addPass(polyaie::createDataflowToAIEPass());
         pm.addPass(mlir::createCanonicalizerPass());

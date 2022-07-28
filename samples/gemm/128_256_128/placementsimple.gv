@@ -1,0 +1,32 @@
+/proj/rdi/staff/jinmingz/nobkup/polyaie/samples/gemm/128_256_128/2_interfacesimple.mlir:0:0: error: failed to find top function
+digraph unnamed {
+
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace.
+Stack dump:
+0.	Program arguments: polyaie-opt /proj/rdi/staff/jinmingz/nobkup/polyaie/samples/gemm/128_256_128/2_interfacesimple.mlir -polyaie-print-dataflow -canonicalize
+ #0 0x00007f8879291f5c llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/llvm/lib/Support/Unix/Signals.inc:565:11
+ #1 0x00007f887929212b PrintStackTraceSignalHandler(void*) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/llvm/lib/Support/Unix/Signals.inc:632:1
+ #2 0x00007f8879290683 llvm::sys::RunSignalHandlers() /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/llvm/lib/Support/Signals.cpp:96:5
+ #3 0x00007f8879292897 SignalHandler(int) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/llvm/lib/Support/Unix/Signals.inc:407:1
+ #4 0x00007f88815655e0 __restore_rt sigaction.c:0:0
+ #5 0x000000000199e706 mlir::Operation::getRegion(unsigned int) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/include/mlir/IR/Operation.h:430:5
+ #6 0x0000000003853b2f mlir::OpTrait::OneRegion<mlir::polyaie::dataflow::FuncOp>::getRegion() /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../llvm-project/mlir/include/mlir/IR/OpDefinition.h:493:25
+ #7 0x0000000003853133 auto mlir::OpTrait::OneRegion<mlir::polyaie::dataflow::FuncOp>::getOps<mlir::polyaie::dataflow::ProcessOp>() /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../llvm-project/mlir/include/mlir/IR/OpDefinition.h:499:12
+ #8 0x0000000003882493 llvm::GraphTraits<mlir::polyaie::dataflow::FuncOp>::nodes_begin(mlir::polyaie::dataflow::FuncOp) /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../include/polyaie/Dataflow/Dataflow.h:0:14
+ #9 0x00000000038815cb llvm::iterator_range<llvm::GraphTraits<mlir::polyaie::dataflow::FuncOp>::nodes_iterator> llvm::nodes<mlir::polyaie::dataflow::FuncOp>(mlir::polyaie::dataflow::FuncOp const&) /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../llvm-project/llvm/include/llvm/ADT/GraphTraits.h:110:55
+#10 0x00000000038813bd llvm::GraphWriter<mlir::polyaie::dataflow::FuncOp>::writeNodes() /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../llvm-project/llvm/include/llvm/Support/GraphWriter.h:167:28
+#11 0x0000000003881008 llvm::GraphWriter<mlir::polyaie::dataflow::FuncOp>::writeGraph(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../llvm-project/llvm/include/llvm/Support/GraphWriter.h:130:5
+#12 0x0000000003880f2e llvm::raw_ostream& llvm::WriteGraph<mlir::polyaie::dataflow::FuncOp>(llvm::raw_ostream&, mlir::polyaie::dataflow::FuncOp const&, bool, llvm::Twine const&) /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../llvm-project/llvm/include/llvm/Support/GraphWriter.h:366:3
+#13 0x00000000038807e5 (anonymous namespace)::PrintDataflow::runOnOperation() /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../lib/Transforms/PrintDataflow.cpp:67:5
+#14 0x0000000003617ea1 mlir::detail::OpToOpPassAdaptor::run(mlir::Pass*, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Pass/Pass.cpp:393:21
+#15 0x000000000361849b mlir::detail::OpToOpPassAdaptor::runPipeline(llvm::iterator_range<llvm::pointee_iterator<std::unique_ptr<mlir::Pass, std::default_delete<mlir::Pass> >*, mlir::Pass> >, mlir::Operation*, mlir::AnalysisManager, bool, unsigned int, mlir::PassInstrumentor*, mlir::PassInstrumentation::PipelineParentInfo const*) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Pass/Pass.cpp:452:16
+#16 0x0000000003619b5a mlir::PassManager::runPasses(mlir::Operation*, mlir::AnalysisManager) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Pass/Pass.cpp:696:10
+#17 0x0000000003619a48 mlir::PassManager::run(mlir::Operation*) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Pass/Pass.cpp:676:60
+#18 0x00000000036a4a32 performActions(llvm::raw_ostream&, bool, bool, llvm::SourceMgr&, mlir::MLIRContext*, llvm::function_ref<mlir::LogicalResult (mlir::PassManager&)>) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Support/MlirOptMain.cpp:79:17
+#19 0x00000000036a37f3 processBuffer(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer> >, bool, bool, bool, bool, llvm::function_ref<mlir::LogicalResult (mlir::PassManager&)>, mlir::DialectRegistry&, llvm::ThreadPool*) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Support/MlirOptMain.cpp:119:12
+#20 0x00000000036a357d mlir::MlirOptMain(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer> >, llvm::function_ref<mlir::LogicalResult (mlir::PassManager&)>, mlir::DialectRegistry&, bool, bool, bool, bool, bool) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Support/MlirOptMain.cpp:169:10
+#21 0x00000000036a39d2 mlir::MlirOptMain(llvm::raw_ostream&, std::unique_ptr<llvm::MemoryBuffer, std::default_delete<llvm::MemoryBuffer> >, mlir::PassPipelineCLParser const&, mlir::DialectRegistry&, bool, bool, bool, bool, bool) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Support/MlirOptMain.cpp:189:10
+#22 0x00000000036a46b7 mlir::MlirOptMain(int, char**, llvm::StringRef, mlir::DialectRegistry&, bool) /proj/rdi/staff/jinmingz/nobkup/polyaie/llvm-project/mlir/lib/Support/MlirOptMain.cpp:293:14
+#23 0x0000000001a13988 main /proj/rdi/staff/jinmingz/nobkup/polyaie/build/../tools/polyaie-opt/polyaie-opt.cpp:16:23
+#24 0x00007f88744fec05 __libc_start_main (/lib64/libc.so.6+0x21c05)
+#25 0x0000000001995029 _start (/wrk/xcohdnobkup3/jinmingz/polyaie/build/bin/polyaie-opt+0x1995029)

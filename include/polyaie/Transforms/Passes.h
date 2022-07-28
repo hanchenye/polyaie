@@ -117,6 +117,8 @@ std::unique_ptr<Pass> createDataflowToAIEPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createLinkExternKernelPass();
 std::unique_ptr<Pass> createLinkExternKernelPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createMaterializeBroadcastPass();
+std::unique_ptr<Pass>
+createMaterializeBroadcastPass(const PolyAIEOptions &opts);
 std::unique_ptr<Pass> createFlowPacketToCircuitPass();
 std::unique_ptr<Pass> createDoubleBufferPass();
 std::unique_ptr<Pass> createPostprocessPass();

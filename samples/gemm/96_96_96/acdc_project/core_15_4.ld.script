@@ -1,0 +1,61 @@
+
+MEMORY
+{
+   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+   data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+}
+ENTRY(_main_init)
+SECTIONS
+{
+  . = 0x0;
+  .text : { 
+     // the _main_init symbol from me_basic.o has to come at address zero.
+     *me_basic.o(.text)
+     . = 0x200;
+     _ctors_start = .;
+     _init_array_start = .;
+     KEEP(SORT(*.init_array))
+     _ctors_end = .;
+     _init_array_end = .;
+     _dtors_start = .;
+     _dtors_end = .;
+     *(.text)
+  } > program
+  .data : { 
+     *(.data*);
+     *(.rodata*)
+  } > data
+  . = 0x20000;
+  _sp_start_value_DM_stack = .;
+  . = 0x24000;
+. = 0x21000;
+buf81 = .;
+. += 0x1000;
+. = 0x22000;
+buf82 = .;
+. += 0x1000;
+. = 0x23000;
+buf83 = .;
+. += 0x1000;
+. = 0x29000;
+buf84 = .;
+. += 0x1000;
+. = 0x2A000;
+buf85 = .;
+. += 0x1000;
+. = 0x2B000;
+buf86 = .;
+. += 0x1000;
+. = 0x39000;
+buf94 = .;
+. += 0x1000;
+. = 0x3A000;
+buf95 = .;
+. += 0x1000;
+. = 0x3B000;
+buf96 = .;
+. += 0x1000;
+  .bss : { *(.bss) } > data
+  .bss.DMb.4 : { *(.bss.DMb.4) } > data
+}
+INPUT(kernel.o)

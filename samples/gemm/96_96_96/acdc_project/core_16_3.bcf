@@ -1,0 +1,33 @@
+_entry_point _main_init
+_symbol      _main _after _main_init
+_symbol      _main_init 0
+_reserved DMb      0x00000 0x20000 //Don't put data in code memory
+_symbol buf87 0x21000 0x1000
+_extern buf87
+_symbol buf88 0x22000 0x1000
+_extern buf88
+_symbol buf89 0x23000 0x1000
+_extern buf89
+_symbol buf90 0x24000 0x1000
+_extern buf90
+_symbol buf81 0x29000 0x1000
+_extern buf81
+_symbol buf82 0x2A000 0x1000
+_extern buf82
+_symbol buf83 0x2B000 0x1000
+_extern buf83
+_symbol buf94 0x31000 0x1000
+_extern buf94
+_symbol buf95 0x32000 0x1000
+_extern buf95
+_symbol buf96 0x33000 0x1000
+_extern buf96
+_symbol buf91 0x39000 0x1000
+_extern buf91
+_symbol buf92 0x3A000 0x1000
+_extern buf92
+_symbol buf93 0x3B000 0x1000
+_extern buf93
+_stack    DM_stack 0x20000  0x400 //stack for core
+_reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+_include _file kernel.o
